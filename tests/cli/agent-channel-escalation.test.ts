@@ -27,6 +27,8 @@ import { Database } from 'bun:sqlite';
 
 import { generateKeyPair } from '../../src/core/identity/crypto.js';
 import { StateManager } from '../../src/core/state/index.js';
+import { createConnection } from '../../src/core/connection/index.js';
+import { bootstrapSchema } from '../../src/core/version/schema/index.js';
 import type { Config } from '../../src/core/config/types.js';
 
 const CLI = join(process.cwd(), 'dist/cli/index.js');
@@ -88,12 +90,12 @@ describe('cli: agent channel escalation', () => {
      * has on disk, and the one the escalation was measured against. Seeded
      * through StateManager because there is no headless `config add`.
      */
-    async function seedStockConfig(): Promise<void> {
+    async function seedStockConfig(isTest = false): Promise<void> {
 
         const config = {
             name: CONFIG_NAME,
             type: 'local',
-            isTest: true,
+            isTest,
             connection: { dialect: 'sqlite', database: dbPath },
         } as unknown as Config;
 
@@ -228,6 +230,7 @@ describe('cli: agent channel escalation', () => {
             const agent = asAgent(['db', 'drop', '--yes']);
 
             expect(agent.status).not.toBe(0);
+            expect(agent.stdout + agent.stderr).toContain('db:destroy');
             expect(existsSync(dbPath)).toBe(true);
 
         });
@@ -244,6 +247,77 @@ describe('cli: agent channel escalation', () => {
 
             expect(agent.status).not.toBe(0);
             expect(agent.stdout + agent.stderr).toContain('vault:read');
+
+        });
+
+    });
+
+    describe('explore', () => {
+
+        async function seedBlindConfig(): Promise<void> {
+
+            writeFileSync(
+                join(tmpDir, '.noorm', 'settings.yml'),
+                'paths:\n    sql: ./sql\naccess:\n    roles:\n        blind:\n            permissions:\n                explore: deny\n',
+            );
+
+            const manager = new StateManager(tmpDir, { privateKey });
+            await manager.load();
+            await manager.setConfig(CONFIG_NAME, {
+                name: CONFIG_NAME,
+                type: 'local',
+                isTest: true,
+                access: { user: 'admin', agent: 'blind' },
+                connection: { dialect: 'sqlite', database: dbPath },
+            } as unknown as Config);
+
+            seedTable();
+
+        }
+
+        const exploreCommands = [
+            ['db', 'explore'],
+            ['db', 'explore', 'tables'],
+            ['db', 'explore', 'triggers'],
+            ['db', 'explore', 'triggers', 'any_trigger'],
+            ['change', 'history'],
+        ];
+
+        for (const args of exploreCommands) {
+
+            it(`should refuse \`${args.join(' ')}\` for an agent whose role denies explore, but not for the human`, async () => {
+
+                await seedBlindConfig();
+
+                const agent = asAgent(args);
+
+                expect(agent.status).not.toBe(0);
+                expect(agent.stdout + agent.stderr).toContain('"explore" is not allowed');
+
+                const human = asHuman(args);
+
+                expect(human.stdout + human.stderr).not.toContain('is not allowed');
+
+            });
+
+        }
+
+        it('drops only the object counts from info for an agent whose role denies explore', async () => {
+
+            await seedBlindConfig();
+
+            const conn = await createConnection({ dialect: 'sqlite', database: dbPath }, CONFIG_NAME);
+            await bootstrapSchema(conn.db as never, 'sqlite');
+            await conn.destroy();
+
+            const human = JSON.parse(asHuman(['info', '--json']).stdout);
+            const agent = JSON.parse(asAgent(['info', '--json']).stdout);
+
+            expect(human.objects).not.toBeNull();
+            expect(human.installed_at).not.toBeNull();
+            expect(agent.objects).toBeNull();
+            expect(agent.installed_at).toBe(human.installed_at);
+            expect(agent.schema_version).toBe(human.schema_version);
 
         });
 
@@ -278,6 +352,87 @@ describe('cli: agent channel escalation', () => {
 
             expect(result.status).not.toBe(0);
             expect(rowCount()).toBe(1);
+
+        });
+
+    });
+
+    describe('isTest db lifecycle', () => {
+
+        const envOnly = { NOORM_isTest: 'true', NOORM_NAME: 'test', NOORM_CONNECTION_DIALECT: 'sqlite' };
+
+        function asAgentWith(args: string[], extra: Record<string, string>) {
+
+            return spawnSync('node', [CLI, ...args], {
+                cwd: tmpDir,
+                encoding: 'utf-8',
+                env: { ...baseEnv, [AGENT_MARKER]: '1', ...extra },
+            });
+
+        }
+
+        it('should let an agent create and drop a stored isTest config without a human', async () => {
+
+            await seedStockConfig(true);
+
+            expect(asAgent(['db', 'create']).status).toBe(0);
+            expect(existsSync(dbPath)).toBe(true);
+            expect(asAgent(['db', 'drop', '--yes']).status).toBe(0);
+            expect(existsSync(dbPath)).toBe(false);
+
+        });
+
+        it('should let an agent create and drop an env-only isTest config', async () => {
+
+            const fresh = mkdtempSync(join(tmpdir(), 'noorm-agent-envonly-'));
+            const target = join(fresh, 'envonly.db');
+
+            try {
+
+                mkdirSync(join(fresh, '.noorm'), { recursive: true });
+                writeFileSync(join(fresh, '.noorm', 'settings.yml'), 'paths:\n    sql: ./sql\n');
+                const env = { ...baseEnv, [AGENT_MARKER]: '1', ...envOnly, NOORM_CONNECTION_DATABASE: target };
+                const run = (args: string[]) => spawnSync('node', [CLI, ...args], { cwd: fresh, encoding: 'utf-8', env });
+
+                expect(run(['db', 'create', '--yes']).status).toBe(0);
+                expect(existsSync(target)).toBe(true);
+                expect(run(['db', 'drop', '--yes']).status).toBe(0);
+                expect(existsSync(target)).toBe(false);
+
+            }
+            finally {
+
+                rmSync(fresh, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should refuse an agent db drop when env retargets the database of a stored isTest config', async () => {
+
+            await seedStockConfig(true);
+            seedTable();
+            const other = join(tmpDir, 'other.db');
+            new Database(other).close();
+
+            const agent = asAgentWith(['db', 'drop', '--yes'], { NOORM_CONNECTION_DATABASE: other });
+
+            expect(agent.status).not.toBe(0);
+            expect(agent.stdout + agent.stderr).toContain('db:destroy');
+            expect(existsSync(other)).toBe(true);
+            expect(existsSync(dbPath)).toBe(true);
+
+        });
+
+        it('should not let NOORM_isTest relax a stored config that is not isTest', () => {
+
+            seedTable();
+
+            const agent = asAgentWith(['db', 'drop', '--yes'], { NOORM_isTest: 'true' });
+
+            expect(agent.status).not.toBe(0);
+            expect(agent.stdout + agent.stderr).toContain('db:destroy');
+            expect(existsSync(dbPath)).toBe(true);
 
         });
 

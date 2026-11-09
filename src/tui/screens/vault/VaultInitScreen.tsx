@@ -3,7 +3,7 @@
  *
  * Generates a new vault key and stores it for the current user.
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Kysely } from 'kysely';
 
@@ -14,9 +14,11 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { initializeVault, getVaultStatus } from '../../../core/vault/index.js';
+import { registerIdentity } from '../../../core/identity/sync.js';
 
 
 type Phase = 'connecting' | 'ready' | 'initializing' | 'error';
@@ -28,12 +30,45 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('VaultInit');
-    const { activeConfigName, identity } = useAppContext();
+    const { activeConfig, activeConfigName, identity } = useAppContext();
     const { showToast } = useToast();
 
-    const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection();
-    const phase = basePhase as Phase;
+    const [connectionApproved, setConnectionApproved] = useState(false);
+    const [initializationRequested, setInitializationRequested] = useState(false);
+    const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection({ enabled: connectionApproved });
+    const phase = (connectionApproved ? basePhase : 'ready') as Phase;
     const setPhase = setBasePhase as (p: Phase) => void;
+    const [pendingPolicy, setPendingPolicy] = useState<'vault:write' | null>(null);
+    const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
+
+    const beginInit = (writeConfirmed = false) => {
+
+        if (!activeConfig) {
+
+            setError('No active configuration');
+
+            return;
+
+        }
+        const check = checkConfigPolicy('user', activeConfig, 'vault:write');
+        if (!check.allowed) {
+
+            setError(check.blockedReason ?? 'vault:write is not allowed');
+
+            return;
+
+        }
+        if (check.requiresConfirmation && !writeConfirmed) {
+
+            setPendingPolicy('vault:write');
+
+            return;
+
+        }
+        setConnectionApproved(true);
+        setInitializationRequested(true);
+
+    };
 
     // Handle initialization
     const handleInit = useCallback(async () => {
@@ -46,57 +81,73 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
         const db = connRef.current.db;
         const connDialect = connRef.current.dialect;
 
-        // Check if already initialized
-        const status = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
+        let status = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
+        if (!status.isInitialized) {
 
-        if (status.isInitialized) {
+            const registered = await registerIdentity(db as Kysely<NoormDatabase>, identity, connDialect);
+            if (!registered.ok) {
 
-            if (status.hasAccess) {
+                setError(registered.error ?? 'Failed to register vault identity');
+                setPhase('ready');
 
-                showToast({ message: 'Vault already initialized', variant: 'info' });
-
-            }
-            else {
-
-                showToast({
-                    message: 'Vault initialized but you lack access. Ask a team member.',
-                    variant: 'warning',
-                });
+                return;
 
             }
+            const [vaultKey, initErr] = await initializeVault(
+                db as Kysely<NoormDatabase>,
+                identity.identityHash,
+                identity.publicKey,
+                connDialect,
+            );
+            if (initErr) {
 
-            back();
+                setError(initErr.message);
+                setPhase('ready');
 
-            return;
+                return;
+
+            }
+            if (vaultKey) {
+
+                showToast({ message: 'Vault initialized successfully', variant: 'success' });
+                back();
+
+                return;
+
+            }
+            status = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, connDialect);
+            if (!status.isInitialized) {
+
+                setError('Vault initialization did not complete. Try again.');
+                setPhase('ready');
+
+                return;
+
+            }
 
         }
-
-        // Initialize vault
-        const [, initErr] = await initializeVault(
-            db as Kysely<NoormDatabase>,
-            identity.identityHash,
-            identity.publicKey,
-            connDialect,
-        );
-
-        if (initErr) {
-
-            setError(initErr.message);
-            setPhase('ready');
-
-            return;
-
-        }
-
-        showToast({ message: 'Vault initialized successfully', variant: 'success' });
+        showToast({
+            message: status.hasAccess
+                ? 'Vault already initialized'
+                : 'Vault initialized but you lack access. Ask a team member.',
+            variant: status.hasAccess ? 'info' : 'warning',
+        });
         back();
 
     }, [identity, showToast, back, connRef, setPhase, setError]);
 
+    useEffect(() => {
+
+        if (!initializationRequested || phase !== 'ready' || !connRef.current) return;
+        setInitializationRequested(false);
+        void handleInit();
+
+    }, [initializationRequested, phase, connRef, handleInit]);
+
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused) return;
+        if (!isFocused || pendingPolicy) return;
 
         if (key.escape) {
 
@@ -108,7 +159,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
 
         if (key.return && phase === 'ready') {
 
-            handleInit();
+            beginInit();
 
         }
 
@@ -171,6 +222,28 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
         );
 
     }
+    if (pendingPolicy && policyCheck) {
+
+        return (
+            <SmartConfirm
+                focusLabel="VaultInitPolicyConfirm"
+                requiresConfirmation
+                confirmationPhrase={policyCheck.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action="initialize vault for"
+                message="Initialize vault?"
+                onConfirm={() => {
+
+                    setPendingPolicy(null);
+                    beginInit(true);
+
+                }}
+                onCancel={() => setPendingPolicy(null)}
+            />
+        );
+
+    }
+
 
     // Ready - show confirmation
     return (
@@ -178,6 +251,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
             <Panel title="Initialize Vault" paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text dimColor>Config: {activeConfigName}</Text>
+                    {error && <Text color="red">{error}</Text>}
                     <Text>Initialize the vault for this database?</Text>
                     <Text dimColor>
                         This will generate a new encryption key for shared secrets.

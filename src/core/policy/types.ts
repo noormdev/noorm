@@ -1,3 +1,5 @@
+import type { BUILTIN_ROLES } from './matrix.js';
+
 /**
  * Access policy data model.
  *
@@ -10,7 +12,24 @@
  * `viewer` reads only, `operator` writes and confirms destructive ops,
  * `admin` is frictionless.
  */
-export type Role = 'viewer' | 'operator' | 'admin';
+export type BuiltinRole = (typeof BUILTIN_ROLES)[number];
+export type Role = string;
+
+export interface RoleDefinition {
+    extends?: string;
+    permissions?: Partial<Record<Permission, PolicyCell>>;
+}
+
+export interface PolicyContext {
+    roles?: Record<string, RoleDefinition>;
+    protectedStage?: boolean;
+    /** Trusted `isTest` (see `docs/spec/config-access-roles.md`); relaxes `db:*` lifecycle cells. */
+    isTest?: boolean;
+    /** Credential-free project and connection target the bound `isTest` was granted for. */
+    testTargetIdentity?: string;
+    /** Hashed project and resolved connection identity, never credentials in plaintext. */
+    targetIdentity?: string;
+}
 
 /**
  * Who is *driving* — a human at the keyboard is `user`, an AI agent is
@@ -39,7 +58,7 @@ export type Permission =
     | 'explore'
     | 'sql:read' | 'sql:write' | 'sql:ddl'
     | 'change:run' | 'change:ff' | 'change:revert' | 'change:rm'
-    | 'run:build' | 'run:file' | 'run:dir'
+    | 'run:build' | 'run:file' | 'run:dir' | 'pipeline:run'
     | 'db:create' | 'db:reset' | 'db:destroy' | 'db:truncate' | 'db:teardown'
     | 'config:rm' | 'config:write'
     | 'vault:read' | 'vault:write' | 'vault:propagate'

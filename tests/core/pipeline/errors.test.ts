@@ -14,6 +14,7 @@ import { assertManagedPipelineSql } from '../../../src/core/pipeline/sql-guard.j
 import type { RunContext } from '../../../src/core/runner/types.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import { createTestConnection } from '../../utils/db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const secret = 'private-value-9327';
 let root: string;
@@ -213,7 +214,7 @@ describe('pipeline: prepare failures', () => {
         ctx = {
             db: connection.db.withTables<Pick<NoormDatabase, keyof NoormDatabase>>(), configName: 'test',
             identity: { name: 'Test', source: 'config' }, projectRoot: root,
-            access: { user: 'admin', agent: 'admin' }, channel: 'user', dialect: 'sqlite',
+            access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', dialect: 'sqlite',
         };
 
     });
@@ -227,7 +228,7 @@ describe('pipeline: prepare failures', () => {
     it('should block a viewer with PIPELINE_POLICY_BLOCKED', async () => {
 
         const plan = await pipelineWithStep('one.sql', 'select 1');
-        const error = await failure(() => preparePipeline({ ...ctx, access: { user: 'viewer', agent: 'viewer' } }, plan));
+        const error = await failure(() => preparePipeline({ ...ctx, access: withPolicy({ user: 'viewer', agent: 'viewer' }) }, plan));
         expect(error.code).toBe('PIPELINE_POLICY_BLOCKED');
 
     });
@@ -235,7 +236,7 @@ describe('pipeline: prepare failures', () => {
     it('should require confirmation from an operator with PIPELINE_CONFIRMATION_REQUIRED', async () => {
 
         const plan = await pipelineWithStep('one.sql', 'select 1');
-        const error = await failure(() => preparePipeline({ ...ctx, access: { user: 'operator', agent: 'operator' } }, plan));
+        const error = await failure(() => preparePipeline({ ...ctx, access: withPolicy({ user: 'operator', agent: 'operator' }) }, plan));
         expect(error.code).toBe('PIPELINE_CONFIRMATION_REQUIRED');
 
     });

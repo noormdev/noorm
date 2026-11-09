@@ -29,6 +29,7 @@ interface EnvOverrides {
     NOORM_CONNECTION_USER?: string;
     NOORM_CONNECTION_PASSWORD?: string;
     NOORM_CI_CONFIG_NAME?: string;
+    NOORM_CHANNEL?: string;
 }
 
 function runInit(
@@ -162,10 +163,28 @@ describe('cli: noorm ci init', () => {
 
     it('marks the config as a test database when --test is passed', () => {
 
-        const result = runInit(tmpDir, { ...validIdentityEnv(), ...validConnectionEnv() }, ['--json', '--test']);
+        const result = runInit(
+            tmpDir,
+            { ...validIdentityEnv(), ...validConnectionEnv(), NOORM_CHANNEL: 'user' },
+            ['--json', '--test'],
+        );
 
         expect(result.status).toBe(0);
         expect(JSON.parse(result.stdout.trim()).config.isTest).toBe(true);
+
+    });
+
+    it('should refuse --test on the agent channel', () => {
+
+        const result = runInit(
+            tmpDir,
+            { ...validIdentityEnv(), ...validConnectionEnv(), NOORM_CHANNEL: 'agent' },
+            ['--json', '--test'],
+        );
+
+        expect(result.status).not.toBe(0);
+        expect(String(result.stdout) + String(result.stderr)).toContain('--test is not available on the agent channel');
+        expect(existsSync(join(tmpDir, '.noorm', 'state', 'state.enc'))).toBe(false);
 
     });
 

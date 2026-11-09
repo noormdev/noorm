@@ -1,10 +1,9 @@
 /**
  * ConfigEditScreen tests.
  *
- * Proves the rename-path delete is wired to pass a `SettingsProvider` into
- * `StateManager.deleteConfig` — belt-and-suspenders with the core-seam guard
- * (`assertCanDeleteConfig`), which is what actually enforces the locked-stage
- * block and is already covered by iteration 1's `state/manager.test.ts`.
+ * Proves the rename path passes a `SettingsProvider` into
+ * `StateManager.renameConfig`; the seam's own guards (locked stage, protected
+ * stage escape) are covered by `state/manager.test.ts`.
  *
  * A full render assertion of the surfaced error text was tried and dropped:
  * at the 24-row ink-testing-library default terminal the Form windows its 10
@@ -55,6 +54,7 @@ const createMockStateManager = (configName: string, config: ReturnType<typeof ma
     listConfigs: vi.fn().mockReturnValue([]),
     getConfig: vi.fn((name: string) => (name === configName ? config : null)),
     deleteConfig: vi.fn().mockResolvedValue(undefined),
+    renameConfig: vi.fn().mockResolvedValue(undefined),
     setConfig: vi.fn().mockResolvedValue(undefined),
     setActiveConfig: vi.fn().mockResolvedValue(undefined),
     hasPrivateKey: vi.fn().mockReturnValue(true),
@@ -259,7 +259,7 @@ describe('cli: ConfigEditScreen', () => {
 
     });
 
-    it('should pass a SettingsProvider into the rename-path deleteConfig call', async () => {
+    it('should pass a SettingsProvider into the rename-path renameConfig call', async () => {
 
         mockStateManager = createMockStateManager('prod', makeConfig('prod'));
         mockSettingsManager = createMockSettingsManager({ prod: { locked: true } });
@@ -285,16 +285,18 @@ describe('cli: ConfigEditScreen', () => {
         // Submission lives on the action row now.
         await submitForm(stdin, lastFrame);
 
-        await waitFor(() => mockStateManager.deleteConfig.mock.calls.length > 0);
+        await waitFor(() => mockStateManager.renameConfig.mock.calls.length > 0);
 
-        expect(mockStateManager.deleteConfig).toHaveBeenCalledTimes(1);
+        expect(mockStateManager.renameConfig).toHaveBeenCalledTimes(1);
 
-        const [deletedName, settingsProviderArg] = mockStateManager.deleteConfig.mock.calls[0] as [
+        const [oldName, renamed, settingsProviderArg] = mockStateManager.renameConfig.mock.calls[0] as [
             string,
+            { name: string },
             unknown,
         ];
 
-        expect(deletedName).toBe('prod');
+        expect(oldName).toBe('prod');
+        expect(renamed.name).toBe('prod2');
         expect(settingsProviderArg).toBeInstanceOf(SettingsProvider);
 
         unmount();

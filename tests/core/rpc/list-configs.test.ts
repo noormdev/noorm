@@ -1,8 +1,8 @@
 /**
  * rpc commands: list_configs agent-channel invisibility.
  *
- * Uses a real StateManager (via the module singleton `list_configs` reads
- * through `initState()`) rather than mocking state, so the test proves the
+ * Uses a real StateManager on disk (`list_configs` reads the project at the
+ * working directory) rather than mocking state, so the test proves the
  * actual filtering behavior end-to-end. `setKeyOverride` supplies the
  * encryption key in-memory — the same mechanism CI identity bootstrap uses —
  * so persistence never touches the real `~/.noorm/identity.key`.
@@ -48,11 +48,6 @@ function sessionFor(channel: Channel): RpcSession {
             throw new Error('not used by list_configs');
 
         },
-        connect: async () => ({ name: 'x', dialect: 'sqlite', database: ':memory:', role: 'admin' }),
-        disconnect: async () => {},
-        disconnectAll: async () => {},
-        hasConnection: () => false,
-        listConnections: () => [],
     };
 
 }
@@ -62,9 +57,11 @@ describe('rpc commands: list_configs', () => {
     const cmd = configCommands.find((c) => c.name === 'list_configs')!;
 
     let tempDir: string;
+    let previousCwd: string;
 
     beforeEach(async () => {
 
+        previousCwd = process.cwd();
         resetStateManager();
         tempDir = mkdtempSync(join(tmpdir(), 'noorm-list-configs-'));
 
@@ -72,6 +69,7 @@ describe('rpc commands: list_configs', () => {
         setKeyOverride(privateKey);
 
         const manager = await initState(tempDir);
+        process.chdir(tempDir);
 
         await manager.setConfig('visible', testConfig('visible'));
         await manager.setConfig('hidden', testConfig('hidden', { access: { user: 'admin', agent: false } }));
@@ -80,6 +78,7 @@ describe('rpc commands: list_configs', () => {
 
     afterEach(() => {
 
+        process.chdir(previousCwd);
         clearKeyOverride();
         resetStateManager();
         rmSync(tempDir, { recursive: true, force: true });

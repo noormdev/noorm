@@ -2,6 +2,7 @@
  * Config resolver tests.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 
 import {
     resolveConfig,
@@ -9,9 +10,10 @@ import {
     canDeleteConfig,
     type StateProvider,
 } from '../../../src/core/config/index.js';
-import { SettingsProvider } from '../../../src/core/config/resolver.js';
-import type { Config, Stage } from '../../../src/core/config/index.js';
-import { guarded } from '../../../src/core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
+import type { Config } from '../../../src/core/config/index.js';
+import { getConfigPermission, guarded, UnknownAccessRoleError } from '../../../src/core/policy/index.js';
+import type { SettingsManager, Stage } from '../../../src/core/settings/index.js';
 
 /**
  * Create a mock state provider for testing.
@@ -53,20 +55,17 @@ function createMockState(
  */
 function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
 
-    const mock = {
+    const manager = {
+        projectRoot: '/test-project',
+        settings: {},
         getStage(name: string): Stage | null {
 
             return stages[name] ?? null;
 
         },
-        findStageForConfig(configName: string): Stage | null {
+    } as unknown as SettingsManager;
 
-            return stages[configName] ?? null;
-
-        },
-    };
-
-    return Object.assign(Object.create(SettingsProvider.prototype), mock);
+    return new SettingsProvider(manager);
 
 }
 
@@ -112,6 +111,7 @@ describe('config: resolver', () => {
             'NOORM_ACCESS_AGENT',
             'NOORM_PROTECTED',
             'NOORM_IDENTITY',
+            'NOORM_isTest',
         ];
 
         for (const key of envVars) {
@@ -445,7 +445,9 @@ describe('config: resolver', () => {
             });
             expect(config!.type).toBe('remote');
             expect(config!.isTest).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'viewer' });
+            expect(getConfigPermission('user', config!, 'sql:ddl')).toBe('deny');
+            expect(getConfigPermission('agent', config!, 'sql:write')).toBe('deny');
 
         });
 
@@ -490,7 +492,110 @@ describe('config: resolver', () => {
                 password: 'inline-password',
                 ssl: true,
             });
-            expect(config!.access).toEqual({ user: 'operator', agent: false });
+            expect(config!.access).toEqual({ user: 'admin', agent: false });
+            expect(getConfigPermission('user', config!, 'change:run')).toBe('confirm');
+
+        });
+
+        it('keeps custom stage roles while enforcing their overrides and protected permission ceiling', () => {
+
+            const settings = createMockSettings({
+                ci: { defaults: {
+                    dialect: 'sqlite',
+                    access: { user: 'reviewer', agent: 'reviewer' },
+                    protected: true,
+                } },
+            });
+            settings.getRoles = () => ({
+                reviewer: { extends: 'admin', permissions: { 'sql:read': 'deny' } },
+            });
+            const config = resolveConfig(createMockState(), {
+                stage: 'ci', settings,
+                flags: { connection: { database: ':memory:' }, log: { level: 'info' } },
+            })!;
+
+            expect(config.access).toEqual({ user: 'reviewer', agent: 'reviewer' });
+            expect(getConfigPermission('user', config, 'sql:read')).toBe('allow');
+            expect(getConfigPermission('agent', config, 'sql:read')).toBe('deny');
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+            expect(getConfigPermission('user', config, 'change:run')).toBe('confirm');
+            expect(getConfigPermission('agent', config, 'sql:write')).toBe('deny');
+
+        });
+
+        it('should keep the ceiling of a protected config when the caller selects an unprotected stage', () => {
+
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const settings = createMockSettings({
+                prod: { defaults: { protected: true } },
+                dev: { defaults: {} },
+            });
+            const config = resolveConfig(state, { name: 'prod', stage: 'dev', settings })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+            expect(getConfigPermission('agent', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should cap an unprotected config when the caller selects a protected stage', () => {
+
+            const state = createMockState({ configs: { dev: createConfig({ name: 'dev' }) } });
+            const settings = createMockSettings({
+                prod: { defaults: { protected: true } },
+                dev: { defaults: {} },
+            });
+            const config = resolveConfig(state, { name: 'dev', stage: 'prod', settings })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should cap an inline target when the caller selects a protected stage', () => {
+
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } });
+            const config = resolveConfig(createMockState(), {
+                stage: 'prod',
+                settings,
+                flags: { connection: { dialect: 'sqlite', database: ':memory:' } },
+            })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should cap an env-only config named for a protected stage when the caller selects an unprotected stage', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:';
+            const settings = createMockSettings({
+                prod: { defaults: { protected: true } },
+                dev: { defaults: {} },
+            });
+            const config = resolveConfig(createMockState(), { stage: 'dev', settings })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should keep the ceiling when an env name renames a stored protected-stage config', () => {
+
+            process.env['NOORM_NAME'] = 'dev';
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } });
+            const config = resolveConfig(state, { name: 'prod', settings })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should keep the ceiling when a flag renames a stored protected-stage config', () => {
+
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } });
+            const config = resolveConfig(state, { name: 'prod', flags: { name: 'dev' }, settings })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
 
         });
 
@@ -616,7 +721,8 @@ describe('config: resolver', () => {
                 password: 'stage-password',
                 ssl: true,
             });
-            expect(config!.access).toEqual({ user: 'operator', agent: false });
+            expect(config!.access).toEqual({ user: 'admin', agent: false });
+            expect(getConfigPermission('user', config!, 'sql:ddl')).toBe('deny');
 
         });
 
@@ -653,12 +759,9 @@ describe('config: resolver', () => {
             // Stored should override stage defaults
             const config = resolveConfig(state, { settings });
 
-            // Stage `protected: true` is an access ceiling, not a value the
-            // stored config can override to something looser: stored has no
-            // explicit access (defaults to admin/admin), which is looser
-            // than the operator/viewer ceiling, so it gets clamped down.
+            // The ceiling is policy context, not a replacement for the stored roles.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
             expect(config!.connection.host).toBe('localhost'); // stored overrides stage
 
         });
@@ -718,10 +821,9 @@ describe('config: resolver', () => {
 
             const config = resolveConfig(state, { settings });
 
-            // Stage `protected: true` clamps the stored config's (looser,
-            // default admin/admin) access down to the ceiling.
+            // Stage restrictions do not replace the stored role names.
             expect(guarded(config!)).toBe(true);
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
 
         });
 
@@ -753,6 +855,31 @@ describe('config: resolver', () => {
             expect(config!.connection.user).toBe('explicit-stage-user');
 
         });
+
+    });
+
+    it('resolves custom policy without rewriting or exporting assignments', () => {
+
+        const settings = createMockSettings();
+        settings.getRoles = () => ({ auditor: { extends: 'viewer', permissions: { 'debug:read': 'deny', 'sql:write': 'allow' } } });
+        const stored = createConfig({ access: { user: 'auditor', agent: false } });
+        const resolved = withConfigPolicy(stored, settings);
+
+        expect(resolved.access).toEqual({ user: 'auditor', agent: false });
+        expect(getConfigPermission('user', resolved, 'debug:read')).toBe('deny');
+        expect(getConfigPermission('user', resolved, 'sql:write')).toBe('allow');
+        expect(JSON.stringify(resolved.access)).toBe('{"user":"auditor","agent":false}');
+        expect(() => withConfigPolicy(createConfig({ access: { user: 'missing', agent: false } }), settings))
+            .toThrow('Unknown access role "missing"');
+
+    });
+
+    it('should throw UnknownAccessRoleError so callers can match the type, not the message', () => {
+
+        const [, err] = attemptSync(() => withConfigPolicy(createConfig({ access: { user: 'missing', agent: false } }), createMockSettings()));
+
+        expect(err).toBeInstanceOf(UnknownAccessRoleError);
+        expect(err?.message).toBe('Unknown access role "missing"');
 
     });
 
@@ -794,11 +921,11 @@ describe('config: resolver', () => {
 
         });
 
-        it('should clamp a looser user+agent access down to the ceiling', () => {
+        it('should enforce the ceiling without replacing role names', () => {
 
             const config = resolveWithStageProtected({ user: 'admin', agent: 'admin' }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', agent: 'viewer' });
+            expect(config!.access).toEqual({ user: 'admin', agent: 'admin' });
             expect(guarded(config!)).toBe(true);
 
         });
@@ -820,12 +947,11 @@ describe('config: resolver', () => {
 
         });
 
-        it('should clamp each channel independently', () => {
+        it('should preserve both channels under the ceiling', () => {
 
-            // user is looser than the ceiling, agent is already stricter
             const config = resolveWithStageProtected({ user: 'admin', agent: false }, true);
 
-            expect(config!.access).toEqual({ user: 'operator', agent: false });
+            expect(config!.access).toEqual({ user: 'admin', agent: false });
 
         });
 
@@ -894,10 +1020,8 @@ describe('config: resolver', () => {
 
         it('should not report a protected violation (enforced as an access ceiling at resolution instead)', () => {
 
-            // A config with open access reaching this check is only
-            // possible outside resolveConfig, which clamps access to the
-            // stage ceiling before returning. checkConfigCompleteness no
-            // longer duplicates that enforcement as a violation.
+            // A raw config can reach this check without policy context; the
+            // stage ceiling is enforced by policy, not completeness.
             const config = createConfig({
                 name: 'prod',
                 access: { user: 'admin', agent: 'admin' },
@@ -908,7 +1032,6 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: true,
-                        log: { level: 'info' },
                     },
                 },
             });
@@ -932,7 +1055,6 @@ describe('config: resolver', () => {
                 test: {
                     defaults: {
                         isTest: true,
-                        log: { level: 'info' },
                     },
                 },
             });
@@ -959,7 +1081,6 @@ describe('config: resolver', () => {
                 prod: {
                     defaults: {
                         protected: true,
-                        log: { level: 'info' },
                     },
                     secrets: [
                         { key: 'DB_PASSWORD', type: 'password' },
@@ -1032,6 +1153,441 @@ describe('config: resolver', () => {
 
             expect(result.allowed).toBe(false);
             expect(result.reason).toContain('locked');
+
+        });
+
+    });
+
+    describe('isTest trust for db lifecycle permissions', () => {
+
+        const dbEnv = () => {
+
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:';
+
+        };
+
+        it('should relax a stored isTest config', () => {
+
+            const state = createMockState({ configs: { dev: createConfig({ name: 'dev', isTest: true }) } });
+            const config = resolveConfig(state, { name: 'dev', settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        it('should relax an isTest stage default on an env-only config', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'ci';
+            const settings = createMockSettings({ ci: { defaults: { isTest: true } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        it('should not relax an isTest stage when env retargets the database the stage declares', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'ci';
+            process.env['NOORM_CONNECTION_DATABASE'] = '/data/prod.db';
+            const settings = createMockSettings({
+                ci: { defaults: { isTest: true, dialect: 'sqlite', database: '/tmp/ci.db' } } as Stage,
+            });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not relax a protected isTest stage that declares no database', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'ci';
+            const settings = createMockSettings({ ci: { defaults: { isTest: true, protected: true } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not relax an isTest stage without a database when env leaves out the server host', () => {
+
+            process.env['NOORM_NAME'] = 'ci';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'ci_test';
+            const settings = createMockSettings({ ci: { defaults: { isTest: true } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not let NOORM_isTest turn a stored isTest:false config into a relaxed one', () => {
+
+            process.env['NOORM_isTest'] = 'true';
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
+            const config = resolveConfig(state, { name: 'prod', settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+            expect(getConfigPermission('agent', config, 'db:teardown')).not.toBe('allow');
+
+        });
+
+        it('should not let a flag overlay turn a stored isTest:false config into a relaxed one', () => {
+
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
+            const config = resolveConfig(state, { name: 'prod', flags: { isTest: true }, settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should relax an env-only config flagged isTest', () => {
+
+            dbEnv();
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        it('should not relax an env-only config without isTest', () => {
+
+            dbEnv();
+            const config = resolveConfig(createMockState(), { settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest when a stored config of that name is not isTest', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
+            const config = resolveConfig(state, { settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest when the stage declares isTest: false', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({ prod: { defaults: { isTest: false } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest on a protected stage whose target the stage supplies', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({
+                prod: { defaults: { protected: true, isTest: false, dialect: 'sqlite', database: '/data/prod.db' } } as Stage,
+            });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(config.connection.database).toBe('/data/prod.db');
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest on a protected stage even when env supplies the target', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest when a flag-driven resolve names a protected stage', () => {
+
+            process.env['NOORM_isTest'] = 'true';
+            const state = createMockState({
+                configs: { prod: createConfig({ name: 'prod', isTest: false }) },
+                activeConfig: 'prod',
+            });
+            const settings = createMockSettings({
+                prod: { defaults: { protected: true, isTest: false, dialect: 'sqlite', database: '/data/prod.db' } } as Stage,
+            });
+            const config = resolveConfig(state, {
+                stage: 'prod',
+                flags: { connection: { user: 'x' } },
+                settings,
+            })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest when the database comes from a stage default', () => {
+
+            process.env['NOORM_NAME'] = 'ci';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({ ci: { defaults: { dialect: 'sqlite', database: '/data/real.db' } } as Stage });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(config.connection.database).toBe('/data/real.db');
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should ignore env isTest on a server dialect when the host is not supplied', () => {
+
+            process.env['NOORM_NAME'] = 'test';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'app';
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should relax an env-only config when env supplies the whole target and no stage or stored config applies', () => {
+
+            process.env['NOORM_NAME'] = 'test';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres';
+            process.env['NOORM_CONNECTION_HOST'] = 'localhost';
+            process.env['NOORM_CONNECTION_PORT'] = '5432';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'upm_test';
+            process.env['NOORM_CONNECTION_USER'] = 'u';
+            process.env['NOORM_CONNECTION_PASSWORD'] = 'p';
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { settings: createMockSettings() })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        describe('stage or stored target without a declared port', () => {
+
+            const upmStage = (): Stage => ({
+                defaults: { dialect: 'mssql', host: 'localhost', database: 'upm_test', isTest: true },
+            } as Stage);
+
+            beforeEach(() => {
+
+                process.env['NOORM_NAME'] = 'test';
+                process.env['NOORM_isTest'] = 'true';
+
+            });
+
+            it('should relax when the stage declares no port and env supplies one', () => {
+
+                process.env['NOORM_CONNECTION_PORT'] = '11433';
+                const settings = createMockSettings({ test: upmStage() });
+                const config = resolveConfig(createMockState(), { settings })!;
+
+                expect(config.connection.port).toBe(11433);
+                expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+            });
+
+            it('should refuse when env changes the host the stage declares', () => {
+
+                process.env['NOORM_CONNECTION_PORT'] = '11433';
+                process.env['NOORM_CONNECTION_HOST'] = 'prod.example.com';
+                const settings = createMockSettings({ test: upmStage() });
+                const config = resolveConfig(createMockState(), { settings })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should refuse when env changes the database of the stage', () => {
+
+                process.env['NOORM_CONNECTION_PORT'] = '11433';
+                process.env['NOORM_CONNECTION_DATABASE'] = 'upm_prod';
+                const settings = createMockSettings({ test: upmStage() });
+                const config = resolveConfig(createMockState(), { settings })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should relax a stored isTest config without a port when env supplies one', () => {
+
+                process.env['NOORM_CONNECTION_PORT'] = '11433';
+                const state = createMockState({
+                    configs: {
+                        test: createConfig({
+                            name: 'test',
+                            isTest: true,
+                            connection: { dialect: 'mssql', host: 'localhost', database: 'upm_test' },
+                        }),
+                    },
+                    activeConfig: 'test',
+                });
+                const config = resolveConfig(state, { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+            });
+
+            it('should not take isTest from the stage of an explicit stage option for a stored config without the flag', () => {
+
+                const stored = createConfig({ name: 'prod', connection: { dialect: 'mssql', host: 'localhost', database: 'upm_test' } });
+                Reflect.deleteProperty(stored, 'isTest');
+                const state = createMockState({ configs: { prod: stored }, activeConfig: 'prod' });
+                const settings = createMockSettings({ test: upmStage() });
+                const config = resolveConfig(state, { stage: 'test', settings })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+        });
+
+        it('should relax an env-only sqlite config when its isTest stage supplies the target and env only sets credentials', () => {
+
+            process.env['NOORM_NAME'] = 'ci';
+            process.env['NOORM_CONNECTION_USER'] = 'u';
+            const settings = createMockSettings({
+                ci: { defaults: { isTest: true, dialect: 'sqlite', database: '/tmp/ci.db' } } as Stage,
+            });
+            const config = resolveConfig(createMockState(), { settings })!;
+
+            expect(config.connection.database).toBe('/tmp/ci.db');
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        it('should relax an env-only sqlite config whose same-named stored isTest config has the same target', () => {
+
+            process.env['NOORM_NAME'] = 'test';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = '/tmp/stored.db';
+            process.env['NOORM_isTest'] = 'true';
+            const state = createMockState({
+                configs: {
+                    test: createConfig({ name: 'test', isTest: true, connection: { dialect: 'sqlite', database: '/tmp/stored.db' } }),
+                },
+            });
+            const config = resolveConfig(state, { settings: createMockSettings() })!;
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        describe('connection retargeting', () => {
+
+            const stored = () => createConfig({
+                name: 'test',
+                connection: {
+                    dialect: 'postgres',
+                    host: 'localhost',
+                    port: 5432,
+                    database: 'app_test',
+                    user: 'postgres',
+                    password: 'pw',
+                },
+            });
+            const state = () => createMockState({ configs: { test: stored() }, activeConfig: 'test' });
+
+            it('should keep the relaxation when nothing retargets the connection', () => {
+
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+            });
+
+            it('should refuse when env overrides the database', () => {
+
+                process.env['NOORM_CONNECTION_DATABASE'] = 'app_dev';
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should refuse when env overrides the host', () => {
+
+                process.env['NOORM_CONNECTION_HOST'] = 'prod.example.com';
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should refuse when env overrides the port', () => {
+
+                process.env['NOORM_CONNECTION_PORT'] = '5433';
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should refuse when a flag overrides the database', () => {
+
+                const config = resolveConfig(state(), {
+                    name: 'test',
+                    flags: { connection: { database: 'app_dev' } },
+                    settings: createMockSettings(),
+                })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+            });
+
+            it('should keep the relaxation when only credentials change and the target is the same', () => {
+
+                process.env['NOORM_CONNECTION_USER'] = 'other';
+                process.env['NOORM_CONNECTION_PASSWORD'] = 'other-pw';
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(config.connection.user).toBe('other');
+                expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+            });
+
+            it('should keep the relaxation when an override restates the stored target', () => {
+
+                process.env['NOORM_CONNECTION_DATABASE'] = 'app_test';
+                const config = resolveConfig(state(), { settings: createMockSettings() })!;
+
+                expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+            });
+
+        });
+
+        it('should let a same-named stage declaring isTest: false win when an explicit stage is passed', () => {
+
+            dbEnv();
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({
+                prod: { defaults: { isTest: false } } as Stage,
+                other: { defaults: {} } as Stage,
+            });
+            const config = resolveConfig(createMockState(), { stage: 'other', settings })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should keep the relaxation through withConfigPolicy on a stored isTest config', () => {
+
+            const config = withConfigPolicy(createConfig({ isTest: true }), createMockSettings());
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
 
         });
 

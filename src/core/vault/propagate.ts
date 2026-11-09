@@ -18,6 +18,7 @@ import type { FailedVaultPropagation, PendingVaultUser, VaultPropagationResult }
 import { encryptVaultKey } from './key.js';
 import { assertVaultPolicy } from './policy.js';
 import type { VaultPolicyGate } from './policy.js';
+import { matchVaultPublicKey } from './storage.js';
 
 /**
  * Get users who don't have vault access yet.
@@ -90,6 +91,8 @@ export interface VaultPropagationOptions {
      * should only reach for after showing the operator that list.
      */
     targets?: string[];
+    /** Exact identity and public key snapshot approved by the operator. */
+    reviewedRecipients?: PendingVaultUser[];
 }
 
 /**
@@ -141,13 +144,21 @@ export async function propagateVaultKey(
 
     };
 
-    const [pending, pendingErr] = await getUsersWithoutVaultAccess(db, dialect);
+    let users: PendingVaultUser[];
+    if (options.reviewedRecipients) {
 
-    if (pendingErr) throw pendingErr;
+        users = options.reviewedRecipients;
 
-    const users = options.targets
-        ? pending.filter((u) => options.targets?.includes(u.identityHash))
-        : pending;
+    }
+    else {
+
+        const [pending, pendingErr] = await getUsersWithoutVaultAccess(db, dialect);
+        if (pendingErr) throw pendingErr;
+        users = options.targets
+            ? pending.filter((u) => options.targets?.includes(u.identityHash))
+            : pending;
+
+    }
 
     if (users.length === 0) {
 
@@ -164,18 +175,21 @@ export async function propagateVaultKey(
 
     for (const user of users) {
 
-        // Encrypt vault key for this user's public key
-        const encrypted = encryptVaultKey(vaultKey, user.publicKey);
-        const encryptedJson = JSON.stringify(encrypted);
-
-        // Update user's row
         const [, err] = await attempt(async () => {
 
-            return ndb
+            const encrypted = encryptVaultKey(vaultKey, user.publicKey);
+            const result = await ndb
                 .updateTable(tables.identities as keyof NoormDatabase)
-                .set({ encrypted_vault_key: encryptedJson })
+                .set({ encrypted_vault_key: JSON.stringify(encrypted) })
                 .where('identity_hash', '=', user.identityHash)
-                .execute();
+                .where(matchVaultPublicKey(user.publicKey, dialect))
+                .where('encrypted_vault_key', 'is', null)
+                .executeTakeFirst();
+            if (Number(result.numUpdatedRows) !== 1) {
+
+                throw new Error('Recipient changed or is no longer awaiting vault access; review again');
+
+            }
 
         });
 
@@ -265,45 +279,37 @@ export async function propagateVaultKeyTo(
     const ndb = noormDb(db, dialect);
     const tables = getNoormTables(dialect);
 
-    // Get target user's public key
-    const [row, err] = await attempt(async () => {
-
-        return ndb
-            .selectFrom(tables.identities as keyof NoormDatabase)
-            .select(['public_key', 'email', 'encrypted_vault_key'])
-            .where('identity_hash', '=', targetIdentityHash)
-            .executeTakeFirst();
-
-    });
+    // Capture the recipient once. The grant below binds both this key and
+    // pending status in its update, just like a reviewed batch.
+    const [row, err] = await attempt(() => ndb
+        .selectFrom(tables.identities as keyof NoormDatabase)
+        .select(['public_key', 'name', 'email', 'encrypted_vault_key'])
+        .where('identity_hash', '=', targetIdentityHash)
+        .executeTakeFirst());
 
     if (err || !row) return false;
-
-    // Already has access
     if (row.encrypted_vault_key) return true;
 
-    // Encrypt vault key for user's public key
-    const encrypted = encryptVaultKey(vaultKey, row.public_key);
-    const encryptedJson = JSON.stringify(encrypted);
-
-    // Update user's row
-    const [, updateErr] = await attempt(async () => {
-
-        return ndb
-            .updateTable(tables.identities as keyof NoormDatabase)
-            .set({ encrypted_vault_key: encryptedJson })
-            .where('identity_hash', '=', targetIdentityHash)
-            .execute();
-
+    const result = await propagateVaultKey(db, vaultKey, dialect, {
+        reviewedRecipients: [{
+            identityHash: targetIdentityHash,
+            publicKey: row.public_key,
+            name: row.name,
+            email: row.email,
+        }],
     });
+    if (result.propagatedTo.includes(targetIdentityHash)) return true;
 
-    if (updateErr) return false;
+    // A concurrent grant to the captured key is still an already-had-access
+    // success; a changed key or deleted row is not.
+    const [current] = await attempt(() => ndb
+        .selectFrom(tables.identities as keyof NoormDatabase)
+        .select('encrypted_vault_key')
+        .where('identity_hash', '=', targetIdentityHash)
+        .where(matchVaultPublicKey(row.public_key, dialect))
+        .executeTakeFirst());
 
-    observer.emit('vault:propagated', {
-        toIdentityHash: targetIdentityHash,
-        toEmail: row.email,
-    });
-
-    return true;
+    return !!current?.encrypted_vault_key;
 
 }
 

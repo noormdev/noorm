@@ -7,7 +7,7 @@
  * each CLI command means the SDK, TUI and any future surface inherit the
  * check by calling the `*Checked` entrypoints instead of re-deriving it.
  */
-import { assertPolicy, checkConfigPolicy } from '../policy/index.js';
+import { checkConfigPolicy } from '../policy/index.js';
 import type { Channel, ConfigAccess, Permission, PolicyCheck } from '../policy/index.js';
 
 /**
@@ -51,19 +51,26 @@ export function checkVaultPolicy(gate: VaultPolicyGate, permission: Permission):
 /**
  * Throw unless the gate permits the vault permission.
  *
- * Deliberately ignores `requiresConfirmation` — confirmation is a surface
- * concern (a CLI prompt, a TUI dialog, the SDK's `yes` option) and the core
- * has no way to ask. Surfaces resolve it via `checkVaultPolicy` before
- * calling in; this is the last-resort gate that stops an ungated caller.
+ * Refuse both denial and unconfirmed access. Callers that collect consent
+ * must supply it via a scoped policy confirmation before entering core.
  *
- * @throws Error carrying the policy's blockedReason when the channel's role
- * denies the permission.
+ * @throws Error when the permission is denied or confirmation is missing.
  *
  * @example
  * assertVaultPolicy({ configName: 'prod', access: config.access, channel: 'user' }, 'vault:write');
  */
 export function assertVaultPolicy(gate: VaultPolicyGate, permission: Permission): void {
 
-    assertPolicy(gate.channel, { name: gate.configName, access: gate.access }, permission);
+    const check = checkVaultPolicy(gate, permission);
+    if (!check.allowed) {
+
+        throw new Error(check.blockedReason ?? `"${permission}" is not allowed on config "${gate.configName}".`);
+
+    }
+    if (check.requiresConfirmation) {
+
+        throw new Error(`"${permission}" on config "${gate.configName}" requires confirmation (${check.confirmationPhrase}).`);
+
+    }
 
 }

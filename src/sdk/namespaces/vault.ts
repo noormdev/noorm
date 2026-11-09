@@ -29,11 +29,13 @@ import {
 import { propagateVaultKey } from '../../core/vault/propagate.js';
 import { copyVaultSecrets, type VaultCopyOptions } from '../../core/vault/copy.js';
 import { formatIdentity, loadIdentityMetadata } from '../../core/identity/index.js';
+import { registerIdentity } from '../../core/identity/sync.js';
 import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
-import { checkProtectedConfig } from '../guards.js';
+import { bindSdkDestination, checkProtectedConfig } from '../guards.js';
+import { withPolicyConfirmation } from '../../core/policy/index.js';
 import type { Permission } from '../../core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -158,9 +160,12 @@ export class VaultNamespace {
         this.#gate('vault:write', 'vault.init');
 
         const crypto = await this.#getCryptoIdentity();
+        const db = this.#kysely as unknown as Kysely<NoormDatabase>;
+        const registered = await registerIdentity(db, crypto, this.#dialect);
+        if (!registered.ok) throw new Error(registered.error ?? 'Failed to register vault identity');
 
         const [vaultKey, err] = await initializeVault(
-            this.#kysely as unknown as Kysely<NoormDatabase>,
+            db,
             crypto.identityHash,
             crypto.publicKey,
             this.#dialect,
@@ -211,6 +216,7 @@ export class VaultNamespace {
     ): Promise<void> {
 
         this.#gate('vault:write', 'vault.set');
+        this.#gate('vault:read', 'vault.set');
 
         const vaultKey = await this.#getVaultKey(privateKey);
 
@@ -356,6 +362,7 @@ export class VaultNamespace {
     async propagate(privateKey: string): Promise<VaultPropagationResult> {
 
         this.#gate('vault:propagate', 'vault.propagate');
+        this.#gate('vault:read', 'vault.propagate');
 
         const vaultKey = await this.#getVaultKey(privateKey);
 
@@ -388,20 +395,29 @@ export class VaultNamespace {
         options?: VaultCopyOptions,
     ): Promise<VaultCopyResult> {
 
+        const source = this.#state.config;
+        const destination = bindSdkDestination(destConfig, this.#state);
+        checkProtectedConfig(source, this.#state.options, 'vault:read', 'vault.copy');
+        if (!options?.dryRun) checkProtectedConfig(destination, this.#state.options, 'vault:write', 'vault.copy');
         const crypto = await this.#getCryptoIdentity();
+        const copy = () => copyVaultSecrets(
+            source, destination, keys, crypto.identityHash, privateKey, crypto.publicKey,
+            {
+                ...options,
+                channel: this.#state.options.channel ?? 'user',
+                withDestinationRead: (action) => {
 
-        // `copyVaultSecrets` gates itself on both configs — it is the only
-        // caller-visible seam holding source *and* destination access — so
-        // the channel has to reach it.
-        const [result, err] = await copyVaultSecrets(
-            this.#state.config,
-            destConfig,
-            keys,
-            crypto.identityHash,
-            privateKey,
-            crypto.publicKey,
-            { ...options, channel: this.#state.options.channel ?? 'user' },
+                    checkProtectedConfig(destination, this.#state.options, 'vault:read', 'vault.copy');
+
+                    return withPolicyConfirmation(destination, ['vault:read'], action);
+
+                },
+            },
         );
+        const execute = () => options?.dryRun
+            ? copy()
+            : withPolicyConfirmation(destination, ['vault:write'], copy);
+        const [result, err] = await withPolicyConfirmation(source, ['vault:read'], execute);
 
         if (err) throw err;
 

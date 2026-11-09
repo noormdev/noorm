@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
-import React from 'react';
+import React, { act } from 'react';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,7 @@ import { RouterProvider } from '../../../../src/tui/router.js';
 import { AppContextProvider } from '../../../../src/tui/app-context.js';
 import { ToastProvider } from '../../../../src/tui/components/index.js';
 import { SqlTerminalScreen } from '../../../../src/tui/screens/db/SqlTerminalScreen.js';
+import { parseSettings } from '../../../../src/core/settings/schema.js';
 
 const actualCore = await import('../../../../src/core/index.js');
 const actualSqlTerminal = await import('../../../../src/core/sql-terminal/index.js');
@@ -58,7 +59,7 @@ const createMockStateManager = () => ({
 const createMockSettingsManager = () => ({
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
-    settings: { version: '0.1.0' },
+    settings: parseSettings({}),
     getStages: vi.fn().mockReturnValue({}),
     getStage: vi.fn().mockReturnValue(undefined),
 });
@@ -168,6 +169,53 @@ describe('cli: SQL terminal cancellation', () => {
         mock.module('../../../../src/core/sql-terminal/index.js', () => actualSqlTerminal);
 
     });
+
+    it('should execute a read without a prompt on the user channel even with agent environment', async () => {
+
+        const previous = process.env['NOORM_CHANNEL'];
+        process.env['NOORM_CHANNEL'] = 'agent';
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'sql:read': 'confirm' } } } },
+        });
+        seam.executeRawSql = realExecuteRawSql;
+        const view = render(
+            <FocusProvider>
+                <RouterProvider>
+                    <AppContextProvider projectRoot={tempDir} autoLoad={true}>
+                        <ToastProvider><SqlTerminalScreen params={{ name: 'select 1' }} /></ToastProvider>
+                    </AppContextProvider>
+                </RouterProvider>
+            </FocusProvider>,
+        );
+        try {
+
+            await waitFor(() => Boolean(view.lastFrame()?.includes('[h] History')));
+            await act(async () => {
+
+                await new Promise<void>((resolve) => setImmediate(resolve));
+
+            });
+            await act(async () => {
+
+                view.stdin.write('\r');
+
+            });
+            await waitFor(() => Boolean(view.lastFrame()?.includes('1 row')));
+            expect(view.lastFrame()).toContain('Results');
+            expect(view.lastFrame()).toContain('1 row');
+            expect(view.lastFrame()).not.toContain('yes-test');
+
+        }
+        finally {
+
+            view.unmount();
+            mockSettingsManager.settings = parseSettings({});
+            if (previous === undefined) delete process.env['NOORM_CHANNEL'];
+            else process.env['NOORM_CHANNEL'] = previous;
+
+        }
+
+    }, 20_000);
 
     /**
      * Mount the terminal with a query already typed, run it, and stop once the

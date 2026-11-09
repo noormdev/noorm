@@ -8,10 +8,13 @@
 import { defineCommand } from 'citty';
 import { attempt } from '@logosdx/utils';
 
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { copyVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../../core/identity/storage.js';
 import { getStateManager } from '../../core/state/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { checkConfigPolicy, resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 import { EXIT } from '../_exit.js';
 
 const cpCommand = defineCommand({
@@ -26,6 +29,7 @@ const cpCommand = defineCommand({
         config: sharedArgs.config,
         force: sharedArgs.force,
         dryRun: sharedArgs.dryRun,
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -62,20 +66,47 @@ const cpCommand = defineCommand({
 
         }
 
-        const sourceConfig = stateManager.getConfig(sourceConfigName);
-        const destConfig = stateManager.getConfig(destConfigName);
+        const storedSource = stateManager.getConfig(sourceConfigName);
+        const storedDest = stateManager.getConfig(destConfigName);
 
-        if (!sourceConfig) {
+        if (!storedSource) {
 
             outputError(args, `Source config not found: ${sourceConfigName}`);
             process.exit(EXIT.USAGE);
 
         }
 
-        if (!destConfig) {
+        if (!storedDest) {
 
             outputError(args, `Destination config not found: ${destConfigName}`);
             process.exit(EXIT.USAGE);
+
+        }
+
+        const settingsManager = getSettingsManager(process.cwd());
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(EXIT.FAILURE);
+
+        }
+        const settings = new SettingsProvider(settingsManager);
+        const sourceConfig = withConfigPolicy(storedSource, settings);
+        const destConfig = withConfigPolicy(storedDest, settings);
+        const channel = resolveChannel();
+        const gates = [
+            checkConfigPolicy(channel, sourceConfig, 'vault:read'),
+            ...(!args.dryRun ? [checkConfigPolicy(channel, destConfig, 'vault:write')] : []),
+        ];
+        for (const check of gates) {
+
+            if (!check.allowed || (check.requiresConfirmation && !isYesMode(args))) {
+
+                outputError(args, check.blockedReason ?? `Confirmation required (${check.confirmationPhrase}); pass --yes.`);
+                process.exit(EXIT.FAILURE);
+
+            }
 
         }
 
@@ -83,14 +114,32 @@ const cpCommand = defineCommand({
         // access on both ends, source-key existence, destination collisions —
         // and differs only in that nothing is written. Echoing the arguments
         // back could not answer the question a dry run is asked.
-        const [result, copyErr] = await copyVaultSecrets(
-            sourceConfig,
-            destConfig,
-            keys,
-            cryptoIdentity.identityHash,
-            privateKey,
-            cryptoIdentity.publicKey,
-            { force: args.force, dryRun: !!args.dryRun },
+        const [result, copyErr] = await withPolicyConfirmation(sourceConfig, ['vault:read'], () =>
+            withPolicyConfirmation(destConfig, ['vault:write'], () => copyVaultSecrets(
+                sourceConfig,
+                destConfig,
+                keys,
+                cryptoIdentity.identityHash,
+                privateKey,
+                cryptoIdentity.publicKey,
+                {
+                    force: args.force,
+                    dryRun: !!args.dryRun,
+                    channel,
+                    withDestinationRead: (action) => {
+
+                        const check = checkConfigPolicy(channel, destConfig, 'vault:read');
+                        if (!check.allowed || (check.requiresConfirmation && !isYesMode(args))) {
+
+                            throw new Error(check.blockedReason ?? `Confirmation required (${check.confirmationPhrase}); pass --yes.`);
+
+                        }
+
+                        return withPolicyConfirmation(destConfig, ['vault:read'], action);
+
+                    },
+                },
+            )),
         );
 
         if (copyErr) {

@@ -17,6 +17,7 @@ import {
     fetchList,
     fetchDetail,
 } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER } from '../../../src/core/explore/index.js';
 import type {
     TableSummary,
     IndexSummary,
@@ -92,7 +93,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table names with 63+ characters', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
 
             const longTable = tables.find(t =>
                 t.name === 'this_is_a_very_long_table_name_that_tests_identifier_limits',
@@ -109,8 +110,7 @@ describe('integration: explore edge cases', () => {
                 db,
                 'sqlite',
                 'tables',
-                'this_is_a_very_long_table_name_that_tests_identifier_limits',
-            ) as TableDetail;
+                'this_is_a_very_long_table_name_that_tests_identifier_limits', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -125,7 +125,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle index names with maximum length', async () => {
 
-            const indexes = await fetchList(db, 'sqlite', 'indexes') as IndexSummary[];
+            const indexes = await fetchList(db, 'sqlite', 'indexes', { gate: GATED_BY_CALLER }) as IndexSummary[];
 
             const longIndex = indexes.find(i =>
                 i.name === 'idx_very_long_table_name_tests_identifier_limits_short_col',
@@ -149,7 +149,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table names with spaces', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
 
             const spaceTable = tables.find(t => t.name === 'User Profiles');
 
@@ -160,7 +160,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle column names with spaces and special chars', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'User Profiles') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'User Profiles', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -175,7 +175,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table names with hyphens', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
 
             const hyphenTable = tables.find(t => t.name === 'Product-Categories');
 
@@ -197,7 +197,7 @@ describe('integration: explore edge cases', () => {
 
         it('should detect self-referencing foreign key in employees', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
 
             const selfRefFk = fks.find(fk =>
                 fk.tableName === 'employees' &&
@@ -210,7 +210,7 @@ describe('integration: explore edge cases', () => {
 
         it('should show same table as source and target', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
             const selfRefFk = fks.find(fk =>
                 fk.tableName === 'employees' &&
                 fk.referencedTable === 'employees',
@@ -226,7 +226,7 @@ describe('integration: explore edge cases', () => {
 
         it('should detect self-referencing foreign key in categories', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
 
             const categoryFk = fks.find(fk =>
                 fk.tableName === 'categories' &&
@@ -251,7 +251,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle composite primary key (2 columns)', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'order_items') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'order_items', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -265,7 +265,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle composite foreign key (2 columns)', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
 
             const compositeFk = fks.find(fk =>
                 fk.tableName === 'order_item_details' &&
@@ -279,7 +279,7 @@ describe('integration: explore edge cases', () => {
 
         it('should show all columns in composite key definition', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
             const compositeFk = fks.find(fk =>
                 fk.tableName === 'order_item_details' &&
                 fk.referencedTable === 'order_items',
@@ -295,7 +295,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle 3-column composite primary key', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'order_item_details') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'order_item_details', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -310,13 +310,13 @@ describe('integration: explore edge cases', () => {
 
         it('should handle composite unique constraint', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'user_permissions') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'user_permissions', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
             expect(details!.columns.length).toBeGreaterThan(0);
 
             // Verify the table was created successfully
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
             const permTable = tables.find(t => t.name === 'user_permissions');
 
             expect(permTable).toBeDefined();
@@ -336,7 +336,7 @@ describe('integration: explore edge cases', () => {
 
         it('should detect circular reference pattern', async () => {
 
-            const fks = await fetchList(db, 'sqlite', 'foreignKeys') as ForeignKeySummary[];
+            const fks = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER }) as ForeignKeySummary[];
 
             const userToDept = fks.find(fk =>
                 fk.tableName === 'department_users' &&
@@ -358,7 +358,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle tables with deferred circular constraints', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
 
             const deptTable = tables.find(t => t.name === 'departments');
             const userTable = tables.find(t => t.name === 'department_users');
@@ -387,7 +387,7 @@ describe('integration: explore edge cases', () => {
 
         it('should correctly identify non-nullable columns', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -400,7 +400,7 @@ describe('integration: explore edge cases', () => {
 
         it('should correctly identify nullable columns', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -413,7 +413,7 @@ describe('integration: explore edge cases', () => {
 
         it('should detect default values', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'nullability_test', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
 
@@ -442,7 +442,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle mixed case table names', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
 
             const mixedTable = tables.find(t =>
                 t.name.toLowerCase() === 'mixedcasetable',
@@ -454,14 +454,14 @@ describe('integration: explore edge cases', () => {
 
         it('should handle mixed case column names', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables') as TableSummary[];
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER }) as TableSummary[];
             const mixedTable = tables.find(t =>
                 t.name.toLowerCase() === 'mixedcasetable',
             );
 
             expect(mixedTable).toBeDefined();
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', mixedTable!.name) as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', mixedTable!.name, { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
             expect(details!.columns.length).toBeGreaterThan(0);
@@ -490,7 +490,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table with only primary key column', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'empty_table') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'empty_table', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
             expect(details!.columns.length).toBe(1);
@@ -500,7 +500,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table with no primary key', async () => {
 
-            const details = await fetchDetail(db, 'sqlite', 'tables', 'no_pk_table') as TableDetail;
+            const details = await fetchDetail(db, 'sqlite', 'tables', 'no_pk_table', { gate: GATED_BY_CALLER }) as TableDetail;
 
             expect(details).toBeDefined();
             expect(details!.columns.length).toBe(1);
@@ -510,7 +510,7 @@ describe('integration: explore edge cases', () => {
 
         it('should handle table with no indexes beyond primary key', async () => {
 
-            const indexes = await fetchList(db, 'sqlite', 'indexes') as IndexSummary[];
+            const indexes = await fetchList(db, 'sqlite', 'indexes', { gate: GATED_BY_CALLER }) as IndexSummary[];
 
             const tableIndexes = indexes.filter(i => i.tableName === 'empty_table');
 

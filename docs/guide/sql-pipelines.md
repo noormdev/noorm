@@ -106,7 +106,7 @@ Each admitted run has independent pipeline history and declaration-ordered step 
 
 `singleRun` defaults to `false`. When enabled, a run claims a guard for its config and slug. A concurrent protected invocation reports busy without creating history. There is no TTL, automatic steal, or force-unlock API. When activity cannot be proven settled, the guard remains held. An administrator must follow [pipeline recovery](./pipeline-recovery.md) before clearing an abandoned guard.
 
-Run and dry run both enforce `run:dir` policy. Dry run validates and renders the workflow without admission, history, or workflow SQL, but trusted template helpers can have side effects. Pipelines do not provide a scheduler service, retries, automatic resume, domain idempotency, query rowsets, or new MCP commands. The native terminal screens operate file-owned definitions; they do not edit YAML or graphs or stream step progress. Design business SQL for repeated invocation.
+Run and dry run both enforce `pipeline:run` policy. Dry run validates and renders the workflow without admission, history, or workflow SQL, but trusted template helpers can have side effects. Pipelines do not provide a scheduler service, retries, automatic resume, domain idempotency, query rowsets, or new MCP commands. The native terminal screens operate file-owned definitions; they do not edit YAML or graphs or stream step progress. Design business SQL for repeated invocation.
 
 ## SDK
 

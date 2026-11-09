@@ -4,11 +4,14 @@
  * Reads encrypted state and displays config summaries with dialect,
  * database, and active status. No database connection required.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { formatAccessTag, isVisibleToChannel, resolveChannel } from '../../core/policy/index.js';
+import { formatAccessTag, getConfigPermission, isVisibleToChannel, MATRIX, resolveChannel } from '../../core/policy/index.js';
+import type { Permission } from '../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 
 const listCommand = defineCommand({
@@ -40,8 +43,9 @@ const listCommand = defineCommand({
         // moment the agent ran `noorm config list` instead.
         const channel = resolveChannel();
         const configs = stateManager.listConfigs().filter((c) => isVisibleToChannel(c.access, channel));
+        const accessErrors = channel === 'user' ? stateManager.listAccessErrors() : [];
 
-        if (configs.length === 0) {
+        if (configs.length === 0 && accessErrors.length === 0) {
 
             outputResult(args, { configs: [] }, 'No configurations found.');
             process.exit(0);
@@ -61,10 +65,49 @@ const listCommand = defineCommand({
             return `  ${c.name}${active} — ${c.dialect}/${c.database}${suffix}`;
 
         });
+        lines.push(...accessErrors.map(({ name, message }) => `  ${name} — ${message}`));
+
+        let resultConfigs: unknown[] = configs;
+
+        if (args.json) {
+
+            const settingsManager = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settingsManager.load());
+            if (!settingsErr) {
+
+                const provider = new SettingsProvider(settingsManager);
+                resultConfigs = configs.map((summary) => {
+
+                    const [resolved, policyErr] = attemptSync(() => {
+
+                        const stored = stateManager.getConfig(summary.name)!;
+                        const config = withConfigPolicy(stored, provider);
+                        const permissions = Object.keys(MATRIX) as Permission[];
+                        const effectivePermissions = Object.fromEntries(
+                            (['user', 'agent'] as const).map((channel) => [
+                                channel,
+                                Object.fromEntries(permissions.map((permission) => [
+                                    permission,
+                                    getConfigPermission(channel, config, permission),
+                                ])),
+                            ]),
+                        );
+
+                        return { ...summary, effectivePermissions };
+
+                    });
+
+                    return policyErr ? summary : resolved;
+
+                });
+
+            }
+
+        }
 
         outputResult(
             args,
-            { configs },
+            { configs: resultConfigs, ...(accessErrors.length ? { accessErrors } : {}) },
             `Configurations:\n${lines.join('\n')}`,
         );
         process.exit(0);

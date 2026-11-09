@@ -17,6 +17,7 @@ import { createContext } from '../../../src/sdk/index.js';
 import type { Context } from '../../../src/sdk/context.js';
 import { extractJsonObject } from '../../cli/run/_setup.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const dialects: Dialect[] = ['sqlite', 'postgres', 'mysql', 'mssql'];
 const secret = 'private-caller-value-9327';
@@ -81,7 +82,7 @@ else {
                         await state.load();
                         const config = (name: string): Config => ({
                             name, type: 'local', isTest: true,
-                            access: { user: 'admin', agent: 'admin' }, connection,
+                            access: withPolicy({ user: 'admin', agent: 'admin' }), connection,
                         });
                         await state.setConfig('alpha', config('alpha'));
                         await state.setConfig('beta', config('beta'));

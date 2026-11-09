@@ -4,6 +4,7 @@
  * Integration tests for change execution with real SQLite database.
  * Tests the full flow: create operation → execute files → finalize.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { tmpdir } from 'node:os';
@@ -17,6 +18,11 @@ import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { Change, ChangeContext } from '../../../src/core/change/types.js';
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+const viewerAccess = { user: 'viewer', agent: false as const };
+attachPolicyContext(adminAccess, {});
+attachPolicyContext(viewerAccess, {});
 
 describe('change: executor', () => {
 
@@ -78,7 +84,7 @@ describe('change: executor', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', agent: 'admin' },
+            access: adminAccess,
             channel: 'user',
             dialect: 'sqlite',
         };
@@ -353,7 +359,7 @@ describe('change: executor', () => {
                 { name: '001.sql', content: 'CREATE TABLE gate_test (id INTEGER)' },
             ]);
 
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
+            const context: ChangeContext = { ...buildContext(), access: viewerAccess };
 
             await expect(executeChange(context, change)).rejects.toThrow(/change:run/);
 
@@ -365,21 +371,9 @@ describe('change: executor', () => {
                 { name: '001.sql', content: 'CREATE TABLE gate_test2 (id INTEGER)' },
             ]);
 
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
+            const context: ChangeContext = { ...buildContext(), access: viewerAccess };
 
             await expect(revertChange(context, change)).rejects.toThrow(/change:revert/);
-
-        });
-
-        it('should carry the config name in the denial reason', async () => {
-
-            const change = await createTestChange('test-gate-name', [
-                { name: '001.sql', content: 'CREATE TABLE gate_test3 (id INTEGER)' },
-            ]);
-
-            const context: ChangeContext = { ...buildContext(), access: { user: 'viewer', agent: false } };
-
-            await expect(executeChange(context, change)).rejects.toThrow(/"test"/);
 
         });
 

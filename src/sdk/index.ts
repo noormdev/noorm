@@ -25,8 +25,8 @@
  * await ctx.disconnect()
  * ```
  */
-import { initState, getStateManager } from '../core/state/index.js';
-import { getSettingsManager, type SettingsManager } from '../core/settings/index.js';
+import { initState, getStateManager, StateManager } from '../core/state/index.js';
+import { getSettingsManager, SettingsManager } from '../core/settings/index.js';
 import { getIdentityForConfig } from '../core/identity/index.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
@@ -106,12 +106,15 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
 
     }
 
-    // Initialize state (may have no configs in CI)
-    await initState(projectRoot);
-    const state = getStateManager(projectRoot);
+    const state = options.freshState
+        ? new StateManager(projectRoot)
+        : getStateManager(projectRoot);
+    if (options.freshState) await state.load();
+    else await initState(projectRoot);
 
-    // Load settings (for stage defaults)
-    const settingsManager = getSettingsManager(projectRoot);
+    const settingsManager = options.freshState
+        ? new SettingsManager(projectRoot)
+        : getSettingsManager(projectRoot);
     await settingsManager.load();
     const settings = settingsManager.settings;
 
@@ -183,7 +186,7 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     // without every call site (or ContextState fixture) special-casing undefined.
     const resolvedOptions: CreateContextOptions = { ...options, channel: options.channel ?? 'user' };
 
-    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, resolvedOptions, projectRoot);
+    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, resolvedOptions, projectRoot, state);
 
 }
 

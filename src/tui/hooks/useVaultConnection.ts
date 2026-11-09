@@ -53,6 +53,9 @@ export interface VaultConnectionResult {
  */
 export interface UseVaultConnectionOptions {
 
+    /** Whether this screen may request and prepare a connection. */
+    enabled?: boolean;
+
     /**
      * Optional callback after connection is established and schema is ensured.
      * Runs before phase transitions to 'ready'. If the callback throws,
@@ -85,12 +88,22 @@ export function useVaultConnection(options?: UseVaultConnectionOptions): VaultCo
     const connRef = useRef<ConnectionResult | null>(null);
 
     const { db, dialect, loading, error: connError } = useConnection({
+        enabled: options?.enabled,
         ensureSchema: true,
         onReady: options?.onReady,
     });
 
     // Sync phase with connection state
     useEffect(() => {
+
+        if (options?.enabled === false) {
+
+            connRef.current = null;
+            setPhase('connecting');
+
+            return;
+
+        }
 
         if (!identity) {
 
@@ -134,7 +147,7 @@ export function useVaultConnection(options?: UseVaultConnectionOptions): VaultCo
 
         }
 
-    }, [db, dialect, loading, connError, identity]);
+    }, [db, dialect, loading, connError, identity, options?.enabled]);
 
     return { phase, error, connRef, setPhase, setError };
 

@@ -131,7 +131,7 @@ For inline-only resolution, credential callbacks, TLS identity hooks, session co
 
 - `requireTest: true` - Throws `RequireTestError` if the config doesn't have `isTest: true`. Use this in test suites to prevent accidentally running against production.
 
-- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError`. See [Access Roles](./config.md#access-roles).
+- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`) and for reads gated by `explore` (the `db` explore methods and change history). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError`. See [Access Roles](./config.md#access-roles).
 
 - `yes: true` - Pre-confirms `confirm`-tier permissions, the programmatic equivalent of the CLI's `--yes`. The SDK has no prompt, so without it a `confirm` cell blocks like an outright denial. Setting `NOORM_YES` in the environment has the same effect (`checkPolicy` consults it before returning `requiresConfirmation`). Both are **user-channel only**: on `agent`, `confirm` collapses to deny before either is read, so an agent cannot walk through a gate meant for a human.
 

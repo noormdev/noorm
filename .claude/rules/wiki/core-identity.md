@@ -16,7 +16,7 @@ paths:
   - "tests/integration/sql-terminal/**"
 ---
 
-Domain: core-identity. Identity keypairs, vault secrets, structured logger, SQL terminal history.
+Domain: core-identity. Identity, vault secrets, structured logs, and SQL terminal history.
 
 Map:
   - docs/wiki/core-identity.md

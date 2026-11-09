@@ -12,6 +12,7 @@ import { getPipelineRun } from '../../../src/core/pipeline/history.js';
 import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 it('isolates an unsettled MySQL rollback from root bookkeeping and later workflow commits', async () => {
 
@@ -63,7 +64,7 @@ it('isolates an unsettled MySQL rollback from root bookkeeping and later workflo
             };
             const context: PipelineContext = { db: db.withPlugin(plugin), dialect: 'mysql', connectionConfig: connection,
                 configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root,
-                access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                 pipelinesPath: './db/pipelines', cliVersion: 'test' };
             const first = await runPipeline(context, 'refresh');
             if (first.dryRun) throw new Error('expected admitted execution');
@@ -129,7 +130,7 @@ it('releases a protected run when its owned MySQL pool cannot open', async () =>
             await writeFile(join(folder, 'a.sql'), "INSERT INTO marker VALUES ('A')");
             const context: PipelineContext = { db: caller.db as PipelineContext['db'], dialect: 'mysql',
                 connectionConfig: userConfig, configName: 'alpha', identity: { name: 'test', source: 'config' },
-                projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                 pipelinesPath: './db/pipelines', cliVersion: 'test' };
             const failed = await runPipeline(context, 'refresh');
             if (failed.dryRun) throw new Error('expected execution');
@@ -215,7 +216,7 @@ it('retains manual MySQL failure intent when author-session cleanup fails', asyn
             };
             const context: PipelineContext = { db: db.withPlugin(plugin), dialect: 'mysql',
                 connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' },
-                projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                 pipelinesPath: './db/pipelines', cliVersion: 'test' };
             const result = await runPipeline(context, 'refresh');
             if (result.dryRun) throw new Error('expected execution');

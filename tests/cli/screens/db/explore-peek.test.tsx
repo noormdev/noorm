@@ -25,6 +25,7 @@ import React from 'react';
 
 import type { ColumnDetail, TableDetail } from '../../../../src/core/explore/types.js';
 import type { ConfigAccess } from '../../../../src/core/policy/index.js';
+import { attachPolicyContext } from '../../../../src/core/policy/index.js';
 import type { DetailRow } from '../../../../src/tui/screens/db/explore/layout.js';
 
 import { FocusProvider } from '../../../../src/tui/focus.js';
@@ -64,6 +65,7 @@ const PAGE = 3;
 const PEEK_HEADER = 'Rows ·';
 
 const OPEN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(OPEN, { roles: {} });
 
 const GATE = { configName: 'test', access: OPEN, channel: 'user' } as const;
 
@@ -478,6 +480,34 @@ describe('cli: screens/db/explore row peek', () => {
 
     });
 
+    it('should read rows without asking the user even when the environment channel is agent', async () => {
+
+        const previous = process.env['NOORM_CHANNEL'];
+        process.env['NOORM_CHANNEL'] = 'agent';
+        const access: ConfigAccess = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, { roles: { admin: { permissions: { 'sql:read': 'confirm' } } } });
+        const view = await overlay({
+            head: rows([1]),
+            gate: { configName: 'test', access, channel: 'user' },
+            until: (frame) => frame.includes('All 1 row'),
+        });
+        try {
+
+            expect(view.frame()).toContain('All 1 row');
+            expect(view.frame()).not.toContain('yes-test');
+            expect(view.db.queries.length).toBeGreaterThan(0);
+
+        }
+        finally {
+
+            view.unmount();
+            if (previous === undefined) delete process.env['NOORM_CHANNEL'];
+            else process.env['NOORM_CHANNEL'] = previous;
+
+        }
+
+    });
+
     describe('when it cannot read', () => {
 
         it('should show a spinner before the rows arrive', async () => {
@@ -508,9 +538,11 @@ describe('cli: screens/db/explore row peek', () => {
 
         it('should show the policy reason when the channel is denied, having read nothing', async () => {
 
+            const access: ConfigAccess = { user: 'admin', agent: false };
+            attachPolicyContext(access, { roles: {} });
             const view = await overlay({
                 head: rows([1]),
-                gate: { configName: 'prod', access: { user: 'admin', agent: false }, channel: 'agent' },
+                gate: { configName: 'prod', access, channel: 'agent' },
                 until: (frame) => frame.includes('Could not read rows'),
             });
 

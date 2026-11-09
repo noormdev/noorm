@@ -70,7 +70,7 @@ flowchart TD
     EO --> R
 ```
 
-The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins. A protected stage caps access after the merge. See [stage precedence](/guide/environments/stages#which-value-wins).
+The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins. At policy-check time, a protected stage caps each effective permission against the original operator matrix for users or viewer matrix for agents without changing role assignments. See [stage precedence](/guide/environments/stages#which-value-wins).
 
 `NOORM_CONNECTION_HOST` overrides the stored host. Execution commands select a config but do not expose connection-field flags. [`config create`](#config-create) accepts connection overrides when saving a new config.
 
@@ -167,7 +167,7 @@ Other unreserved `NOORM_*` variables overlay matching settings keys in memory. C
 ## Access roles
 
 
-Each config carries `access: { user, agent }`. The `user` role governs a human at the CLI, TUI, or SDK. The `agent` role governs an AI agent over MCP or the CLI. Roles are `viewer`, `operator`, and `admin`, and `agent` can also be `false`, which hides the config from agents. A config with no explicit access gets `{ user: admin, agent: viewer }`. A legacy `protected: true` maps to `{ user: operator, agent: viewer }`, and a stage with `protected: true` caps its configs at that pair.
+Each config carries `access: { user, agent }`. The `user` role governs a human at the CLI, TUI, or SDK. The `agent` role governs an AI agent over MCP or the CLI. Projects can override built-in roles and define custom roles; `agent: false` hides the config from agents. A config with no explicit access gets `{ user: admin, agent: viewer }`. Legacy `protected: true` maps to `{ user: operator, agent: viewer }`. A protected stage applies immutable per-permission ceilings from the original operator and viewer matrices without changing the assigned roles.
 
 
 ### Which channel am I on?
@@ -199,15 +199,16 @@ flowchart TD
     Y -->|no| FAIL
 ```
 
-On the `agent` channel a `confirm` cell is a deny, so `--yes` never unlocks it. There is no `--force` override for a denied cell: `--force` only skips checksums. The TUI asks you to type `yes-<config-name>` for the same cells.
+Through the CLI, an `agent` channel `confirm` cell is a deny, so `--yes` never unlocks it. MCP can instead collect human approval through modern elicitation; see [MCP approval](/guide/automation/mcp#permissions-and-human-approval). There is no `--force` override for a denied cell: `--force` only skips checksums. The TUI asks you to type `yes-<config-name>` for confirmation cells. The table below shows default roles; `.noorm/settings.yml` role definitions can override them or introduce custom roles.
 
 | Permission | Commands | viewer | operator | admin |
 |---|---|---|---|---|
-| `explore`, `sql:read` | `db explore`, `sql query` with `SELECT`, or `SHOW` and `DESCRIBE` on MySQL | allow | allow | allow |
+| `explore`, `sql:read` | `db explore`, `change history`, `pipeline history`, `pipeline show <run-id>`, `info` object counts, `db transfer --export` without `--tables`, `sql query` with `SELECT`, or `SHOW` and `DESCRIBE` on MySQL | allow | allow | allow |
 | `sql:write` | `sql query` with `INSERT`, `UPDATE`, `DELETE`, `MERGE` | deny | allow | allow |
 | `sql:ddl` | `sql query` with any other statement | deny | deny | allow |
 | `change:run`, `change:revert` | `change run`, `ff`, `next`, `revert`, `rewind` | deny | confirm | allow |
-| `run:build`, `run:file`, `run:dir` | `run build`, `file`, `dir`, `exec`, `files`, `pipeline run <slug>`, and `inspect`, `preview` against a resolved config | deny | confirm | allow |
+| `run:build`, `run:file`, `run:dir` | `run build`, `file`, `dir`, `exec`, `files`, and `inspect`, `preview` against a resolved config | deny | confirm | allow |
+| `pipeline:run` | `pipeline run <slug>` | deny | confirm | allow |
 | `db:create`, `db:reset` | `db create`, `db reset`, `db transfer --to`, `db transfer --import` | deny | confirm | allow |
 | `db:truncate` | `db truncate` | deny | confirm | confirm |
 | `db:teardown` | `db teardown` | deny | deny | confirm |
@@ -220,9 +221,13 @@ On the `agent` channel a `confirm` cell is a deny, so `--yes` never unlocks it. 
 | `transfer:plan` | `db transfer --to --dry-run` | deny | allow | allow |
 | `lock:force` | `lock force` | deny | confirm | confirm |
 
-Commands not listed have no role gate.
+`explore` and `sql:read` are gated on the agent channel only; a person at the keyboard always passes. Commands not listed have no role gate.
 
-`sql query` classifies the statement, not a flag. Multiple statements take the highest class (`read` < `write` < `ddl`), `EXPLAIN` takes the class of what it wraps, and anything unparseable or unrecognized is `ddl`.
+On a config with `isTest: true`, the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` rows read `allow` for every role on both channels, even on a protected stage. `db reset` still needs `--yes` and `run:build`. The same cells gate `db transfer` destinations. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+
+Vault set, propagation, copy, and identity enrollment also require `vault:read` when they unseal an existing vault key. Fresh vault initialization can use write-only access; secret writes do not require `secret:read`.
+
+`sql query` checks every permission represented by the statement batch, including nested writes. `EXPLAIN` inherits the class of what it wraps, and unrecognized statements require `sql:ddl`. Classification is a guardrail, not a sandbox; use database permissions for isolation.
 
 Roles catch mistakes such as a teardown against the wrong database. They do not stop someone who holds the credentials and connects with another client.
 
@@ -292,7 +297,7 @@ List stored configs.
 noorm config list --json
 ```
 
-JSON: `configs[]` with `name`, `type`, `isTest`, `access`, `isActive`, `dialect`, `database`. Configs whose `access.agent` is `false` are omitted on the `agent` channel.
+JSON: `configs[]` with `name`, `type`, `isTest`, `access`, `isActive`, `dialect`, `database`, and, when policy resolution succeeds, `effectivePermissions` for both channels. This field is best-effort and can be absent. Configs whose `access.agent` is `false` are omitted on the `agent` channel.
 
 
 #### `config use <name>`
@@ -318,7 +323,7 @@ noorm config create --all
 | Flag | Effect |
 |---|---|
 | `--stage <stage>` | Materialize this stage. Required unless using `--all` |
-| `--name <name>` | Save under this name instead of the stage name |
+| `--name <name>` | Save under this name instead of the stage name. Protected stages require the stage name |
 | `--dialect`, `--host`, `--port`, `--database`, `--user` | Override stage and environment connection values for a single stage |
 | `--password <value>` | Explicitly persist this password for a single stage. Avoid leaving secrets in shell history or process arguments |
 | `--all` | Create one config per stage using stage defaults only. Cannot combine with stage/name/connection overrides |
@@ -333,7 +338,7 @@ Single-stage connection precedence is stage defaults, environment connection fie
 | Bulk creation | Omits passwords from every source, including when replacing an existing config |
 | Existing destination | Requires `--force --yes` and the destination's `config:write` policy. `NOORM_YES` cannot substitute for the literal overwrite flag |
 | One bulk destination collides or fails validation | Preflights every candidate before saving, so these failures cause no writes |
-| Protected stage | Caps the created config's access without raising stricter roles |
+| Protected stage | Requires a destination name matching the stage; caps effective permission cells at policy-check time without changing created role assignments |
 | Invalid invocation, unknown stage, denied overwrite, or caught save error | Exit 2 |
 
 Create does not persist a stage association. A name matching a stage still uses the normal name-based stage lookup. [Stages](/guide/environments/stages#where-do-defaults-apply) explains the different TUI seeding behavior.
@@ -352,7 +357,7 @@ noorm config sync --stage staging --name review --yes
 | Flag | Effect |
 |---|---|
 | `--stage <stage>` | Required source stage |
-| `--name <name>` | Existing target config, defaulting to the stage name |
+| `--name <name>` | Existing target config, defaulting to the stage name. Protected stages require the stage name |
 | `--yes`, `-y` | Apply changed fields without a prompt |
 | `--json` | Return `stage`, `name`, `changes[]` (`field`, `before`, `after`), and `applied`, with the normal `success` field |
 
@@ -373,10 +378,21 @@ Wizard only. Exits 1 with a pointer to `noorm ui` and `config import`.
 Wizard only. Exits 1 with a pointer to `noorm ui` and `config import <file> --force --yes`.
 
 
+#### `config repair-access <name>`
+
+Repair malformed access, or access referencing a role no longer defined in project settings, without deleting the config or its secrets:
+
+```bash
+noorm config repair-access staging --user admin --agent false --yes
+```
+
+Both replacement assignments are required and must name current built-in or project roles; `--agent false` disables agent access. The user channel must explicitly pass `--yes`; agents cannot repair access even with confirmation. When the user role is still valid, its `config:write` permission applies, so an unknown agent role cannot bypass a user-role denial. Valid access cannot be edited through this command. No role is automatically substituted.
+
+
 #### `config rm <name>`
 
 
-Delete a stored config.
+Delete a stored config and its config-scoped secrets. Malformed access is preserved for diagnosis; removal is an available recovery path.
 
 ```bash
 noorm config rm staging --yes
@@ -395,7 +411,7 @@ JSON: `name`, `deleted`.
 #### `config cp <src> <dest>`
 
 
-Copy a config under a new name. Unknown `<src>` exits 2. An existing `<dest>` exits 1, and there is no `--force`. JSON: `src`, `dest`.
+Copy a config under a new name. The source access is checked and its protected-stage ceiling is retained. Unknown `<src>` exits 2. An existing `<dest>` exits 1, and there is no `--force`. JSON: `src`, `dest`.
 
 ```bash
 noorm config cp dev staging
@@ -422,7 +438,7 @@ Plain output is the bare config object that `config import` reads, so redirectin
 #### `config import <path>`
 
 
-Create a config from JSON. Unreadable or invalid JSON, or a missing `name` or `connection`, exits 2.
+Create a config from JSON on the user channel. Unreadable or invalid JSON, or a missing `name` or `connection`, exits 2.
 
 ```bash
 noorm config import ./staging.json
@@ -613,7 +629,7 @@ noorm ci init [--name <name>] [--type <local|remote>] [--stage <stage>] [--force
 |---|---|
 | `--name` | Config name. Defaults to `$NOORM_CI_CONFIG_NAME`, then `ci` |
 | `--force`, `-f` | Replace an existing `state.enc`. The old one is copied to `state.enc.bak-<timestamp>` first |
-| `--test` | Mark the config `isTest: true`, which satisfies the SDK's `requireTest` guard |
+| `--test` | Mark the config `isTest: true`, which satisfies the SDK's `requireTest` guard. Refused on the agent channel with the usage exit code; a human creates `isTest` configs |
 | `--type <local\|remote>` | Config type, independent of `--test`. Wins over the stage's type |
 | `--stage <stage>` | Inherit only `defaults.type` from this stage. Does not inherit connection settings or `isTest` |
 | `--yes`, `-y` | Needed with `--force` on a terminal. Without a terminal, `--force` alone is enough |
@@ -1093,7 +1109,7 @@ Also accepts `--config` and `--json`. JSON: `dropped` (`tables`, `views`, `funct
 #### `db transfer`
 
 
-Move data between configs, or to and from `.dt` files. Exactly one of `--to`, `--export`, and `--import`; none or several exit 2.
+Move data between configs, or to and from `.dt` files. Exactly one of `--to`, `--export`, and `--import`; none or several exit 2. On the agent channel, `--export` without `--tables` needs `explore` because it lists tables first.
 
 ```bash
 noorm db transfer --to backup --tables party,sales_order --on-conflict update
@@ -1267,6 +1283,10 @@ Unknown source or destination exits 2. `--config` is accepted and ignored. JSON:
 
 Grant vault access to identities waiting for it. A grant cannot be revoked, so a bare `propagate` only lists who is waiting and exits 1.
 
+Recipient review is a separate safety requirement even when a custom role allows `vault:propagate`. A human must use `--yes` (or `NOORM_YES`) to approve a grant; the agent channel cannot self-confirm this review, even when its role allows propagation. Policy denial still applies.
+
+The granting invocation selects the identities then awaiting access, narrowed by `--to` when supplied. A previous preview does not carry its snapshot or approval into a later invocation: review again if the list may have changed. During the grant, each selected identity hash and public key must still match its pending row; changed or missing rows fail rather than receive a key, and identities arriving after selection are excluded.
+
 ```bash
 noorm vault propagate                      # list who is waiting
 noorm vault propagate --to 4a5c14af… --yes # grant one identity
@@ -1384,7 +1404,7 @@ JSON: `path`, `created`, `extended`.
 #### `mcp serve`
 
 
-Start the MCP server on stdio. It stays alive while stdin is open. Always on the `agent` channel.
+Start the MCP **2026-07-28** server on stdio. It stays alive while stdin is open and always acts on the `agent` channel. Clients must support the modern protocol; legacy `initialize` handshakes are rejected. Discover individual tools with `tools/list` and call them with flat arguments; each database tool call requires an explicit `config`. The former `run_noorm_cmd` and `noorm_help` tools, and `connect`, `disconnect`, and session `status`, are not exposed. The server also provides user-selected prompt cookbooks, JSON exploration resources, and human approval through form elicitation. See the [MCP guide](/guide/automation/mcp).
 
 ```bash
 noorm mcp serve
@@ -1518,8 +1538,8 @@ GitHub Actions and GitLab versions are in [CI/CD automation](/guide/automation/c
 # One failure check for every command
 noorm run build --json | jq -e '.success' > /dev/null || echo "build did not succeed"
 
-# Grant vault access to anyone waiting
-[ "$(noorm vault list --json | jq '.status.usersWithoutAccess')" -gt 0 ] && noorm vault propagate --yes
+# Preview pending vault recipients for a human to review
+noorm vault propagate
 
 # Render a template and pipe the SQL onward
 noorm run preview db/sql/hotfix.sql.tmpl | psql -h localhost -d app
@@ -1536,11 +1556,11 @@ noorm run preview db/sql/hotfix.sql.tmpl | psql -h localhost -d app
 | A script tests `[ $? -eq 2 ]` for "partially applied" | Before noorm 1.0.0, `2` meant partial and total failure alike. Partial is `3` now | Test `-eq 3`. `if ! noorm ...` is unaffected |
 | `jq '.[]'` on `change list` or `db explore tables` fails | Lists sit under a named key since 1.0.0 | `jq '.changes[]'`, `jq '.tables[]'` |
 | `noorm init` exits 2 in CI | No terminal, and `--yes` needs an existing identity | `noorm identity init --name ... --email ...`, then `noorm init --yes`, or use `ci init` |
-| A `confirm` command fails under Claude Code, Codex, Cursor, or Gemini CLI even with `--yes` | The `agent` channel turns every `confirm` cell into a deny | Raise the config's `agent` role where the command is allowed, or run as a human with `NOORM_CHANNEL=user`. `noorm info` shows the detected harness |
+| A `confirm` command fails under an agent CLI even with `--yes` | CLI agents cannot fulfill human confirmation | Use an MCP client with modern form elicitation, or have a human run the operation. `noorm info` shows the detected channel/harness |
 | `noorm sql -c prod "SELECT 1"` prints help | The bare form rewrites only when the first non-flag token is SQL | `noorm sql query -c prod "SELECT 1"` |
 | `config add` or `config edit` exits 1 | Both are wizard-only | `noorm ui`, or `config import <file>` with `--force --yes` |
 | `noorm lock release` exits 1 after `change ff` | Each change takes and releases its own lock, so the lock from `lock acquire` is gone after the first change | `noorm lock release \|\| true` |
-| The SDK's `requireTest` guard rejects the config `ci init` made | `ci init` sets `isTest: true` only with `--test` | Pass `--test` for a throwaway database, not for production |
+| The SDK's `requireTest` guard rejects the config `ci init` made | `ci init` sets `isTest: true` only with `--test` | Pass `--test` for a throwaway database, not for production. An agent session cannot: `--test` is refused on the agent channel |
 | `tmp/` holds secrets after `run build --dry-run` | Rendered files contain resolved secrets in plaintext, owner-only, and `tmp/` is not gitignored | Delete `tmp/`, or add it to `.gitignore` |
 | `change ff` fails on a freshly built database: object already exists | `run build` leaves no change records, so the first `ff` runs every change | Write changes that are safe to run twice |
 | `dev test-helpers --json` does not parse | It prints a text report before the document | Use `run inspect --json` for helper data |

@@ -32,6 +32,7 @@ import { failureListItem, parseChange, scanChanges } from './parser.js';
 import type { ChangeParseFailure } from './parser.js';
 import { deleteChange as deleteFromDisk } from './scaffold.js';
 import { ChangeHistory } from './history.js';
+import { assertApprovedPending } from '../shared/approved-content.js';
 import { executeChange, revertChange } from './executor.js';
 import type {
     Change,
@@ -312,6 +313,8 @@ export class ChangeManager {
         const pending = items
             .filter(isPendingChange)
             .slice(0, count);
+
+        assertApprovedPending(pending.map((item) => item.name));
 
         if (pending.length === 0) {
 

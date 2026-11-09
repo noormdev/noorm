@@ -107,16 +107,16 @@ File system paths are **not** on the config—they come from settings (`paths.sq
 
 ### ConfigAccess
 
-Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`; `Channel` is `'user' | 'agent'`.
+Per-channel access grant. `Role` is a built-in or project-defined role name; `Channel` is `'user' | 'agent'`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | user | Role | A human at the keyboard—CLI, TUI, or SDK |
 | agent | Role \| `false` | An AI agent, whichever binary it reached for. `false` hides the config entirely on this channel |
 
-The channel describes *who is driving*, not which transport was used: an agent that shells out to the CLI after an MCP refusal is still `agent`. The field was named `mcp` until state migration v3 renamed it to `agent`.
+The channel describes who is driving, not which transport was used. The field was named `mcp` until state migration v3 renamed it to `agent`. Environment-based channel detection is a default, not a boundary against a process that controls its environment.
 
-`checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `agent`). See `docs/spec/config-access-roles.md` for the full permission matrix.
+`checkPolicy(channel, config, permission)` uses the resolved config's non-enumerable policy context. Detached copies without it are denied. User `confirm` prompts; ordinary agent checks deny it. See `docs/spec/config-access-roles.md` for the full permission matrix.
 
 
 ### ConnectionConfig
@@ -207,7 +207,7 @@ stages:
         locked: true
         defaults:
             dialect: postgres
-            protected: true   # access ceiling: clamps resolved access to at most operator/viewer
+            protected: true   # immutable per-permission ceilings
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -284,7 +284,7 @@ Initial values when creating a config from a stage.
 | password | string? | Default password |
 | ssl | boolean? | Default SSL setting |
 | isTest | boolean? | Default test flag |
-| protected | boolean? | `true` becomes an access **ceiling** at resolution: resolved `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` — a stricter config-level `access` survives unchanged |
+| protected | boolean? | `true` caps each effective user permission at the original operator cell and each agent permission at the original viewer cell; assigned roles remain unchanged |
 
 
 ### StageSecret

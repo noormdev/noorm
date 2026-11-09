@@ -1,6 +1,7 @@
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 import { getEnvConfig } from '../../core/config/index.js';
+import { SettingsProvider, validateAccessRoles, withConfigPolicy } from '../../core/config/resolver.js';
 import { materializeStage } from '../../core/config/stage.js';
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
@@ -27,6 +28,12 @@ export default defineCommand({
     async run({ args }) {
 
         const [, error] = await attempt(async () => {
+
+            if (resolveChannel() === 'agent') {
+
+                throw new Error('Creating configs from stages is only available on the user channel');
+
+            }
 
             const hasOverrides = Boolean(
                 args.stage || args.name || args.password !== undefined ||
@@ -87,6 +94,7 @@ export default defineCommand({
                     { connection: { ...env?.connection, ...flags } },
                     args.password,
                 );
+                validateAccessRoles(config.access, settings.settings.access?.roles);
                 const existing = state.getConfig(config.name);
 
                 if (existing) {
@@ -97,7 +105,7 @@ export default defineCommand({
 
                     }
 
-                    const policy = checkConfigPolicy(resolveChannel(), existing, 'config:write');
+                    const policy = checkConfigPolicy(resolveChannel(), withConfigPolicy(existing, new SettingsProvider(settings)), 'config:write');
 
                     if (!policy.allowed) {
 

@@ -8,13 +8,13 @@ The body of this spec is current truth. Superseded decisions live only in the ch
 ## Objective
 
 
-Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enforced by one central policy check. Add MCP invisibility (`agent: false`). Gate raw SQL by statement classification. Close the existing gap where MCP `change_run`/`change_ff`/`change_revert`/`run_file`/`run_build` bypass protection entirely.
+Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enforced by one central policy check. Add MCP invisibility (`agent: false`). Gate raw SQL by statement classification. Close the existing gap where MCP `change_run`/`change_ff`/`change_revert`/`run_file`/`run_build` bypass protection entirely. Let a project define its own roles in `settings.yml`, and serve MCP as a stateless `2026-07-28` server whose tools take an explicit config and ask a human to approve `confirm` cells.
 
 
 ## Data model
 
 
-    type Role = 'viewer' | 'operator' | 'admin'
+    type Role = string // built-in or defined in settings.yml
     type Channel = 'user' | 'agent'
 
     interface ConfigAccess {
@@ -22,26 +22,42 @@ Replace `Config.protected: boolean` with config-scoped, channel-keyed roles enfo
         agent: Role | false;
     }
 
-- `Config` gains `access?: ConfigAccess` — optional in the type until CP6 because CP4/CP5-owned files (`src/cli/ci/init.ts`, TUI config screens, app-context) construct `Config` literals without it; every config materialized through `parseConfig`/state load has it populated. **CP6 makes the field required** once those constructors are updated. Zod default when absent: `{ user: 'admin', agent: 'viewer' }` — the agent channel is never privileged without an explicit opt-in, because a stock project writes no `access` at all.
-- `ConfigSummary` gains required `access: ConfigAccess`.
-- Until CP6, `Config.protected` remains present and is **derived at load**: `protected = (access.user !== 'admin')`. It is never persisted (state `persist()` strips it; the zod schema never emits a stored value). No caller may write `protected` after CP2. CP6 deletes the field everywhere except the state migration parser.
+- `Config.access` is required after parsing. Absent assignments default to `{ user: 'admin', agent: 'viewer' }`; explicitly malformed access is rejected rather than repaired to an overrideable role.
+- `ConfigSummary` carries `access: ConfigAccess`. Config imports/exports retain custom role names; role definitions remain project settings.
+- Effective policy, immutable stage ceilings, and project/connection identity are bound to non-enumerable access metadata during resolution and SDK context construction. They are not persisted or exported. Legacy `protected` input is migrated; it is not a current Config field.
 - Enforcement code must not trust the optionality: on the `agent` channel, a config with absent `access` is **denied** (fail closed) — in practice unreachable, since configs reach enforcement via parse/migration.
-- `Channel` names *who is driving*, not which binary was invoked. Callers never hardcode it outside the MCP server: `resolveChannel(env?)` (`src/core/policy/channel.ts`) resolves it as (1) `NOORM_CHANNEL` when exactly `user` or `agent`, (2) `isAgentSession()` (`src/core/policy/harness.ts`, an allowlist of harness-set variables) → `agent`, (3) `user`. `mcp serve` constructs `new SessionManager('agent')` literally and never calls `resolveChannel`, so stdio traffic is `agent` even under `NOORM_CHANNEL=user`. The TUI keeps a literal `'user'` — it needs a TTY and an interactive human.
-- Stored state migrates `access.mcp` → `access.agent` verbatim at state schema **v3** (`src/core/version/state/migrations/v3.ts`), preserving `false`. v2 already emits the new key (it shares `repairConfigAccess`), so v3 is a no-op on anything coming up through it.
+- `Channel` names who is driving, not the transport. `resolveChannel(env?)` resolves `NOORM_CHANNEL`, then recognized agent-harness provenance, then `user`. MCP explicitly creates request contexts on `agent`, even under `NOORM_CHANNEL=user`; the interactive TUI uses `user`. Provenance detection is a safer default, not protection against an actor controlling the environment and database credentials.
+- Stored state migrates `access.mcp` to `access.agent` at schema v3, preserving `false`. Malformed explicit access is preserved and diagnosed, not automatically replaced with `viewer`. `StateManager.repairConfigAccess` replaces malformed access while preserving other config data and secrets; removal also deletes config secrets. `StateManager` refuses to overwrite a config whose stored access is malformed. When the active config is malformed, the TUI stays usable: it treats that config as not active and shows a Home warning that names `noorm config repair-access <name>`.
 
 
 ## Permissions and matrix
 
 
-    type Permission =
-        | 'explore'
-        | 'sql:read' | 'sql:write' | 'sql:ddl'
-        | 'change:run' | 'change:ff' | 'change:revert' | 'change:rm'
-        | 'run:build' | 'run:file' | 'run:dir'
-        | 'db:create' | 'db:reset' | 'db:destroy'
-        | 'config:rm'
+The 27 permissions and their defaults are defined by `MATRIX` in `src/core/policy/matrix.ts`.
 
-Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
+The default matrix below is defined in `src/core/policy/`. Project settings can override individual built-in cells and define additional roles:
+
+```yaml
+access:
+  roles:
+    operator:
+      permissions:
+        sql:write: confirm
+    deployer:
+      extends: operator
+      permissions:
+        run:build: allow
+```
+
+Built-in overrides preserve all unspecified defaults and cannot use `extends`. Custom roles may extend any known role (including another custom role), inheriting its effective project policy; without `extends`, unspecified permissions deny. Invalid permissions or values, unknown parents and inheritance cycles are rejected. Assign custom roles through the existing config access fields; `agent: false` still hides the config.
+
+The user channel always reads `explore` and `sql:read` as `allow` (`USER_ALWAYS_ALLOWED` in `src/core/policy/matrix.ts`): the person at the keyboard can loosen any role, so gating those reads adds friction only. The cells apply to the `agent` channel alone, and the Access Roles editor labels them as agent-channel cells.
+
+For protected stages, each effective cell is capped by the original, unmodified operator matrix for users or viewer matrix for agents (`deny` is stricter than `confirm`, which is stricter than `allow`). Overrides cannot relax this ceiling, and role names remain unchanged. Unknown assigned roles fail closed. The one exception to the ceiling is the `isTest` lifecycle relaxation (item 6a). The ceiling applies when any of three sources marks the stage protected: the stage bound by the resolver, the config's own name, or an explicit `stage` option. A caller option can add restriction and never remove it. Copying or renaming a config from a protected stage to an unprotected name is refused at `StateManager` (`ProtectedStageEscapeError`), which is what CLI `config cp` and the TUI copy and rename screens delegate to. SDK transfer and vault destinations keep the ceiling through `bindSdkPolicy` in `src/sdk/guards.ts`.
+
+Human confirmation can be supplied through interactive or yes-mode user flows; an agent cannot self-confirm with `--yes` or `NOORM_YES`.
+
+The TUI exposes role definitions under **Settings → Access Roles**. It lists implicit built-ins alongside custom roles, supports per-permission overrides and custom-role inheritance, and previews the effective cells with protected-stage user/agent ceilings. Saving validates the entire role map before persistence. Resetting a built-in removes its overrides, never the built-in role; deleting a custom role requires confirmation and no config or inheritance references. Cancelling an editor or confirmation leaves settings unchanged.
 
 | permission | viewer | operator | admin |
 |---|---|---|---|
@@ -52,23 +68,31 @@ Matrix (cells: `allow` / `confirm` / `deny`), hard-coded in `src/core/policy/`:
 | change:run, change:ff | deny | confirm | allow |
 | change:revert | deny | confirm | allow |
 | run:build, run:file, run:dir | deny | confirm | allow |
+| pipeline:run | deny | confirm | allow |
 | db:create | deny | confirm | allow |
 | db:reset | deny | confirm | allow |
 | db:destroy | deny | deny | confirm |
 | config:rm | deny | confirm | confirm |
 | change:rm | deny | confirm | confirm |
+| db:truncate | deny | confirm | confirm |
+| db:teardown | deny | deny | confirm |
+| config:write | deny | confirm | confirm |
+| vault:read, secret:read, transfer:plan | deny | allow | allow |
+| vault:write, secret:write | deny | confirm | allow |
+| vault:propagate, lock:force | deny | confirm | confirm |
+| debug:read | allow | allow | allow |
+| debug:write | deny | deny | confirm |
 
     type PolicyTarget = { name: string; access: ConfigAccess }
-    // Config satisfies PolicyTarget structurally once CP2 adds `access`.
-
     checkPolicy(channel: Channel, target: PolicyTarget, permission: Permission): PolicyCheck
     // PolicyCheck = { allowed, requiresConfirmation, confirmationPhrase?, blockedReason? }
-    // — same shape as the old ProtectionCheck. guarded(target) likewise takes PolicyTarget.
+
+Enforcement requires the non-enumerable policy context attached to a resolved config. A detached copy or manually constructed target without that context is denied; spreading or serializing a config does not preserve it.
 
 Channel resolution of `confirm`:
 
 - `user`: `allowed: true, requiresConfirmation: true, confirmationPhrase: 'yes-<config.name>'`. `NOORM_YES=1` (`shouldSkipConfirmations()`) resolves it to plain allow.
-- `agent`: `allowed: false`, blockedReason directs to the CLI. `NOORM_YES` has no effect on the agent channel.
+- `agent`: ordinary policy checks return `allowed: false` for `confirm`; agent CLI and SDK calls cannot self-confirm, and `NOORM_YES` has no effect. MCP may mediate approval by a human through a supporting client; rejection or unavailable approval denies the action. A `deny` cell is never approvable.
 
 `agent: false` is not a role: policy is never consulted for an invisible config — visibility is enforced before policy (see Enforcement).
 
@@ -81,14 +105,16 @@ The `config list` access tag is keyed to the default instead: `formatAccessTag` 
 
 
     classifyStatements(sql: string, dialect: Dialect): 'read' | 'write' | 'ddl'
+    sqlPermissionsFor(sql: string, dialect: Dialect): Permission[]
 
 Lives in `src/core/policy/classify.ts` (moved and generalized from `src/rpc/protection.ts`; that file is deleted once callers are rewired).
 
 - CST first (`sql-parser-cst`), keyword fallback when the parser throws (existing strategy, including CTE handling).
 - read: SELECT, EXPLAIN, SHOW, DESCRIBE/DESC. write: INSERT, UPDATE, DELETE, MERGE. ddl: everything else that parses (CREATE, ALTER, DROP, TRUNCATE, GRANT, REVOKE, SET, …).
 - **Data-modifying CTEs**: a `WITH` whose any sub-statement is INSERT/UPDATE/DELETE/MERGE takes that sub-statement's class, even when the outer statement is `SELECT`. A `viewer`'s "touches nothing" guarantee requires this — `WITH t AS (DELETE … RETURNING …) SELECT * FROM t` is a write. Detect the DML node in the CST (and in the keyword fallback, a data-modifying keyword anywhere at CTE-definition depth), do not key only off the final keyword.
-- **Side-effecting functions**: a SELECT that invokes a function on the `DESTRUCTIVE_FUNCTIONS` denylist (`src/core/policy/classify.ts`) classifies as at least `write`, whether the call is bare (`pg_terminate_backend(…)`) or schema-qualified (`pg_catalog.pg_terminate_backend(…)`). The list is a hardcoded, extensible constant seeded with known side-effecting builtins (`pg_terminate_backend`, `pg_cancel_backend`, `pg_reload_conf`, `pg_promote`, `lo_import`, `lo_export`, `lo_unlink`, `setval`, `nextval`, `dblink_exec`, `query_to_xml` and family, …). This is deliberately a denylist, not an allowlist: `SELECT f()` is statically undecidable, so pure helpers (`count`, `now`, `coalesce`, …) stay `read` and only known-dangerous calls are caught. Documented limitations: (a) a `viewer` calling an *unlisted* side-effecting function is not blocked; (b) `classifyStatements` guards against **mutation** (write/ddl), not **disclosure** — a read-only exfiltration function like `pg_read_file`/`pg_ls_dir` stays `read`. The role is a guardrail against casual/accidental writes, not an airtight sandbox; operators needing hard confidentiality or write isolation must back it with database-level `GRANT`s.
-- Multi-statement input: highest class wins (read < write < ddl).
+- **Side-effecting functions**: a call to a function on the `DESTRUCTIVE_FUNCTIONS` denylist (`src/core/policy/classify.ts`) requires `sql:write`, whether bare (`pg_terminate_backend(…)`) or schema-qualified (`pg_catalog.pg_terminate_backend(…)`). The list includes known side-effecting builtins and server-file readers such as `pg_read_file` and `pg_ls_dir`. This is deliberately a denylist, not an allowlist: `SELECT f()` is statically undecidable, so pure helpers (`count`, `now`, `coalesce`, …) stay `read` and unlisted side-effecting or disclosure functions are not blocked. The role is a guardrail, not an airtight sandbox; operators needing hard confidentiality or write isolation must use database-level `GRANT`s.
+- Multi-statement input: authorization requires **every** represented permission, including nested statements and known dangerous calls. A denied permission blocks the entire batch even if another is allowed or confirmed; every permission requiring confirmation must be included in the approval before any statement runs. For example, `DELETE ...; CREATE TABLE ...` requires both `sql:write` and `sql:ddl`. The highest class (read < write < ddl) remains available for display, never as the authorization verdict.
+- Dialect guardrails expand MySQL executable comments and lexically cross-check MSSQL batches. `SELECT ... INTO` requires `sql:ddl`; quoted strings and identifiers are handled as dialect-specific non-code regions.
 - Empty input: `read`. Unparseable input, unknown statement type, `EXEC`/`CALL`: `ddl` — fail closed.
 - Applies to the ad-hoc raw-SQL surfaces: the `sql` RPC command and the TUI SQL terminal. Change/run files are command-gated (trusted, tracked artifacts), never content-classified.
 
@@ -96,14 +122,16 @@ Lives in `src/core/policy/classify.ts` (moved and generalized from `src/rpc/prot
 ## Enforcement
 
 
-1. **RPC**: `RpcCommand` gains required `permission: Permission | 'open'`. `'open'` = no config-scoped gate (`list_configs`, `connect`, `disconnect`, `noorm_help` internals); every other command declares its permission. Assignments: explore/overview/list/detail → `explore`; sql → `sql:read` (handler escalates: run `classifyStatements` and re-check with the actual class before executing); change_history → `explore`; change_run → `change:run`; change_ff → `change:ff`; change_revert → `change:revert`; run_build → `run:build`; run_file → `run:file`.
-2. **Gate location**: `run_noorm_cmd` dispatch in `src/mcp/server.ts`. For non-`'open'` commands: resolve target config (explicit `config` arg, else session active config), then `checkPolicy('agent', config, cmd.permission)`; deny → `isError` result with `blockedReason`, handler never runs.
-3. **Channel ownership**: `SessionManager` is constructed with a `Channel` (`'agent'` in `mcp serve`). It exposes the channel to the gate.
-4. **Invisibility** (`agent: false`, agent channel only): `list_configs` omits the config; `SessionManager.connect` and `getContext` throw the **byte-identical** error an unknown config name produces (assert equality in tests). Session info returned by `connect` reports the channel's effective role instead of `protected`.
-5. **SDK**: `CreateContextOptions` gains `channel?: Channel` (default `'user'`). `src/sdk/guards.ts` destructive-op checks call `checkPolicy` instead of reading `protected`. Guard permission mapping: `db.truncate`/`db.teardown`/`db.reset`/`dt.importFile` → `db:reset` (data-destructive, admin frictionless — preserves pre-migration behavior for open configs, which is the migration section's promise); `changes.revert`/`changes.rewind` → `change:revert`; `changes.run`/`changes.ff` → `change:run`/`change:ff`; `run.file`/`run.dir`/`run.build` → `run:file`/`run:dir`/`run:build`; data transfer into a target → `db:reset`. In the SDK (no prompt available), `requiresConfirmation` blocks with a message naming `NOORM_YES=1` and the CLI/TUI; `checkPolicy` already resolves `NOORM_YES=1` to allow on the user channel. On deny, the thrown error carries the policy's `blockedReason` (role + permission), and `ProtectedConfigError.operation` names the public method the caller invoked.
+1. **RPC**: each command declares `permission: Permission | 'open'`. MCP exposes config listing, exploration, SQL, run, and change commands as individual tools. There is no session state and no `connect`, `disconnect`, or `status` command.
+2. **MCP gate**: every database request supplies an explicit config. Dispatch resolves current settings/configuration and checks the effective cell. SQL uses its classified permission before execution; `change_ff` also checks `change:run`. `allow` executes, `deny` blocks, and `confirm` uses MRTR form elicitation. The approval binds the exact operation, target, project, effective policy, and prepared executable content, expires after five minutes, and is consumed once. Only validated approval establishes a scoped grant honored by inner guards; it cannot override a `deny`.
+3. **Protocol**: stdio uses MCP `2026-07-28`, `server/discover`, per-request metadata, modern result/cache fields, and no initialization handshake. Legacy clients are rejected. Request contexts/connections are released after each operation. Approval prompts redact secrets only (password and SSL material); user and database names stay visible so the approver can see the target. Config-qualified JSON metadata resources use the same `explore` permission and approval path.
+4. **Invisibility**: `agent: false` configs are omitted from tool/resource discovery and unavailable to direct MCP reads/calls. Ordinary agent CLI calls still deny every `confirm`, even with yes flags; only MCP collects human approval through the supporting client.
+5. **SDK**: guarded noorm APIs enforce the config's effective role for `options.channel` (default `user`). They have no prompt: unresolved confirmation fails unless supplied through a valid internal scope or user-channel `yes` mode. Agent yes mode never supplies consent. Direct `ctx.kysely` and routine calls remain a database-credential boundary, not intercepted role enforcement. Run/change permission continues authorizing internal template secret resolution; direct vault/secret retrieval APIs have their own read permissions.
 5a. **Core-seam enforcement** (the "enforced above the driver" promise): the user-channel gate lives at the core boundary each surface funnels through — `runFile`/`runFiles` (`core/runner`), data transfer (`core/transfer`), the SQL terminal executor (ad-hoc SQL → `classifyStatements` then gate), and `changes.run`/`ff`/`revert` (`core/change`). The `Context` carries its `Channel`, so SDK, TUI, and CLI callers all inherit one enforcement path rather than each re-implementing checks per screen/namespace. Run/change files gate on their command permission (not content-classified); only the ad-hoc SQL terminal is classified.
+5b. **Explore gate**: reads behind `explore` take a required `gate` parameter in `fetchOverview`/`fetchList`/`fetchDetail` (`core/explore`). `truncateData` and `teardownSchema` pass the `GATED_BY_CALLER` sentinel as `gate` for their object-inventory reads, so their own `db:*` check governs the read instead of `explore`. The SDK's `runGatedExplore` wraps the `db.*` explore methods and `changes.history`/`historyForChange`/`getFileHistory` and `pipelines.history`/`getRun`; `db.previewTeardown` checks `db:teardown` (deny only) on every channel. The user channel always passes `explore` and `sql:read`.
 6. **CLI/TUI**: inherit enforcement from the core seam (5a). `SmartConfirm` takes `requiresConfirmation` + `confirmationPhrase` instead of `protected: boolean`; `ProtectedConfirm` keeps the `yes-<config>` phrase flow, driven by `confirmationPhrase` — sourced from one `confirmationPhraseFor(name)` helper in `src/core/policy/`, never re-templated per screen. The matrix is the enforcement **floor** — screens may keep stricter confirm UX than the cell requires (TUI teardown/truncate retain their unconditional phrase-confirm for all roles, and additionally deny when `checkConfigPolicy('user', config, 'db:reset')` says deny).
-7. **Settings stages**: stage `protected: true` becomes an access **ceiling** at resolution (`src/core/config/resolver.ts`): resolved access is clamped to at most `{ user: 'operator', agent: 'viewer' }`; stricter survives, looser is clamped. Settings rule `match.protected` matches `guarded(config)`. Stage/rule YAML vocabulary is unchanged in this issue.
+6a. **isTest relaxation**: on a config whose `isTest` is true and whose assigned role resolves (built-in, or defined in `settings.yml`), `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` resolve to `allow` for every role, built-in or custom, on both channels, and past the protected-stage ceiling. An unknown role still fails closed. Every other permission is unchanged, so `run:build` still gates the rebuild in `db reset`, and `DbNamespace.reset()` asserts it before `teardownSchema`. `getConfigPermission` applies the relaxation from `PolicyContext.isTest`, which `bindPolicyContext` takes only from a trusted source: the stored config's own `isTest`, a stage default from `settings.yml`, or an env-only config. It holds only while the connection target (dialect, host, database, filename) is the one the trusted source declares; a port counts only when that source declares one, and an env or flag override of the target gives `false`. A rebind keeps a bound `isTest` while the credential-free target is unchanged (`PolicyContext.testTargetIdentity`), so changing only user or password keeps it. A stage default with `isTest: true` decides only when the stage declares a database; one that declares none falls under the env-only rule. An env-only `isTest` counts only when no stored config has that name, no stage declares `isTest: false` for it, no stage with `isTest: true` declares a database, no stage in play is protected, and the connection target (database, plus host on server dialects) comes from env or flags; otherwise the stored or stage value, else `false`. Transfer and vault destinations carry the stored destination's `isTest`, so `db:reset` on a transfer destination and `dt.importFile` agree. An env or flag overlay on a stored config never grants it, so `NOORM_isTest=true noorm --config prod db drop` stays denied for an `isTest: false` config; an agent setting `NOORM_isTest=true` on an env-only config whose target it supplies is the intended harness path. `agent: false` still hides the config.
+7. **Settings stages**: stage `protected: true` applies the immutable per-permission operator/user and viewer/agent ceilings described above; configured role names remain unchanged. Settings rule `match.protected` matches `guarded(config)`.
 
 
 ## Migration
@@ -121,6 +149,8 @@ New state migration in `src/core/version/state/migrations/` (registered in `src/
 
 ## Checkpoints
 
+
+The checkpoint table is delivered history. Its rows name the design as first built (resolver clamp, session role, byte-identical connect error, `src/rpc/session.ts`); the change log records what replaced each.
 
 Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fresh-process `bun test --serial` groups — a single whole-suite `bun test` cross-contaminates and does not reflect CI; DB containers from repo-root `docker-compose.test.yml` must be up), `bun run typecheck`, `bun run typecheck:tests`, `bun run lint`. Commit per green checkpoint.
 
@@ -160,3 +190,13 @@ Each checkpoint ends green: `bash tmp/run-test-groups.sh` (mirrors CI's four fre
 - 2026-07-13 — `change:rm` added (viewer deny / operator confirm / admin confirm — admin gets confirm not allow because deleting an applied change also deletes its DB tracking row), refs `docs/spec/v1-44-change-rm-gate.md`.
 - 2026-07-29 — Default access is `{ user: 'admin', agent: 'viewer' }`. **Superseded:** the default was `{ user: 'admin', agent: 'admin' }`, so a config that never declared `access` — which is every config in a stock project — handed the agent channel admin, and no gate in the matrix constrained an MCP client. `viewer` keeps the agent's real job (explore, `sql:read`) while write, DDL, destructive, and credential permissions need an explicit opt-in; `agent: false` was rejected because invisibility reports the same error as an unknown config and leaves an operator no way to diagnose it. Configs already storing an explicit `access` are untouched, including ones that stored `admin/admin` under the old default. `formatAccessTag` re-keyed from `guarded()` to "differs from the default" so `agent: 'admin'` shows up in `config list` instead of reading as unremarkable.
 - 2026-07-29 — `Channel` names the caller, not the transport: `'user' | 'agent'`, and `ConfigAccess` is `{ user, agent }`. **Superseded:** `Channel` was `'user' | 'mcp'` and the CLI hardcoded `'user'` at every policy call site, so an agent refused a write over MCP could shell out to `noorm` and run it with the human's role — on a stock config that turned deny into allow for `sql:write`, `sql:ddl`, `db:create`, `run:build` and `vault:read`, and turned `db:destroy` into a confirm that `--yes` satisfied. The CLI now resolves the channel from provenance (`resolveChannel` in `src/core/policy/channel.ts`): `NOORM_CHANNEL` if explicitly `user`/`agent`, else an allowlist of agent-harness variables (`isAgentSession`, `src/core/policy/harness.ts`), else `user`; `mcp serve` still passes `'agent'` literally, above the override. `TERM_PROGRAM`, `CI` and TTY state are excluded — they describe the terminal or the pipeline, not the caller, and a false positive locks a human out of their own CLI. `agent: false` now hides a config on both transports (`noorm config list` filters it the way `list_configs` already did). Stored `access.mcp` migrates to `access.agent` verbatim at state schema v3. Detection is evadable by design; it defends against an agent routing around a refusal, not one deliberately evading.
+- 2026-11-09 — Review fixes on PR #119.
+    - `Role` is a string defined in settings. **Superseded:** `Role` was the closed union `'viewer' | 'operator' | 'admin'`. Custom roles may extend any known role, and an unresolvable stored role fails closed.
+    - Per-permission ceilings replace the role clamp. **Superseded:** a protected stage clamped the config's role to operator or viewer. It now caps each effective cell by the unmodified operator (user) or viewer (agent) matrix, so role names stay unchanged and settings overrides cannot loosen the ceiling.
+    - MCP is stateless `2026-07-28` with approvals and no connect. **Superseded:** the server kept a session, exposed `connect`/`disconnect`/`status` plus `run_noorm_cmd` and `noorm_help`, and answered a hidden config with a byte-identical connect error. `SessionManager` and the session commands are deleted.
+    - Read permissions (`explore`, `sql:read`) are enforced on the agent channel only. **Superseded:** the user channel was gated on them too, which blocked a person from reading their own database without protecting anything, since the keyboard owner can edit the role. Every explore and change-history read now takes a gate; `db transfer --export` without `--tables` lists tables first, so it needs `explore` on the agent channel.
+    - The protected-stage ceiling is the union of the resolver-bound stage, the config name, and an explicit `stage` option. **Superseded:** the SDK keyed the ceiling on `options.stage ?? config.name`, so passing an unprotected `stage`, renaming a protected config with `NOORM_NAME`, or copying or renaming one in state removed it. Protected-to-unprotected copy and rename are refused at `StateManager`. Transfer and vault destinations keep the ceiling.
+    - A config with malformed access leaves the TUI usable. **Superseded:** a malformed active config made the unawaited `syncStateFromManagers` reject, so the TUI reported ready with no configs and no identity. The Home screen now warns and names `noorm config repair-access <name>`; stage sync and config add, copy, and import refuse to overwrite the malformed entry.
+    - MCP approvals redact secrets only. **Superseded:** the prompt also masked the connection's user and database names, which hid the target from the approver. Only the password and SSL key, cert, and ca are redacted.
+- 2026-11-09 — Added `pipeline:run` (viewer deny / operator confirm / admin allow, the `run:dir` cells) so a role can run named pipelines without directory runs, and the reverse. Pipeline history reads (`pipelines.history`, `getRun`) are gated by `explore` on the agent channel.
+- 2026-11-09 — Item 6a: `isTest` configs run the database lifecycle permissions (`db:create`, `db:reset`, `db:truncate`, `db:teardown`, `db:destroy`) as `allow` for every resolvable role and both channels, so a test harness under an agent session can drop and recreate its own database. A flagged test database is disposable by the owner's decision, so the flag wins over the protected-stage ceiling, while `run:build`, unknown roles, and every other permission are unchanged. The flag counts only from the stored config, a stage default, or an env-only config, never from an env or flag overlay on a stored config; `noorm ci init --test` is refused on the agent channel for the same reason.

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import {
     SettingsManager,
+    getSettingsManager,
     resetSettingsManager,
     DEFAULT_SETTINGS,
     DEFAULT_PATH_CONFIG,
@@ -42,6 +43,43 @@ function createTestContext() {
 }
 
 describe('settings: SettingsManager', () => {
+
+    it('should not reuse a settings manager for another project', () => {
+
+        resetSettingsManager();
+        try {
+
+            const first = getSettingsManager('/project-a');
+            expect(getSettingsManager('/project-a')).toBe(first);
+            expect(getSettingsManager('/project-b')).not.toBe(first);
+            expect(getSettingsManager('/project-b').projectRoot).toBe('/project-b');
+
+        }
+        finally {
+
+            resetSettingsManager();
+
+        }
+
+    });
+
+    it('should keep the first project\'s manager across A, B, A', () => {
+
+        resetSettingsManager();
+        try {
+
+            const a = getSettingsManager('/project-a');
+            getSettingsManager('/project-b');
+            expect(getSettingsManager('/project-a')).toBe(a);
+
+        }
+        finally {
+
+            resetSettingsManager();
+
+        }
+
+    });
 
     describe('load', () => {
 

@@ -151,13 +151,17 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        const context = await buildRunContext({
-            db: sharedDb, configName: activeConfigName, identity,
-            projectRoot, activeConfig,
-            stateManager, dialect: sharedDialect ?? undefined,
-        });
+        const [status, statusErr] = await attempt(async () => {
 
-        const [status, statusErr] = await attempt(() => checkFilesStatus(context, [selectedFile]));
+            const context = await buildRunContext({
+                db: sharedDb, configName: activeConfigName, identity,
+                projectRoot, activeConfig,
+                stateManager, dialect: sharedDialect ?? undefined,
+            });
+
+            return checkFilesStatus(context, [selectedFile]);
+
+        });
 
         if (statusErr || !status) {
 
@@ -183,7 +187,10 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, selectedFile, globalModes.force, cryptoIdentity, projectRoot, sharedDb, connError]);
+    }, [
+        activeConfig, activeConfigName, stateManager, selectedFile, globalModes.force,
+        cryptoIdentity, projectRoot, sharedDb, sharedDialect, connError,
+    ]);
 
     // Execute file (actual execution)
     const executeFile = useCallback(async (force: boolean = false) => {

@@ -4,8 +4,6 @@
  * Mirrors [k] secrets in the TUI. Reads from local encrypted state,
  * not the database vault. No connection required.
  */
-import { getStateManager } from '../../core/state/index.js';
-
 import type { ContextState } from '../state.js';
 import { checkProtectedConfig } from '../guards.js';
 import type { Permission } from '../../core/policy/index.js';
@@ -52,7 +50,7 @@ export class SecretsNamespace {
 
         this.#gate('secret:read', 'secrets.get');
 
-        const state = getStateManager(this.#state.projectRoot);
+        const state = this.#state.stateManager;
         const value = state.getSecret(this.#state.config.name, key);
 
         return value ?? undefined;
@@ -74,7 +72,7 @@ export class SecretsNamespace {
 
         this.#gate('secret:read', 'secrets.list');
 
-        return getStateManager(this.#state.projectRoot).listSecrets(this.#state.config.name);
+        return this.#state.stateManager.listSecrets(this.#state.config.name);
 
     }
 
@@ -90,7 +88,7 @@ export class SecretsNamespace {
 
         this.#gate('secret:write', 'secrets.set');
 
-        await getStateManager(this.#state.projectRoot).setSecret(this.#state.config.name, key, value);
+        await this.#state.stateManager.setSecret(this.#state.config.name, key, value);
 
     }
 
@@ -106,7 +104,7 @@ export class SecretsNamespace {
 
         this.#gate('secret:write', 'secrets.delete');
 
-        await getStateManager(this.#state.projectRoot).deleteSecret(this.#state.config.name, key);
+        await this.#state.stateManager.deleteSecret(this.#state.config.name, key);
 
     }
 

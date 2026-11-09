@@ -7,7 +7,7 @@ import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils
 import { EXIT } from '../_exit.js';
 import { getVaultKeyChecked, deleteVaultSecretChecked, vaultSecretExists, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 const rmCommand = defineCommand({
     meta: {
@@ -57,8 +57,17 @@ const rmCommand = defineCommand({
                     };
 
                 }
+                const readCheck = checkVaultPolicy(gate, 'vault:read');
+                if (!readCheck.allowed) {
 
-                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                    return { success: false, error: readCheck.blockedReason ?? 'Cannot read the vault.' };
+
+                }
+
+
+                const vaultKey = await withPolicyConfirmation(config, ['vault:read'], () =>
+                    getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect),
+                );
 
                 if (!vaultKey) {
 
@@ -77,7 +86,9 @@ const rmCommand = defineCommand({
 
                 }
 
-                const [deleted, deleteErr] = await deleteVaultSecretChecked(gate, db, args.key, ctx.dialect);
+                const [deleted, deleteErr] = await withPolicyConfirmation(config, ['vault:write'], () =>
+                    deleteVaultSecretChecked(gate, db, args.key, ctx.dialect),
+                );
 
                 if (deleteErr) {
 

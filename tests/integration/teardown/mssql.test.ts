@@ -14,7 +14,7 @@ import {
     teardownSchema,
     previewTeardown,
 } from '../../../src/core/teardown/index.js';
-import { fetchList, fetchOverview } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchList, fetchOverview } from '../../../src/core/explore/index.js';
 import {
     createTestConnection,
     deployTestSchema,
@@ -87,11 +87,11 @@ describe('integration: mssql teardown', () => {
 
         it('should preserve schema after truncate', async () => {
 
-            const overviewBefore = await fetchOverview(db, 'mssql');
+            const overviewBefore = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             await truncateData(db, 'mssql');
 
-            const overviewAfter = await fetchOverview(db, 'mssql');
+            const overviewAfter = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             // Schema objects should still exist
             expect(overviewAfter.tables).toBe(overviewBefore.tables);
@@ -201,7 +201,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.tables).toContain('todo_items');
 
             // Verify tables are gone
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
             const tableNames = tables.map((t) => t.name);
             expect(tableNames).not.toContain('users');
             expect(tableNames).not.toContain('todo_lists');
@@ -219,7 +219,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.views).toContain('v_active_todo_items');
 
             // Verify views are gone
-            const views = await fetchList(db, 'mssql', 'views');
+            const views = await fetchList(db, 'mssql', 'views', { gate: GATED_BY_CALLER });
             const viewNames = views.map((v) => v.name);
             expect(viewNames).not.toContain('v_active_users');
             expect(viewNames).not.toContain('v_todo_lists_with_counts');
@@ -242,7 +242,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.functions).toContain('fn_GetActiveUsers');
 
             // Verify all functions are gone
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
             expect(functions).toHaveLength(0);
 
         });
@@ -263,7 +263,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.types).toContain('TodoItemBatch');
 
             // Verify all types are gone
-            const types = await fetchList(db, 'mssql', 'types');
+            const types = await fetchList(db, 'mssql', 'types', { gate: GATED_BY_CALLER });
             const typeNames = types.map((t) => t.name);
             expect(typeNames).not.toContain('EmailAddress');
             expect(typeNames).not.toContain('Username');
@@ -285,7 +285,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.views).toHaveLength(0);
 
             // Views should still exist
-            const views = await fetchList(db, 'mssql', 'views');
+            const views = await fetchList(db, 'mssql', 'views', { gate: GATED_BY_CALLER });
             expect(views.length).toBe(3);
 
         });
@@ -300,7 +300,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.functions).toHaveLength(0);
 
             // Functions should still exist (4 scalar + 4 TVFs)
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
             expect(functions.length).toBe(8);
 
             // MSSQL: types are also kept — functions → TVPs → scalar types
@@ -319,7 +319,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.types).toHaveLength(0);
 
             // Types should still exist (5 scalar + 2 TVPs)
-            const types = await fetchList(db, 'mssql', 'types');
+            const types = await fetchList(db, 'mssql', 'types', { gate: GATED_BY_CALLER });
             expect(types.length).toBe(7);
 
         });
@@ -335,7 +335,7 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.tables).not.toContain('users');
 
             // Verify users table still exists
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
             const tableNames = tables.map((t) => t.name);
             expect(tableNames).toContain('users');
 
@@ -391,11 +391,11 @@ describe('integration: mssql teardown', () => {
 
         it('should NOT modify database', async () => {
 
-            const overviewBefore = await fetchOverview(db, 'mssql');
+            const overviewBefore = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             await previewTeardown(db, 'mssql');
 
-            const overviewAfter = await fetchOverview(db, 'mssql');
+            const overviewAfter = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             // Nothing should have changed
             expect(overviewAfter.tables).toBe(overviewBefore.tables);
@@ -552,9 +552,9 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.functions).toContain('fn_MemoryScore');
 
             // Both objects should be gone.
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
             expect(tables.map((t) => t.name)).not.toContain('Memory');
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
             expect(functions.map((f) => f.name)).not.toContain('fn_MemoryScore');
 
         });
@@ -595,9 +595,9 @@ describe('integration: mssql teardown', () => {
             expect(result.dropped.functions).toContain('IsPositive_fn');
 
             // Both objects should be gone.
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
             expect(tables.map((t) => t.name)).not.toContain('Thing');
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
             expect(functions.map((f) => f.name)).not.toContain('IsPositive_fn');
 
         });

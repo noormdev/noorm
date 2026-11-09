@@ -18,7 +18,7 @@ import {
     teardownSchema,
     previewTeardown,
 } from '../../../src/core/teardown/index.js';
-import { fetchList, fetchOverview } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchList, fetchOverview } from '../../../src/core/explore/index.js';
 
 
 describe('integration: sqlite teardown', () => {
@@ -189,7 +189,7 @@ describe('integration: sqlite teardown', () => {
             expect(result.dropped.views).toContain('v_active_todo_items');
 
             // Verify objects are gone
-            const overview = await fetchOverview(db, 'sqlite');
+            const overview = await fetchOverview(db, 'sqlite', { gate: GATED_BY_CALLER });
             expect(overview.tables).toBe(0);
             expect(overview.views).toBe(0);
 
@@ -220,7 +220,7 @@ describe('integration: sqlite teardown', () => {
             expect(result.dropped.tables).toContain('todo_items');
 
             // Users table should still exist
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
             const tableNames = tables.map((t) => t.name);
             expect(tableNames).toContain('users');
 
@@ -250,10 +250,10 @@ describe('integration: sqlite teardown', () => {
             expect(result.dropped.tables.length).toBeGreaterThan(0);
 
             // Objects should still exist
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
             expect(tables).toHaveLength(3);
 
-            const views = await fetchList(db, 'sqlite', 'views');
+            const views = await fetchList(db, 'sqlite', 'views', { gate: GATED_BY_CALLER });
             expect(views).toHaveLength(3);
 
         });
@@ -305,7 +305,7 @@ describe('integration: sqlite teardown', () => {
             expect(preview.statements.length).toBeGreaterThan(0);
 
             // Objects should still exist after preview
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
             expect(tables).toHaveLength(3);
 
         });

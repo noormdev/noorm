@@ -11,6 +11,7 @@ import {
     loadIdentityMetadata,
 } from '../../../src/core/identity/storage.js';
 import type { CryptoIdentity } from '../../../src/core/identity/types.js';
+import { loadExistingIdentity } from '../../../src/core/identity/factory.js';
 
 describe('core: identity in-memory overrides', () => {
 
@@ -94,6 +95,23 @@ describe('core: identity in-memory overrides', () => {
         const meta = await loadIdentityMetadata();
 
         expect(meta).toEqual(ident);
+
+    });
+
+    it('keeps an explicit identity public key instead of substituting the local disk key', async () => {
+
+        const identity: CryptoIdentity = {
+            identityHash: 'e'.repeat(64),
+            name: 'CI identity',
+            email: 'ci@example.com',
+            publicKey: 'f'.repeat(72),
+            machine: 'ci',
+            os: 'env',
+            createdAt: new Date().toISOString(),
+        };
+        setIdentityOverride(identity);
+
+        expect(await loadExistingIdentity()).toEqual(identity);
 
     });
 

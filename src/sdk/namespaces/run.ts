@@ -31,7 +31,6 @@ import {
     discoverFiles as coreDiscoverFiles,
 } from '../../core/runner/index.js';
 import { getEffectiveBuildPaths } from '../../core/settings/rules.js';
-import { getStateManager } from '../../core/state/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
@@ -39,6 +38,9 @@ import type { ContextState } from '../state.js';
 import { requireConnection } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
+
+/** Internal read-only context for preparing an MCP approval; never grants execution. */
+export const prepareRunContext = Symbol('prepareRunContext');
 
 // ─────────────────────────────────────────────────────────────
 // RunNamespace
@@ -51,6 +53,12 @@ export class RunNamespace {
     constructor(state: ContextState) {
 
         this.#state = state;
+
+    }
+
+    async [prepareRunContext](): Promise<RunContext> {
+
+        return this.#createRunContext();
 
     }
 
@@ -263,7 +271,7 @@ export class RunNamespace {
 
     async #createRunContext(): Promise<RunContext> {
 
-        const state = getStateManager(this.#state.projectRoot);
+        const state = this.#state.stateManager;
         const db = this.#kysely as unknown as Kysely<NoormDatabase>;
         const dialect = this.#state.config.connection.dialect;
         const vaultKey = await resolveVaultKey(db, dialect);

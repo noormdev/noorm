@@ -18,16 +18,21 @@ import { Kysely, SqliteDialect } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 import { getLockManager, resetLockManager } from '../../../src/core/lock/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 import type { Config } from '../../../src/core/config/types.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { LockNamespace } from '../../../src/sdk/namespaces/lock.js';
 import { ProtectedConfigError } from '../../../src/sdk/guards.js';
 import type { ContextState } from '../../../src/sdk/state.js';
+import { getStateManager } from '../../../src/core/state/index.js';
 
 const VIEWER: ConfigAccess = { user: 'viewer', agent: false };
 const OPERATOR: ConfigAccess = { user: 'operator', agent: 'viewer' };
 const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(VIEWER, {});
+attachPolicyContext(OPERATOR, {});
+attachPolicyContext(ADMIN, {});
 
 const CONFIG_NAME = 'dev';
 
@@ -60,6 +65,7 @@ describe('lock: force authorization', () => {
             identity: { name: 'tester', source: 'system' },
             options,
             projectRoot: '/tmp',
+            stateManager: getStateManager('/tmp'),
             changeManager: null,
         };
 

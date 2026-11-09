@@ -3,7 +3,7 @@
  *
  * Confirms deletion before removing.
  */
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
@@ -15,9 +15,10 @@ import type { NoormDatabase } from '../../../core/shared/index.js';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, useToast } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../../core/vault/index.js';
 
 
@@ -30,7 +31,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('VaultRemove');
-    const { activeConfigName, identity } = useAppContext();
+    const { activeConfig, activeConfigName, identity } = useAppContext();
     const { showToast } = useToast();
 
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection();
@@ -38,6 +39,40 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
     const setPhase = setBasePhase as (p: Phase) => void;
 
     const secretKey = params.name;
+    const [pendingPolicy, setPendingPolicy] = useState<'vault:read' | 'vault:write' | null>(null);
+    const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
+
+    const beginDelete = (readConfirmed = false, writeConfirmed = false) => {
+
+        if (!activeConfig) {
+
+            setError('No active configuration');
+
+            return;
+
+        }
+        for (const permission of ['vault:read', 'vault:write'] as const) {
+
+            const check = checkConfigPolicy('user', activeConfig, permission);
+            if (!check.allowed) {
+
+                setError(check.blockedReason ?? `${permission} is not allowed`);
+
+                return;
+
+            }
+            if (check.requiresConfirmation && !(permission === 'vault:read' ? readConfirmed : writeConfirmed)) {
+
+                setPendingPolicy(permission);
+
+                return;
+
+            }
+
+        }
+        void handleDelete();
+
+    };
 
     // Handle deletion
     const handleDelete = useCallback(async () => {
@@ -139,7 +174,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused || phase !== 'ready') return;
+        if (!isFocused || phase !== 'ready' || pendingPolicy) return;
 
         if (key.escape || input === 'n' || input === 'N') {
 
@@ -151,7 +186,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
 
         if (key.return || input === 'y' || input === 'Y') {
 
-            handleDelete();
+            beginDelete();
 
         }
 
@@ -230,6 +265,29 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (pendingPolicy && policyCheck) {
+
+        return (
+            <SmartConfirm
+                focusLabel="VaultRemovePolicyConfirm"
+                requiresConfirmation
+                confirmationPhrase={policyCheck.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action={pendingPolicy === 'vault:read' ? 'read vault for' : 'write vault for'}
+                message={pendingPolicy === 'vault:read' ? 'Read vault key?' : `Delete vault secret "${secretKey}"?`}
+                onConfirm={() => {
+
+                    const permission = pendingPolicy;
+                    setPendingPolicy(null);
+                    beginDelete(true, permission === 'vault:write');
+
+                }}
+                onCancel={() => setPendingPolicy(null)}
+            />
+        );
+
+    }
+
 
     // Ready - show confirmation
     return (

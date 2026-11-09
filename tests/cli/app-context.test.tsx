@@ -3,10 +3,13 @@
  *
  * Tests the AppContextProvider, hooks, and guard components.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
+import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll, type Mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { Text } from 'ink';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
     AppContextProvider,
@@ -21,7 +24,17 @@ import {
     ConfigGuard,
     IdentityGuard,
 } from '../../src/tui/app-context.js';
-import { observer } from '../../src/core/index.js';
+import { FocusProvider } from '../../src/tui/focus.js';
+import { RouterProvider } from '../../src/tui/router.js';
+import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
+import { ShutdownProvider } from '../../src/tui/shutdown.js';
+import { ConnectionProvider } from '../../src/tui/providers/ConnectionProvider.js';
+import { HomeScreen } from '../../src/tui/screens/home.js';
+import { observer, getStateManager } from '../../src/core/index.js';
+import { StateManager } from '../../src/core/state/index.js';
+import { encrypt, decrypt } from '../../src/core/state/encryption/index.js';
+import { generateKeyPair } from '../../src/core/identity/crypto.js';
+import type { EncryptedPayload } from '../../src/core/state/types.js';
 
 // Pre-import actual modules for restoration
 const actualCore = await import('../../src/core/index.js');
@@ -172,6 +185,69 @@ function SettingsDisplay() {
 
 }
 
+async function waitFor(predicate: () => boolean, timeoutMs = 4000) {
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (!predicate() && Date.now() < deadline) {
+
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+    }
+
+}
+
+/** Real state on disk with `bad` stored as `{ user }` only (no `agent`), the shape the access parser rejects. */
+async function seedMalformed(root: string, active: string | null, names = ['prod', 'dev'], bad = 'prod') {
+
+    const { privateKey } = generateKeyPair();
+    const seed = new StateManager(root, { privateKey });
+
+    await seed.load();
+
+    for (const name of names) {
+
+        await seed.setConfig(name, {
+            name,
+            type: 'local',
+            isTest: true,
+            access: { user: 'admin', agent: 'admin' },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+
+    }
+
+    if (active) await seed.setActiveConfig(active);
+
+    const path = seed.getStatePath();
+    const stored = JSON.parse(decrypt(JSON.parse(readFileSync(path, 'utf8')) as EncryptedPayload, privateKey));
+
+    stored.configs[bad].access = { user: 'admin' };
+    writeFileSync(path, JSON.stringify(encrypt(JSON.stringify(stored), privateKey)));
+
+    return new StateManager(root, { privateKey });
+
+}
+
+function HomeInApp({ projectRoot }: { projectRoot: string }) {
+
+    return (
+        <FocusProvider>
+            <RouterProvider>
+                <ShutdownProvider projectRoot={projectRoot}>
+                    <AppContextProvider projectRoot={projectRoot}>
+                        <ConnectionProvider>
+                            <HomeScreen params={{}} />
+                            <ActiveConfigDisplay />
+                        </ConnectionProvider>
+                    </AppContextProvider>
+                </ShutdownProvider>
+            </RouterProvider>
+        </FocusProvider>
+    );
+
+}
+
 describe('cli: app-context', () => {
 
     beforeEach(() => {
@@ -181,9 +257,10 @@ describe('cli: app-context', () => {
 
     });
 
-    afterEach(() => {
+    afterEach(async () => {
 
         observer.clear();
+        await resetLifecycleManager();
 
     });
 
@@ -196,6 +273,182 @@ describe('cli: app-context', () => {
     afterAll(() => {
 
         observer.clear();
+
+    });
+
+    describe('settings stage sync', () => {
+
+        it('should leave a config with malformed access untouched when a stage has its name', async () => {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-stage-sync-'));
+
+            try {
+
+                mkdirSync(join(root, '.noorm'), { recursive: true });
+                writeFileSync(
+                    join(root, '.noorm', 'settings.yml'),
+                    'stages:\n    staging:\n        defaults:\n            dialect: sqlite\n            database: stage.db\n',
+                );
+
+                const sm = await seedMalformed(root, null, ['staging'], 'staging');
+                const before = readFileSync(sm.getStatePath(), 'utf8');
+
+                (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(sm);
+
+                const { lastFrame, unmount } = render(
+                    <AppContextProvider projectRoot={root}>
+                        <LoadingStatusDisplay />
+                    </AppContextProvider>,
+                );
+
+                await waitFor(() => Boolean(lastFrame()?.includes('loading:ready')));
+
+                expect(lastFrame()).toContain('loading:ready');
+                unmount();
+
+                expect(readFileSync(sm.getStatePath(), 'utf8')).toBe(before);
+
+            }
+            finally {
+
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+    });
+
+    describe('malformed access on the active config', () => {
+
+        it('should end in error when reading the active config fails for a non-access reason', async () => {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-read-fail-'));
+
+            try {
+
+                const sm = await seedMalformed(root, 'dev');
+
+                sm.getConfig = () => {
+
+                    throw new Error('disk exploded');
+
+                };
+
+                (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(sm);
+
+                const { lastFrame, unmount } = render(
+                    <AppContextProvider projectRoot={root}>
+                        <LoadingStatusDisplay />
+                    </AppContextProvider>,
+                );
+
+                await waitFor(() => Boolean(lastFrame()?.includes('loading:error')));
+
+                expect(lastFrame()).toContain('loading:error');
+                expect(lastFrame()).toContain('error:disk exploded');
+                unmount();
+
+            }
+            finally {
+
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should keep the app ready and show the repair-access warning on Home', async () => {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-bad-active-'));
+
+            try {
+
+                (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(await seedMalformed(root, 'prod'));
+
+                const { lastFrame, unmount } = render(<HomeInApp projectRoot={root} />);
+
+                await waitFor(() => /none is active/.test(lastFrame() ?? ''));
+
+                expect(lastFrame()).toContain('none is active');
+                expect(lastFrame()).toContain('Config "prod"');
+                expect(lastFrame()).toContain('noorm config repair-access "prod"');
+                expect(lastFrame()).toContain('name:null| hasConfig:false| count:1');
+                unmount();
+
+            }
+            finally {
+
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should not name the previous config when config:activated targets a malformed one', async () => {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-bad-activate-'));
+
+            try {
+
+                (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(await seedMalformed(root, 'dev'));
+
+                const { lastFrame, frames, unmount } = render(<HomeInApp projectRoot={root} />);
+
+                // Lands on the handler registered before the manager loads, which must not name the target.
+                observer.emit('config:activated', { name: 'prod' });
+
+                await waitFor(() => /name:dev/.test(lastFrame() ?? ''));
+                expect(lastFrame()).toContain('name:dev| hasConfig:true');
+
+                // Early emits can hit a handler from before the manager was set; re-emit until one lands.
+                await waitFor(() => {
+
+                    observer.emit('config:activated', { name: 'prod' });
+
+                    return /repair-access/.test(lastFrame() ?? '');
+
+                });
+
+                expect(lastFrame()).toContain('noorm config repair-access "prod"');
+                expect(lastFrame()).toContain('name:null| hasConfig:false');
+                expect(frames.some((f) => f.includes('name:prod'))).toBe(false);
+                unmount();
+
+            }
+            finally {
+
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
+
+        it('should show the warning when the malformed config is the only one', async () => {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-bad-only-'));
+
+            try {
+
+                (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(await seedMalformed(root, 'prod', ['prod']));
+
+                const { lastFrame, unmount } = render(<HomeInApp projectRoot={root} />);
+
+                await waitFor(() => /repair-access/.test(lastFrame() ?? ''));
+
+                expect(lastFrame()).toContain('noorm config repair-access "prod"');
+                expect(lastFrame()).not.toContain('No database configurations found');
+                expect(lastFrame()).toContain('name:null| hasConfig:false| count:0');
+                unmount();
+
+            }
+            finally {
+
+                rmSync(root, { recursive: true, force: true });
+
+            }
+
+        });
 
     });
 

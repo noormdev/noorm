@@ -4,9 +4,11 @@
  * Provides StateManager class and singleton helpers.
  */
 import { StateManager } from './manager.js';
+import { resolve } from 'node:path';
 
 export { StateManager };
-export { InvalidSecretKeyError, isValidSecretKey } from './manager.js';
+export { listVisibleConfigs } from './visible-configs.js';
+export { ConfigAccessInvalidError, InvalidSecretKeyError, isValidSecretKey } from './manager.js';
 export type { StateManagerOptions } from './manager.js';
 export * from './types.js';
 export { migrateState, needsMigration } from './migrations.js';
@@ -14,9 +16,10 @@ export { BACKUP_SUFFIX, LOCK_SUFFIX, StateLockTimeoutError } from './persistence
 export { getPackageVersion } from './version.js';
 
 let instance: StateManager | null = null;
+const instances = new Map<string, StateManager>();
 
 /**
- * Get or create the StateManager singleton.
+ * Get the active StateManager, or select the manager for an explicit project root.
  *
  * @example
  * ```typescript
@@ -26,10 +29,11 @@ let instance: StateManager | null = null;
  */
 export function getStateManager(projectRoot?: string): StateManager {
 
-    if (!instance) {
+    if (projectRoot !== undefined || !instance) {
 
-        const root = projectRoot ?? process.cwd();
-        instance = new StateManager(root);
+        const root = resolve(projectRoot ?? process.cwd());
+        instance = instances.get(root) ?? new StateManager(root);
+        instances.set(root, instance);
 
     }
 
@@ -68,5 +72,6 @@ export async function initState(projectRoot?: string): Promise<StateManager> {
 export function resetStateManager(): void {
 
     instance = null;
+    instances.clear();
 
 }

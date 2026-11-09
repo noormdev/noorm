@@ -21,7 +21,7 @@ paths:
   - "tests/integration/transfer/**"
 ---
 
-Domain: core-db. Database lifecycle, connections and session helpers, exploration, teardown, and transfer.
+Domain: core-db. Database lifecycle, connections, exploration, teardown, and transfer.
 
 Map:
   - docs/wiki/core-db.md

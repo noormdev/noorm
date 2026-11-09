@@ -110,6 +110,7 @@ createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
 | `channel` | `'user' \| 'agent'` | `'user'` | Which half of the config's `access` applies; see [Access policy](#access-policy) |
 | `stage` | `string` | the stage named like the config | Defaults below stored, environment, and inline values, plus a protected stage's access ceiling |
 | `yes` | `boolean` | `false` | Pre-confirms `confirm` cells on the `user` channel. Ignored on `agent` |
+| `freshState` | `boolean` | `false` | Load independent state and settings snapshots from disk for this context |
 
 The context is not connected when it returns. Connection fields merge in order: built-in defaults, stage, stored config, environment, then `connection`.
 
@@ -129,7 +130,7 @@ The later layer wins. With no selected stored config and no `NOORM_NAME`, inline
 
 Synthetic config names appear in errors and event payloads. With no state file, an inline or environment-only context needs no `.noorm/` directory. [Deploying an application](/guide/deployment) covers packaging and pool sizing for that setup.
 
-Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap access after the merge. Nothing in `connection` is saved.
+Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap effective permission cells at policy-check time without changing assigned roles. Nothing in `connection` is saved.
 
 For example, open a MySQL database without creating stored state:
 
@@ -616,7 +617,9 @@ With positional parameters the variable is `@__tvp_<index>`.
 ## Access policy
 
 
-Each config grants a role to two channels: `access: { user, agent }`, with roles `viewer`, `operator`, and `admin`, or `agent: false` to hide the config from agents entirely. The default is `{ user: 'admin', agent: 'viewer' }`. A stage with `protected: true` caps its configs at `operator` for the user and `viewer` for agents. [Access roles](/guide/environments/configs#access-roles) covers setting them.
+Each config grants a role to two channels: `access: { user, agent }`. Roles include built-in `viewer`, `operator`, and `admin` and project-defined names; `agent: false` hides the config from agents. The default is `{ user: 'admin', agent: 'viewer' }`. A protected stage caps each effective user cell at the original operator matrix and each agent cell at the original viewer matrix, without changing the assigned role. [Access roles](/guide/environments/configs#access-roles) covers setting them.
+
+Malformed stored access is preserved and rejected rather than replaced with a fallback role. A human can repair it, or an unresolved role assignment, without deleting the config or its secrets using `noorm config repair-access <name> --user <role> --agent <role|false> --yes`. Agents cannot use this recovery path; a valid user role must still permit `config:write` when only the agent role is unresolved.
 
 `createContext({ channel })` picks which half applies. Each permission resolves to `allow`, `deny`, or `confirm`, and the SDK has no prompt to answer a `confirm`:
 
@@ -628,9 +631,13 @@ Each config grants a role to two channels: `access: { user, agent }`, with roles
 
 A gated method checks before it does any work and throws `ProtectedConfigError` (`configName`, `operation`). Raw `ctx.kysely` queries, `proc`, `func`, `tvf`, `impersonate`, and `transaction` are not gated. These are the permissions that SDK methods check; the Gate column of each namespace table names the one each method uses:
 
+Guarded methods require the resolved config's non-enumerable policy context. Spreading or serializing a config loses it, and a detached config is denied. Vault operations require `vault:read` when they unseal an existing vault key, including identity enrollment; fresh vault initialization can use write-only access. Writing a secret does not require `secret:read`.
+
 | Permission | `viewer` | `operator` | `admin` |
 |---|---|---|---|
 | `run:build`, `run:file`, `run:dir` | deny | confirm | allow |
+| `pipeline:run` | deny | confirm | allow |
+
 | `change:run`, `change:ff`, `change:revert` | deny | confirm | allow |
 | `change:rm` | deny | confirm | confirm |
 | `db:reset` | deny | confirm | allow |
@@ -643,12 +650,15 @@ A gated method checks before it does any work and throws `ProtectedConfigError` 
 | `vault:write` | deny | confirm | allow |
 | `vault:propagate` | deny | confirm | confirm |
 | `transfer:plan` | deny | allow | allow |
+| `explore` | allow | allow | allow |
 
-Three exceptions to the plain rule:
+Five exceptions to the plain rule:
 
-- `db.truncate` and `db.teardown` with `dryRun: true` check for denial but skip confirmation, so a role that may run the operation can always look first. A role that may not run it cannot preview it either.
+- `explore` is checked on the `agent` channel only; the `user` channel always passes.
+- On a config with `isTest: true`, the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` cells read `allow` for every role and channel, protected stage included, so an `agent` context can call `db.teardown()` without confirmation. `db.reset()` still checks `run:build` first, before it drops anything. Transfer and vault destinations and `dt.importFile` follow the same rule. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+- `db.truncate` and `db.teardown` with `dryRun: true` check for denial but skip confirmation, so a role that may run the operation can always look first. A role that may not run it cannot preview it either. `db.previewTeardown()` follows the same rule for `db:teardown`.
 - Denials raised below the SDK seam throw a plain `Error` with the same message, not `ProtectedConfigError`. That covers `run.preview`, `transfer.plan`, and `vault.copy`. Match on the message there.
-- `transfer.to` and `transfer.plan` check the destination config, not the source, because the destination is the write target. `vault.copy` checks `vault:read` on the source and `vault:write` on the destination.
+- `transfer.to` and `transfer.plan` check the destination config, not the source, because the destination is the write target. `vault.copy` checks `vault:read` on the source and `vault:write` on the destination, and requires destination `vault:read` when unsealing an existing destination key.
 
 
 ## ctx.noorm namespaces
@@ -671,7 +681,7 @@ Three exceptions to the plain rule:
 
 ### ctx.noorm.pipelines
 
-The context must be connected. Run and dry run both enforce `run:dir`; the SDK does not prompt.
+The context must be connected. Run and dry run both enforce `pipeline:run`; the SDK does not prompt. `history()` and `getRun()` read the run record the way change history does, so on the agent channel they require `explore`.
 
 | Method | Returns | Notes |
 |---|---|---|
@@ -710,7 +720,7 @@ Results distinguish execution status from transaction outcome and retain primary
 | Error | When |
 |---|---|
 | `PipelineBusyError` | A `singleRun` pipeline already has an active run for this config. Exported; thrown by `run` before history is created |
-| `ProtectedConfigError` | The config's access policy denies or needs confirmation for `run:dir` |
+| `ProtectedConfigError` | The config's access policy denies or needs confirmation for the operation's permission, such as `run:dir` or `pipeline:run` |
 | `VersionMismatchError` | The database schema is newer than this client |
 | other `Error` | An unknown slug, an invalid definition, or invalid input rejects before admission. The class, `name` and properties of these errors are not part of the API. The `message` is human-readable and may include the slug, input names or step IDs, never input values; do not parse it. Call with `dryRun: true` to validate a definition and input before a real run. A failed run does not throw; it resolves with `status` and `primaryError` |
 
@@ -809,9 +819,9 @@ A build over zero files still succeeds, so `unmatchedInclude` is how a mistyped 
 | `rewind(target, options?)` | `Promise<BatchChangeResult>` | `change:revert` | Reverts newest first. `target` is a change name (reverts it and everything after) or a number of changes |
 | `status()` | `Promise<ChangeListItem[]>` | none | Every change, merged from disk and database, sorted by name |
 | `pending()` | `Promise<ChangeListItem[]>` | none | The items a forward run would pick up |
-| `history(limit?)` | `Promise<ChangeHistoryRecord[]>` | none | Execution records |
-| `historyForChange(name, limit?)` | `Promise<ChangeHistoryRecord[]>` | none | One change's records, newest first |
-| `getFileHistory(operationId)` | `Promise<FileHistoryRecord[]>` | none | Per-file records behind one history `id` |
+| `history(limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | Execution records |
+| `historyForChange(name, limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | One change's records, newest first |
+| `getFileHistory(operationId)` | `Promise<FileHistoryRecord[]>` | `explore` | Per-file records behind one history `id` |
 
 `apply` and `revert` take the config's lock for the length of each change, with reason `Change: <name>` or `Revert: <name>`. A lock held by another identity throws `LockAcquireError`, and an empty change throws `ChangeValidationError`, out of `ff`, `next`, and `rewind` as well. Per-file failures come back on the result as `status: 'failed'` or `'partial'`.
 
@@ -887,7 +897,7 @@ An unparseable folder, such as a manifest that names a `db/sql/` file that no lo
 ### ctx.noorm.db
 
 
-Every `db` method needs a connection. The explore methods are not gated.
+Every `db` method needs a connection. The explore methods and `previewTeardown()` are gated as described in [Access policy](#access-policy).
 
 | Method | Returns |
 |---|---|
@@ -1018,14 +1028,14 @@ The vault holds team secrets in the database, encrypted with identity keypairs. 
 |---|---|---|---|
 | `init()` | `Promise<Buffer \| null>` | `vault:write` | The vault key on first init, `null` when already initialized. Safe to call at startup |
 | `status()` | `Promise<VaultStatus>` | none | `isInitialized`, `hasAccess`, `secretCount`, `usersWithAccess`, `usersWithoutAccess` |
-| `set(key, value, privateKey)` | `Promise<void>` | `vault:write` | Throws `VaultAccessError` when the key yields no vault key. The two causes, never propagated and wrong key, are indistinguishable by design |
+| `set(key, value, privateKey)` | `Promise<void>` | `vault:write`, plus `vault:read` to unseal the key | Throws `VaultAccessError` when the key yields no vault key |
 | `get(key, privateKey)` | `Promise<string \| null>` | `vault:read` | `null` when absent or without access |
 | `getAll(privateKey)` | `Promise<Record<string, VaultSecret>>` | `vault:read` | `{}` without access |
 | `list()` | `Promise<string[]>` | `vault:read` | Key names; no private key needed |
 | `exists(key)` | `Promise<boolean>` | `vault:read` | Does not decrypt |
 | `delete(key)` | `Promise<boolean>` | `vault:write` | |
-| `propagate(privateKey)` | `Promise<VaultPropagationResult>` | `vault:propagate` | Grants the vault key to identities without it. Run it after adding a teammate |
-| `copy(destConfig, keys, privateKey, options?)` | `Promise<VaultCopyResult>` | `vault:read` source, `vault:write` destination | `keys` is a list or `'all'`. Initializes the destination vault when needed |
+| `propagate(privateKey)` | `Promise<VaultPropagationResult>` | `vault:propagate`, plus `vault:read` to unseal the key | Grants the vault key to identities without it. Run it after adding a teammate |
+| `copy(destConfig, keys, privateKey, options?)` | `Promise<VaultCopyResult>` | `vault:read` source, `vault:write` destination, plus `vault:read` when unsealing an existing destination key | `keys` is a list or `'all'`. Initializes the destination vault when needed |
 
 `vault:initialized` fires on first init only. Neither read throws on missing access: `get` returns `null` and `getAll` returns `{}`.
 

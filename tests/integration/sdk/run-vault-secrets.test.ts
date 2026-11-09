@@ -201,6 +201,7 @@ describe('sdk: render path connects the vault tier (CP6, postgres)', () => {
             identity: { name: 'tester', source: 'system' },
             options: {},
             projectRoot,
+            stateManager: getStateManager(projectRoot),
             changeManager: null,
         };
 

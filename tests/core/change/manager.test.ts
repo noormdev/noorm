@@ -6,6 +6,7 @@
  * pattern. Covers revert, rewind, next, and remove — the highest-risk
  * batch/mutation surface per QL-test-04's "at minimum" framing.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 import { existsSync } from 'node:fs';
@@ -23,6 +24,9 @@ import { resetLockManager } from '../../../src/core/lock/index.js';
 import { ChangeNotAppliedError } from '../../../src/core/change/types.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { ChangeContext } from '../../../src/core/change/types.js';
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(adminAccess, {});
 
 describe('change: manager', () => {
 
@@ -76,7 +80,7 @@ describe('change: manager', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', agent: 'admin' },
+            access: adminAccess,
             channel: 'user',
             dialect: 'sqlite',
             ...extra,

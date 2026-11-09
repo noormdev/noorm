@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 
-import { fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
 import { observer } from '../../../src/core/observer.js';
 import { createRecordingDb } from './recording-db.js';
 
@@ -42,7 +42,7 @@ describe('explore: fetchOverview', () => {
             { match: /information_schema\.tables/, error: new Error('connection lost') },
         ]);
 
-        const [, err] = await attempt(() => fetchOverview(db.kysely, 'postgres'));
+        const [, err] = await attempt(() => fetchOverview(db.kysely, 'postgres', { gate: GATED_BY_CALLER }));
 
         expect(err).toBeInstanceOf(Error);
         expect(errors).toHaveLength(1);
@@ -57,7 +57,7 @@ describe('explore: fetchOverview', () => {
         ]);
 
         const [, err] = await attempt(() =>
-            fetchOverview(db.kysely, 'postgres', { includeNoormTables: true }),
+            fetchOverview(db.kysely, 'postgres', { gate: GATED_BY_CALLER, includeNoormTables: true }),
         );
 
         expect(err).toBeInstanceOf(Error);
@@ -100,7 +100,7 @@ describe('explore: fetchOverview', () => {
             },
         ]);
 
-        const overview = await fetchOverview(db.kysely, 'postgres', { includeNoormTables: true });
+        const overview = await fetchOverview(db.kysely, 'postgres', { gate: GATED_BY_CALLER, includeNoormTables: true });
 
         expect(overview.triggers).toBe(1);
         expect(overview.locks).toBe(1);
@@ -123,14 +123,11 @@ describe('explore: fetchOverview', () => {
 
         const withoutNoorm = await fetchOverview(
             createRecordingDb('postgres', rules()).kysely,
-            'postgres',
-        );
+            'postgres', { gate: GATED_BY_CALLER });
 
         const withNoorm = await fetchOverview(
             createRecordingDb('postgres', rules()).kysely,
-            'postgres',
-            { includeNoormTables: true },
-        );
+            'postgres', { gate: GATED_BY_CALLER, includeNoormTables: true });
 
         expect(withNoorm).toEqual(withoutNoorm);
 
@@ -149,12 +146,10 @@ describe('explore: fetchOverview', () => {
             { match: /information_schema\.triggers/, rows: [] },
         ];
 
-        const hidden = await fetchOverview(createRecordingDb('postgres', rules()).kysely, 'postgres');
+        const hidden = await fetchOverview(createRecordingDb('postgres', rules()).kysely, 'postgres', { gate: GATED_BY_CALLER });
         const shown = await fetchOverview(
             createRecordingDb('postgres', rules()).kysely,
-            'postgres',
-            { includeNoormTables: true },
-        );
+            'postgres', { gate: GATED_BY_CALLER, includeNoormTables: true });
 
         expect(hidden.tables).toBe(1);
         expect(shown.tables).toBe(2);
@@ -171,7 +166,7 @@ describe('explore: fetchList', () => {
         // floor; the filter has to reach the generated SQL to mean anything.
         const db = createRecordingDb('postgres', [{ match: /information_schema\.views/, rows: [] }]);
 
-        await fetchList(db.kysely, 'postgres', 'views', { schema: 'app' });
+        await fetchList(db.kysely, 'postgres', 'views', { gate: GATED_BY_CALLER, schema: 'app' });
 
         expect(db.find(/information_schema\.views/)?.parameters).toContain('app');
 
@@ -182,7 +177,7 @@ describe('explore: fetchList', () => {
         const db = createRecordingDb('sqlite');
 
         const [, err] = await attempt(() =>
-            fetchList(db.kysely, 'sqlite', 'tables', { schema: 'app' }),
+            fetchList(db.kysely, 'sqlite', 'tables', { gate: GATED_BY_CALLER, schema: 'app' }),
         );
 
         expect(err).toBeInstanceOf(Error);
@@ -197,7 +192,7 @@ describe('explore: fetchList', () => {
             { match: /information_schema\.tables/, error: new Error('boom') },
         ]);
 
-        const [, err] = await attempt(() => fetchList(db.kysely, 'postgres', 'tables'));
+        const [, err] = await attempt(() => fetchList(db.kysely, 'postgres', 'tables', { gate: GATED_BY_CALLER }));
 
         expect(err?.message).toBe('boom');
         expect(errors).toHaveLength(1);
@@ -216,7 +211,7 @@ describe('explore: fetchList', () => {
             },
         ]);
 
-        const indexes = await fetchList(db.kysely, 'postgres', 'indexes');
+        const indexes = await fetchList(db.kysely, 'postgres', 'indexes', { gate: GATED_BY_CALLER });
 
         expect(indexes.map((i) => i.tableName)).toEqual(['users']);
 
@@ -233,7 +228,7 @@ describe('explore: fetchDetail', () => {
         ]);
 
         const [, err] = await attempt(() =>
-            fetchDetail(db.kysely, 'postgres', 'tables', 'users', 'public'),
+            fetchDetail(db.kysely, 'postgres', 'tables', 'users', { schema: 'public', gate: GATED_BY_CALLER }),
         );
 
         expect(err?.message).toBe('nope');
@@ -245,7 +240,7 @@ describe('explore: fetchDetail', () => {
 
         const db = createRecordingDb('postgres');
 
-        const detail = await fetchDetail(db.kysely, 'postgres', 'tables', 'ghost', 'public');
+        const detail = await fetchDetail(db.kysely, 'postgres', 'tables', 'ghost', { schema: 'public', gate: GATED_BY_CALLER });
 
         expect(detail).toBeNull();
         expect(errors).toHaveLength(0);

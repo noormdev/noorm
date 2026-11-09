@@ -56,7 +56,7 @@ describe('cli: stage config creation and sync', () => {
                     password: 'stage-password',
                     type: 'remote',
                     isTest: true,
-                    protected: true,
+                    access: { user: 'operator', agent: 'viewer' },
                 },
             },
             existing: { defaults: { dialect: 'sqlite', database: 'stage.sqlite', password: 'bulk-password' } },
@@ -171,7 +171,7 @@ describe('cli: stage config creation and sync', () => {
             const result = run('create', ['--all', '--force', '--yes'], { NOORM_CHANNEL: channel });
 
             expect(result.status).toBe(2);
-            expect(result.stdout).toContain('config:write');
+            expect(result.stdout).toContain(channel === 'agent' ? 'only available on the user channel' : 'config:write');
             expect(encryptedState()).toBe(before);
             expect(Object.keys(persistedConfigs())).toEqual(['existing']);
 
@@ -186,7 +186,7 @@ describe('cli: stage config creation and sync', () => {
         const result = run('create', ['--all', '--force', '--yes'], { NOORM_CHANNEL: 'agent' });
 
         expect(result.status).toBe(2);
-        expect(result.stdout).toContain('requires confirmation from a human');
+        expect(result.stdout).toContain('only available on the user channel');
         expect(encryptedState()).toBe(before);
         expect(Object.keys(persistedConfigs())).toEqual(['existing']);
 
@@ -280,7 +280,6 @@ describe('cli: stage config creation and sync', () => {
                     database: 'updated.sqlite',
                     password: 'replacement-must-not-persist',
                     isTest: true,
-                    protected: true,
                     access: { user: 'admin', agent: 'admin' },
                 },
             },
@@ -316,7 +315,7 @@ describe('cli: stage config creation and sync', () => {
         expect(persistedConfigs()['existing']).toEqual({
             ...original,
             isTest: true,
-            access: { user: 'operator', agent: false },
+            access: { user: 'admin', agent: false },
             connection: { ...original.connection, database: 'updated.sqlite' },
         });
 
@@ -339,6 +338,74 @@ describe('cli: stage config creation and sync', () => {
         expect(result.status).toBe(2);
         expect(result.stdout).toContain('config:write');
         expect(encryptedState()).toBe(before);
+
+    });
+
+    it('refuses protected stage aliases without writing', () => {
+
+        writeStages({ source: { defaults: { dialect: 'sqlite', protected: true, access: { user: 'admin', agent: 'admin' } } } });
+        const before = encryptedState();
+        const create = run('create', ['--stage', 'source', '--name', 'alias']);
+        const sync = run('sync', ['--stage', 'source', '--name', 'existing', '--yes']);
+
+        expect(create.status).toBe(2);
+        expect(sync.status).toBe(2);
+        expect(create.stdout).toContain('must use its stage name');
+        expect(sync.stdout).toContain('must use its stage name');
+        expect(encryptedState()).toBe(before);
+
+    });
+
+    it('preserves incomparable custom roles and adopts narrower assignments', async () => {
+
+        writeFileSync(join(root, '.noorm', 'settings.yml'), JSON.stringify({
+            access: { roles: {
+                current: { extends: 'viewer', permissions: { 'config:write': 'allow', 'sql:write': 'allow' } },
+                incomparable: { extends: 'viewer', permissions: { 'sql:ddl': 'allow' } },
+                narrower: { extends: 'viewer', permissions: { 'sql:read': 'deny' } },
+            } },
+            stages: { source: { defaults: {
+                dialect: 'sqlite', access: { user: 'incomparable', agent: 'narrower' },
+            } } },
+        }));
+        await state.setConfig('existing', originalConfig({ access: { user: 'current', agent: 'viewer' } }));
+        const result = run('sync', ['--stage', 'source', '--name', 'existing', '--yes']);
+
+        expect(result.status).toBe(0);
+        expect(persistedConfigs()['existing']!.access).toEqual({ user: 'current', agent: 'narrower' });
+
+    });
+
+    it('keeps protected assignments unchanged and prevents agent materialization', () => {
+
+        writeStages({ prod: { defaults: {
+            dialect: 'sqlite', protected: true, access: { user: 'admin', agent: 'admin' },
+        } } });
+        const denied = run('create', ['--stage', 'prod'], { NOORM_CHANNEL: 'agent' });
+        expect(denied.status).toBe(2);
+        expect(persistedConfigs()['prod']).toBeUndefined();
+
+        const created = run('create', ['--stage', 'prod']);
+        expect(created.status).toBe(0);
+        expect(persistedConfigs()['prod']!.access).toEqual({ user: 'admin', agent: 'admin' });
+
+    });
+
+    it('allows an agent with config:write to sync without expanding either role', async () => {
+
+        writeFileSync(join(root, '.noorm', 'settings.yml'), JSON.stringify({
+            access: { roles: { maintainer: { extends: 'viewer', permissions: { 'config:write': 'allow' } } } },
+            stages: { source: { defaults: {
+                dialect: 'sqlite', database: 'updated.sqlite',
+                access: { user: 'admin', agent: 'admin' },
+            } } },
+        }));
+        await state.setConfig('existing', originalConfig({ access: { user: 'viewer', agent: 'maintainer' } }));
+        const result = run('sync', ['--stage', 'source', '--name', 'existing', '--yes'], { NOORM_CHANNEL: 'agent' });
+
+        expect(result.status).toBe(0);
+        expect(persistedConfigs()['existing']!.access).toEqual({ user: 'viewer', agent: 'maintainer' });
+        expect(persistedConfigs()['existing']!.connection.database).toBe('updated.sqlite');
 
     });
 

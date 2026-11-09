@@ -6,7 +6,7 @@
  *
  * Called automatically when connecting to a database with noorm tables.
  */
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import type { NoormDatabase } from '../shared/index.js';
@@ -94,7 +94,7 @@ export async function registerIdentity(
         const [, updateErr] = await attempt(() =>
             ndb
                 .updateTable(tables.identities as keyof NoormDatabase)
-                .set({ last_seen_at: new Date() })
+                .set({ last_seen_at: sql`CURRENT_TIMESTAMP` })
                 .where('identity_hash', '=', identity.identityHash)
                 .execute(),
         );

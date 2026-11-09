@@ -7,7 +7,6 @@ const registry = createRegistry();
 describe('rpc registry: completeness', () => {
 
     const expectedCommands = [
-        'connect', 'disconnect', 'status',
         'list_configs',
         'overview', 'list', 'detail',
         'sql',
@@ -15,10 +14,10 @@ describe('rpc registry: completeness', () => {
         'run_build', 'run_file',
     ];
 
-    it('should have all 14 commands registered', () => {
+    it('should have all 11 commands registered', () => {
 
         const registered = registry.list().map(c => c.name);
-        expect(registered).toHaveLength(14);
+        expect(registered).toHaveLength(11);
 
         for (const name of expectedCommands) {
 
@@ -45,9 +44,6 @@ describe('rpc registry: completeness', () => {
 describe('rpc registry: schema validation — valid inputs', () => {
 
     const validInputs: Record<string, Record<string, unknown>> = {
-        connect: {},
-        disconnect: {},
-        status: {},
         list_configs: {},
         overview: {},
         list: { category: 'tables' },
@@ -155,14 +151,6 @@ describe('rpc registry: schema validation — invalid inputs', () => {
 
 describe('rpc registry: schema validation — optional fields', () => {
 
-    it('connect should accept config as optional', () => {
-
-        const cmd = registry.get('connect')!;
-        expect(cmd.inputSchema.safeParse({}).success).toBe(true);
-        expect(cmd.inputSchema.safeParse({ config: 'dev' }).success).toBe(true);
-
-    });
-
     it('detail should accept schema as optional', () => {
 
         const cmd = registry.get('detail')!;
@@ -222,8 +210,8 @@ describe('rpc registry: help generation', () => {
 
     it('help should show optional parameters', () => {
 
-        const help = registry.getHelp('connect')!;
-        expect(help).toContain('config');
+        const help = registry.getHelp('detail')!;
+        expect(help).toContain('schema');
         expect(help).toContain('optional');
 
     });

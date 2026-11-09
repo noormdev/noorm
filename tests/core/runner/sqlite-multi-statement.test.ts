@@ -11,6 +11,7 @@
  * execute every statement, and splitting would change the implicit
  * transaction they wrap it in.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,6 +23,9 @@ import { runBuild } from '../../../src/core/runner/runner.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(adminAccess, {});
 
 describe('runner: multi-statement files on sqlite', () => {
 
@@ -36,7 +40,7 @@ describe('runner: multi-statement files on sqlite', () => {
             configName: 'test',
             identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access: adminAccess,
             channel: 'user',
             dialect: 'sqlite',
         };

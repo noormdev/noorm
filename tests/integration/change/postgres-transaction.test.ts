@@ -18,6 +18,7 @@ import { executeChange } from '../../../src/core/change/executor.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { v2 } from '../../../src/core/version/schema/migrations/v2.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
 import { noormDb, getNoormTables } from '../../../src/core/shared/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
@@ -113,6 +114,9 @@ describe('integration: postgres change transaction', () => {
      */
     function buildContext(): ChangeContext {
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         return {
             db,
             configName: 'test',
@@ -120,7 +124,7 @@ describe('integration: postgres change transaction', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'postgres',
         };

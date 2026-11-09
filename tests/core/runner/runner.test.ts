@@ -4,12 +4,20 @@
  * Uses permanent fixture files in ./fixtures/ for testing.
  * Note: Tests requiring database are integration tests.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, afterAll } from 'bun:test';
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
 import { attempt } from '@logosdx/utils';
 import { preview, runBuild, runFile, runDir, runFiles, checkFilesStatus } from '../../../src/core/runner/runner.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+const viewerAccess = { user: 'viewer', agent: false as const };
+const operatorAccess = { user: 'operator', agent: 'operator' };
+attachPolicyContext(adminAccess, {});
+attachPolicyContext(viewerAccess, {});
+attachPolicyContext(operatorAccess, {});
 
 const FIXTURES_DIR = path.join(import.meta.dirname, 'fixtures');
 const TMP_DIR = path.join(process.cwd(), 'tmp/runner-test');
@@ -20,7 +28,7 @@ const mockContext: RunContext = {
     configName: 'test',
     identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
     projectRoot: FIXTURES_DIR,
-    access: { user: 'admin', agent: 'admin' },
+    access: adminAccess,
     channel: 'user',
     config: { table: 'users' },
     secrets: { API_KEY: 'secret123' },
@@ -145,7 +153,7 @@ describe('runner: policy gate', () => {
     // proves it fires before any file I/O or DB access is attempted.
     const viewerContext: RunContext = {
         ...mockContext,
-        access: { user: 'viewer', agent: false },
+        access: viewerAccess,
     };
 
     it('should deny runBuild for a viewer role', async () => {
@@ -222,7 +230,7 @@ describe('runner: policy gate', () => {
         const filepath = path.join(FIXTURES_DIR, 'template.sql.tmpl');
 
         const results = await preview(
-            { ...mockContext, access: { user: 'operator', agent: 'operator' } },
+            { ...mockContext, access: operatorAccess },
             [filepath],
         );
 

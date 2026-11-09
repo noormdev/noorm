@@ -347,7 +347,6 @@ The peek reads both ends of the table, so the last rows by primary key are as re
 
 | Condition | Result |
 |-----------|--------|
-| The role lacks `sql:read` | Refused. Reading rows needs `sql:read`, not the `explore` permission the other explorer screens use |
 | The table has no primary key | Only the first rows appear: `No primary key, so there is no last set — rows are in storage order.` |
 | Both ends meet | One table, headed `All N rows` |
 
@@ -416,7 +415,7 @@ The history list takes `↑` `↓`, `Enter` to view a result, `r` to re-run a qu
 
 ![The settings screen](/image/tui/settings.png)
 
-Seven groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets. `Enter` or a number opens one, and edits write to `.noorm/settings.yml`. `i` creates that file when the project has none. See [SQL file organization](/guide/sql-files/organization) and [Configs](/guide/environments/configs).
+Eight groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets, and Access Roles. `Enter` or a number opens one, and edits write to `.noorm/settings.yml`. `i` creates that file when the project has none. See [SQL file organization](/guide/sql-files/organization) and [Configs](/guide/environments/configs).
 
 
 ### Identity

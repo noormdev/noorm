@@ -12,10 +12,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
  * database access.
  *
  * The MCP server is started by `noorm mcp serve` and speaks JSON-RPC 2.0
- * over stdio. The two tools it exposes are:
- *
- *   - noorm_help       — command catalog + per-command help
- *   - run_noorm_cmd    — executes a specific noorm command
+ * over stdio, exposing individual tools for database operations.
  *
  * If you delete this file the production MCP behaviour is no longer
  * validated end-to-end. Phase 2 of the playbook required a test that
@@ -222,13 +219,17 @@ class MCPClient {
      * Throws if the response is an error frame or if the server closes stdout
      * before answering.
      */
-    async request(method: string, params?: unknown): Promise<JsonRpcSuccess> {
+    async request(method: string, params: Record<string, unknown> = {}): Promise<JsonRpcSuccess> {
 
         const id = this.#nextId++;
-
-        const payload = params === undefined
-            ? { jsonrpc: '2.0', method, id }
-            : { jsonrpc: '2.0', method, params, id };
+        const payload = { jsonrpc: '2.0', method, id, params: {
+            ...params,
+            _meta: {
+                'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+                'io.modelcontextprotocol/clientCapabilities': {},
+                'io.modelcontextprotocol/clientInfo': { name: 'mcp-discovery-test', version: '1' },
+            },
+        } };
 
         const wire = JSON.stringify(payload) + '\n';
 
@@ -325,7 +326,7 @@ function extractText(result: unknown): string {
 }
 
 /**
- * Parses the text payload of a `run_noorm_cmd` result as JSON. The MCP server
+ * Parses the text payload of a tool result as JSON. The MCP server
  * JSON-stringifies command output, so the consumer parses it back.
  */
 function parseRunResult(result: unknown): unknown {
@@ -336,7 +337,7 @@ function parseRunResult(result: unknown): unknown {
 
     if (parseErr) {
 
-        throw new Error(`failed to JSON.parse run_noorm_cmd output: ${parseErr.message}; raw text=${text}`);
+        throw new Error(`failed to JSON.parse tool output: ${parseErr.message}; raw text=${text}`);
     }
 
     return parsed;
@@ -400,9 +401,7 @@ beforeAll(async () => {
     // noorm (typically ~/.local/bin/noorm or /usr/local/bin/noorm).
     const noormBinary = resolveGlobalNoorm();
 
-    // Spawn the MCP server once and reuse it across all `it()` blocks. The
-    // server is stateful (it holds a connection pool keyed by config name)
-    // so we explicitly call connect("dev") in the connect-dependent tests.
+    // Reuse the process; every database request independently names its config.
     const proc = Bun.spawn([noormBinary, 'mcp', 'serve'], {
         cwd:    process.cwd(),
         stdin:  'pipe',
@@ -428,47 +427,10 @@ beforeAll(async () => {
 
     client = new MCPClient(proc);
 
-    // Brief pause so the MCP server finishes its stdio setup. Without this,
-    // sending initialize too eagerly while running near the end of a long
-    // test session occasionally races against the server's startup, and
-    // Bun.spawn surfaces a half-open pipe state.
+    // Allow stdio setup to complete before sending the first request.
     await new Promise((r) => setTimeout(r, 100));
 
-    // Handshake. The MCP spec requires `initialize` before any other RPCs.
-    const [, initErr] = await attempt(() => client!.request('initialize', {
-        protocolVersion: '2024-11-05',
-        capabilities:    {},
-        clientInfo:      { name: 'mcp-discovery-test', version: '1.0.0' },
-    }));
-    if (initErr) {
-        // Surface stderr so the failure is diagnosable.
-        throw new Error(`initialize failed: ${initErr.message}\nMCP stderr:\n${stderrBuf || '(empty)'}`);
-    }
-
-    client.notify('notifications/initialized');
-
-    // Open a connection for the dev config — required for overview/list/
-    // detail/sql. We do it here rather than inside individual tests so the
-    // pool is reused; the test that proves connect itself works is implicit
-    // (every subsequent test fails without it).
-    const [connectResponse, connectErr] = await attempt(() => client!.request('tools/call', {
-        name:      'run_noorm_cmd',
-        arguments: { command: 'connect', config: 'dev' },
-    }));
-
-    if (connectErr) {
-        throw new Error(`connect tools/call failed: ${connectErr.message}\nMCP stderr:\n${stderrBuf || '(empty)'}`);
-    }
-
-    if (!isToolCallResult(connectResponse.result)) {
-
-        throw new Error(`connect did not return a tool/call result: ${JSON.stringify(connectResponse.result)}`);
-    }
-
-    if (connectResponse.result.isError) {
-
-        throw new Error(`connect failed: ${extractText(connectResponse.result)}\nMCP stderr:\n${stderrBuf || '(empty)'}`);
-    }
+    // Modern MCP requests are self-contained and need no connection handshake.
 
 });
 
@@ -478,9 +440,9 @@ afterAll(async () => {
 
 });
 
-describe('MCP discovery — JSON-RPC handshake & tool catalog', () => {
+describe('MCP discovery — tool catalog', () => {
 
-    it('tools/list advertises both noorm_help and run_noorm_cmd', async () => {
+    it('tools/list advertises direct discovery tools', async () => {
 
         if (!client) throw new Error('client not initialised');
 
@@ -493,80 +455,28 @@ describe('MCP discovery — JSON-RPC handshake & tool catalog', () => {
 
         const names = response.result.tools.map((t) => t.name);
 
-        expect(names).toContain('noorm_help');
-        expect(names).toContain('run_noorm_cmd');
+        for (const name of ['list_configs', 'overview', 'list', 'detail', 'sql']) {
 
-        // Sanity: at least these two — the server may expose more in the
-        // future but these two are the minimum advertised surface.
-        expect(response.result.tools.length).toBeGreaterThanOrEqual(2);
-
-    });
-
-});
-
-describe('MCP discovery — noorm_help command catalog', () => {
-
-    it('returns a non-empty command catalog with the core discovery commands', async () => {
-
-        if (!client) throw new Error('client not initialised');
-
-        const response = await client.request('tools/call', {
-            name:      'noorm_help',
-            arguments: {},
-        });
-
-        const text = extractText(response.result);
-
-        expect(text.length).toBeGreaterThan(0);
-
-        // These are the load-bearing commands an agent needs to discover
-        // a schema. If any of them disappears from the catalog, the MCP's
-        // discovery story is broken.
-        for (const cmd of ['connect', 'list_configs', 'overview', 'list', 'detail', 'sql']) {
-
-            expect(text).toContain(cmd);
+            expect(names).toContain(name);
 
         }
-
-    });
-
-    it('returns command-specific help when given a command name', async () => {
-
-        if (!client) throw new Error('client not initialised');
-
-        const response = await client.request('tools/call', {
-            name:      'noorm_help',
-            arguments: { command: 'overview' },
-        });
-
-        const text = extractText(response.result);
-
-        // The specific-command help should describe what `overview` does:
-        // namely, return counts of database object categories.
-        expect(text.toLowerCase()).toContain('overview');
-
-        // At minimum it should mention what overview returns. The actual
-        // help text says "tables, views, procedures, functions, types,
-        // indexes, foreign keys, triggers, locks, connections" — assert on
-        // a handful of these so the test isn't brittle to phrasing tweaks.
-        const lower = text.toLowerCase();
-        const buckets = ['tables', 'views', 'procedures', 'functions'];
-        const hits    = buckets.filter((b) => lower.includes(b));
-        expect(hits.length).toBeGreaterThanOrEqual(3);
+        expect(names).not.toContain('run_noorm_cmd');
+        expect(names).not.toContain('noorm_help');
 
     });
 
 });
 
-describe('MCP discovery — run_noorm_cmd against the dev/test configs', () => {
+
+describe('MCP discovery — direct tools against the dev/test configs', () => {
 
     it('list_configs returns both dev and test postgres configs', async () => {
 
         if (!client) throw new Error('client not initialised');
 
         const response = await client.request('tools/call', {
-            name:      'run_noorm_cmd',
-            arguments: { command: 'list_configs' },
+            name:      'list_configs',
+            arguments: {},
         });
 
         const parsed = parseRunResult(response.result);
@@ -600,8 +510,8 @@ describe('MCP discovery — run_noorm_cmd against the dev/test configs', () => {
         if (!client) throw new Error('client not initialised');
 
         const response = await client.request('tools/call', {
-            name:      'run_noorm_cmd',
-            arguments: { command: 'overview', config: 'dev' },
+            name:      'overview',
+            arguments: { config: 'dev' },
         });
 
         const parsed = parseRunResult(response.result);
@@ -631,8 +541,8 @@ describe('MCP discovery — run_noorm_cmd against the dev/test configs', () => {
         if (!client) throw new Error('client not initialised');
 
         const response = await client.request('tools/call', {
-            name:      'run_noorm_cmd',
-            arguments: { command: 'list', config: 'dev', payload: { category: 'tables' } },
+            name:      'list',
+            arguments: { config: 'dev', category: 'tables' },
         });
 
         const parsed = parseRunResult(response.result);
@@ -667,12 +577,8 @@ describe('MCP discovery — run_noorm_cmd against the dev/test configs', () => {
         if (!client) throw new Error('client not initialised');
 
         const response = await client.request('tools/call', {
-            name:      'run_noorm_cmd',
-            arguments: {
-                command: 'detail',
-                config:  'dev',
-                payload: { category: 'tables', name: 'Memory' },
-            },
+            name:      'detail',
+            arguments: { config: 'dev', category: 'tables', name: 'Memory' },
         });
 
         const parsed = parseRunResult(response.result);
@@ -728,8 +634,8 @@ describe('MCP discovery — run_noorm_cmd against the dev/test configs', () => {
         if (!client) throw new Error('client not initialised');
 
         const response = await client.request('tools/call', {
-            name:      'run_noorm_cmd',
-            arguments: { command: 'sql', config: 'dev', payload: { query: 'SELECT 1 AS one' } },
+            name:      'sql',
+            arguments: { config: 'dev', query: 'SELECT 1 AS one' },
         });
 
         const parsed = parseRunResult(response.result);

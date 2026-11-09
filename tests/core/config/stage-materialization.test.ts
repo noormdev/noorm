@@ -1,14 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { materializeStage, stageFields } from '../../../src/core/config/stage.js';
 import { getEnvConfig } from '../../../src/core/config/index.js';
-import { clampToCeiling } from '../../../src/core/policy/index.js';
 import type { ConfigInput } from '../../../src/core/config/types.js';
 
 describe('stage materialization', () => {
 
-    it('omits stage credentials and clamps protected access', () => {
+    it('omits stage credentials and preserves protected role assignments', () => {
 
-        const config = materializeStage('review', 'staging', {
+        const config = materializeStage('staging', 'staging', {
             dialect: 'postgres',
             password: 'secret',
             protected: true,
@@ -17,7 +16,7 @@ describe('stage materialization', () => {
 
         expect(config.connection.database).toBe('staging');
         expect(config.connection.password).toBeUndefined();
-        expect(config.access).toEqual({ user: 'operator', agent: 'viewer' });
+        expect(config.access).toEqual({ user: 'admin', agent: 'admin' });
 
     });
 
@@ -33,10 +32,6 @@ describe('stage materialization', () => {
 
         expect(config.connection.password).toBe('explicit');
         expect(stageFields({ password: 'secret' }).connection).toEqual({});
-        expect(clampToCeiling(
-            { user: 'viewer', agent: false },
-            { user: 'admin', agent: 'admin' },
-        )).toEqual({ user: 'viewer', agent: false });
 
     });
 

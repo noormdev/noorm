@@ -5,6 +5,7 @@ paths:
   - "src/core/pipeline/**"
   - "src/core/template/**"
   - "src/cli/run/**"
+  - "src/cli/pipeline/**"
   - "tests/core/runner/**"
   - "tests/core/pipeline/**"
   - "tests/integration/pipeline/**"

@@ -11,6 +11,8 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { ConfigValidationError, parseConfig } from '../../core/config/schema.js';
+import { SettingsProvider, validateAccessRoles, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
@@ -62,6 +64,25 @@ const importCommand = defineCommand({
 
         }
 
+        const settingsManager = getSettingsManager(projectRoot);
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(EXIT.USAGE);
+
+        }
+
+        const [, roleErr] = attemptSync(() => validateAccessRoles(config.access, settingsManager.settings.access?.roles));
+
+        if (roleErr) {
+
+            outputError(args, roleErr.message);
+            process.exit(EXIT.USAGE);
+
+        }
+
         const [, initErr] = await attempt(() => initState(projectRoot));
 
         if (initErr) {
@@ -87,7 +108,18 @@ const importCommand = defineCommand({
             // replaced decides — not the incoming file. Without this, one
             // --force promotes a viewer config to admin, or flips the
             // `agent: false` invisibility an operator set deliberately.
-            const check = checkConfigPolicy(resolveChannel(), existing, 'config:write');
+            const [policyConfig, policyErr] = attemptSync(() =>
+                withConfigPolicy(existing, new SettingsProvider(settingsManager)),
+            );
+
+            if (policyErr) {
+
+                outputError(args, policyErr.message);
+                process.exit(EXIT.USAGE);
+
+            }
+
+            const check = checkConfigPolicy(resolveChannel(), policyConfig, 'config:write');
 
             if (!check.allowed) {
 
@@ -108,6 +140,13 @@ const importCommand = defineCommand({
             }
 
         }
+        else if (resolveChannel() !== 'user') {
+
+            outputError(args, 'Creating configurations requires the user channel.');
+            process.exit(1);
+
+        }
+
 
         const [, saveErr] = await attempt(() => stateManager.setConfig(config.name, config));
 

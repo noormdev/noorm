@@ -4,6 +4,8 @@ import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { sql, type Kysely } from 'kysely';
+import { attempt } from '@logosdx/utils';
+import { checkConfigPolicy } from '../../../src/core/policy/index.js';
 import { loadPipelineDefinition } from '../../../src/core/pipeline/definition.js';
 import { preparePipeline } from '../../../src/core/pipeline/prepare.js';
 import { PipelineEscapeError } from '../../../src/core/pipeline/sql-literal.js';
@@ -12,6 +14,7 @@ import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import { processFile } from '../../../src/core/template/engine.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
 import { createTestConnection } from '../../utils/db.js';
+import { withPolicy } from '../../utils/access.js';
 
 let root: string;
 let folder: string;
@@ -28,7 +31,7 @@ beforeEach(async () => {
     ctx = {
         db: connection.db as Kysely<NoormDatabase>, configName: 'test',
         identity: { name: 'Test', source: 'config' }, projectRoot: root,
-        access: { user: 'admin', agent: 'admin' }, channel: 'user', dialect: 'sqlite',
+        access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', dialect: 'sqlite',
     };
 
 });
@@ -293,9 +296,9 @@ describe('pipeline: preparation', () => {
         await writeFile(join(folder, 'two.sql.tmpl'), 'select 1');
         const plan = await definition();
         for (const [access, channel, yes] of [
-            [{ user: 'viewer', agent: 'viewer' }, 'user', false],
-            [{ user: 'operator', agent: 'operator' }, 'user', false],
-            [{ user: 'operator', agent: 'operator' }, 'agent', true],
+            [withPolicy({ user: 'viewer', agent: 'viewer' }), 'user', false],
+            [withPolicy({ user: 'operator', agent: 'operator' }), 'user', false],
+            [withPolicy({ user: 'operator', agent: 'operator' }), 'agent', true],
         ] as const) {
 
             try {
@@ -313,9 +316,43 @@ describe('pipeline: preparation', () => {
 
         }
         await writeFile(join(folder, 'one.sql.tmpl'), 'select {%~ $.quote($.input.name) %}');
-        const allowed = await preparePipeline({ ...ctx, access: { user: 'operator', agent: 'operator' } }, plan, { input: { name: 'x' }, yes: true });
+        const allowed = await preparePipeline({ ...ctx, access: withPolicy({ user: 'operator', agent: 'operator' }) }, plan, { input: { name: 'x' }, yes: true });
         expect(allowed.steps[0]?.sql).toContain("'x'");
         expect(await tables()).toEqual([]);
+
+    });
+
+    it('should authorize pipelines with pipeline:run, independent of run:dir', async () => {
+
+        await writeFile(join(folder, 'one.sql.tmpl'), 'select 1');
+        await writeFile(join(folder, 'two.sql.tmpl'), 'select 2');
+        const plan = await definition();
+        const roles = {
+            pipeliner: { permissions: { 'pipeline:run': 'allow' as const, 'run:dir': 'deny' as const } },
+            dirOnly: { permissions: { 'pipeline:run': 'deny' as const, 'run:dir': 'allow' as const } },
+        };
+        const allowed = await preparePipeline({ ...ctx, access: withPolicy({ user: 'pipeliner', agent: 'pipeliner' }, { roles }) }, plan, { input: { name: 'x' } });
+        expect(allowed.steps).toHaveLength(2);
+
+        const [, denied] = await attempt(() => preparePipeline({ ...ctx, access: withPolicy({ user: 'dirOnly', agent: 'dirOnly' }, { roles }) }, plan, { input: { name: 'x' } }));
+        expect(denied?.message).toContain('pipeline:run');
+
+        const runDir = checkConfigPolicy('user', { name: 'test', access: withPolicy({ user: 'pipeliner', agent: 'pipeliner' }, { roles }) }, 'run:dir');
+        expect(runDir.allowed).toBe(false);
+
+    });
+
+    it('should refuse an agent on a pipeline:run confirm cell even with yes', async () => {
+
+        await writeFile(join(folder, 'one.sql.tmpl'), 'select 1');
+        await writeFile(join(folder, 'two.sql.tmpl'), 'select 2');
+        const plan = await definition();
+        const access = withPolicy({ user: 'operator', agent: 'operator' });
+
+        const [, err] = await attempt(() => preparePipeline({ ...ctx, access, channel: 'agent' }, plan, { input: { name: 'x' }, yes: true }));
+
+        expect(err?.message).toContain('pipeline:run');
+        expect(err?.message).toContain('requires confirmation from a human');
 
     });
 

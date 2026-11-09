@@ -10,6 +10,7 @@ import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { getNoormTables } from '../../../src/core/shared/tables.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const dialects: Dialect[] = ['sqlite', 'postgres', 'mysql', 'mssql'];
 type Policy = 'pipeline' | 'step' | 'none';
@@ -36,7 +37,7 @@ async function withProject<T>(body: (folder: string, root: string) => Promise<T>
 function contextFor(db: PipelineContext['db'], dialect: Dialect, root: string, connectionConfig: ConnectionConfig, poolMax: number): PipelineContext {
 
     return { db, dialect, connectionConfig, poolMax, configName: 'graph-test', identity: { name: 'test', source: 'config' },
-        projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user',
+        projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
         pipelinesPath: './db/pipelines', cliVersion: 'test' };
 
 }

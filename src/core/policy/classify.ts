@@ -2,6 +2,7 @@ import { cstVisitor, parse, type Program } from 'sql-parser-cst';
 import { attemptSync } from '@logosdx/utils';
 
 import type { Dialect } from '../connection/types.js';
+import type { Permission } from './types.js';
 
 /**
  * Statement classification. Multi-statement input takes the highest class
@@ -16,7 +17,7 @@ const DIALECT_MAP: Record<Dialect, 'sqlite' | 'postgresql' | 'mysql' | 'bigquery
     sqlite: 'sqlite',
     postgres: 'postgresql',
     mysql: 'mysql',
-    mssql: 'postgresql', // best-effort — fall back to keyword if parser chokes
+    mssql: 'postgresql', // also cross-checked lexically for T-SQL batches
 };
 
 /**
@@ -70,6 +71,55 @@ const WRITE_KEYWORDS: Record<string, true> = {
 };
 
 /**
+ * Privileged statement roots shared by fallback scanning and dialect
+ * cross-checks. Some T-SQL roots need a following keyword to distinguish a
+ * statement from an ordinary expression or DML clause (notably CASE END and
+ * UPDATE SET). This is a lexical guardrail, not a complete T-SQL parser:
+ * database permissions remain the security boundary for arbitrary SQL.
+ */
+const PRIVILEGED_STATEMENTS: Readonly<Record<string, string>> = {
+    CREATE: '', ALTER: '', DROP: '', TRUNCATE: '', GRANT: '', DENY: '', REVOKE: '',
+};
+
+const MSSQL_PRIVILEGED_STATEMENTS: Readonly<Record<string, string>> = {
+    ...PRIVILEGED_STATEMENTS,
+    EXEC: '', EXECUTE: '', KILL: '', DBCC: '', BACKUP: '', RESTORE: '', SHUTDOWN: '', SETUSER: '',
+    ENABLE: '\\s+TRIGGER\\b', DISABLE: '\\s+TRIGGER\\b',
+    RECONFIGURE: '', CHECKPOINT: '', REVERT: '', USE: '', WAITFOR: '',
+    BULK: '\\s+INSERT\\b', UPDATE: '\\s+STATISTICS\\b',
+    WRITETEXT: '\\s+', UPDATETEXT: '\\s+', READTEXT: '\\s+',
+    DECLARE: '\\s+[@\\w]', PRINT: '\\s+', RAISERROR: '\\s*\\(', THROW: '(?:\\s|;|$)',
+    BEGIN: '', IF: '', WHILE: '', GOTO: '', RETURN: '', BREAK: '', CONTINUE: '',
+    COMMIT: '', ROLLBACK: '',
+    SAVE: '\\s+TRAN(?:SACTION)?\\b',
+    END: '\\s+CONVERSATION\\b',
+    MOVE: '\\s+CONVERSATION\\b',
+    RENAME: '\\s+(?:OBJECT|COLUMN)\\b',
+    SEND: '\\s+ON\\s+CONVERSATION\\b',
+    RECEIVE: '(?:(?<=:\\s*RECEIVE)|\\s*(?:\\*|(?!(?:FROM|AS)\\b)[@\\w]))',
+    GET: '\\s+CONVERSATION\\s+GROUP\\b',
+    OPEN: '\\s+', CLOSE: '\\s+', DEALLOCATE: '\\s+',
+    FETCH: '\\s+(?:(?:NEXT|PRIOR|FIRST|LAST|(?:ABSOLUTE|RELATIVE)\\s+(?:[-+]?\\d+|@\\w+))\\s+FROM\\b|'
+        + 'FROM\\b|(?!(?:FIRST|NEXT)\\b)[@\\w]+\\b)',
+    SET: '\\s+(?:@\\w+\\s*=|(?:NOCOUNT|XACT_ABORT|IDENTITY_INSERT|TRANSACTION\\s+ISOLATION\\s+LEVEL|'
+        + 'ANSI_NULLS|ANSI_WARNINGS|ANSI_PADDING|ANSI_DEFAULTS|ANSI_NULL_DFLT_OFF|ANSI_NULL_DFLT_ON|'
+        + 'ARITHABORT|ARITHIGNORE|QUOTED_IDENTIFIER|CONCAT_NULL_YIELDS_NULL|CURSOR_CLOSE_ON_COMMIT|'
+        + 'FIPS_FLAGGER|FMTONLY|OFFSETS|NOEXEC|NUMERIC_ROUNDABORT|PARSEONLY|QUERY_GOVERNOR_COST_LIMIT|'
+        + 'FORCEPLAN|SHOWPLAN_ALL|SHOWPLAN_TEXT|SHOWPLAN_XML|REMOTE_PROC_TRANSACTIONS|RESULT_SET_CACHING|'
+        + 'IMPLICIT_TRANSACTIONS|LOCK_TIMEOUT|DEADLOCK_PRIORITY|ROWCOUNT|TEXTSIZE|LANGUAGE|DATEFORMAT|'
+        + 'DATEFIRST|STATISTICS|CONTEXT_INFO|SESSION_CONTEXT)\\b(?!\\s*=)(?:\\s*,\\s*\\w+)*\\s+)',
+};
+
+function statementPattern(catalog: Readonly<Record<string, string>>): RegExp {
+
+    return new RegExp(`\\b(?:${Object.entries(catalog).map(([word, suffix]) => `${word}\\b${suffix}`).join('|')})`, 'i');
+
+}
+
+const PRIVILEGED_STATEMENT_PATTERN = statementPattern(PRIVILEGED_STATEMENTS);
+const MSSQL_PRIVILEGED_STATEMENT_PATTERN = statementPattern(MSSQL_PRIVILEGED_STATEMENTS);
+
+/**
  * Every keyword that can legitimately start a statement. Used to tell an
  * EXPLAIN's wrapped statement apart from MySQL's `EXPLAIN <table>` form,
  * which is a synonym for DESCRIBE and carries no statement at all.
@@ -77,6 +127,7 @@ const WRITE_KEYWORDS: Record<string, true> = {
 const STATEMENT_KEYWORDS: Record<string, true> = {
     ...READ_KEYWORDS,
     ...WRITE_KEYWORDS,
+    ...Object.fromEntries(Object.keys(MSSQL_PRIVILEGED_STATEMENTS).map((word) => [word, true] as const)),
     EXPLAIN: true,
     WITH: true,
 };
@@ -144,6 +195,12 @@ export const DESTRUCTIVE_FUNCTIONS: ReadonlySet<string> = new Set([
     'lo_unlink',
     'setval',
     'nextval',
+    'dblink',
+    'dblink_send_query',
+    'dblink_get_result',
+    'openquery',
+    'openrowset',
+    'opendatasource',
     'dblink_exec',
     'query_to_xml',
     'query_to_xmlschema',
@@ -157,6 +214,19 @@ export const DESTRUCTIVE_FUNCTIONS: ReadonlySet<string> = new Set([
     'pg_ls_logdir',
     'pg_ls_waldir',
 ]);
+
+const PRIVILEGED_FUNCTIONS: ReadonlySet<string> = new Set([
+    'dblink',
+    'dblink_exec',
+    'dblink_send_query',
+    'dblink_get_result',
+    'openquery',
+    'openrowset',
+    'opendatasource',
+    'set_config',
+]);
+
+const PRIVILEGED_FUNCTION_PATTERN = new RegExp(`\\b(?:${[...PRIVILEGED_FUNCTIONS].join('|')})\\s*\\(`, 'i');
 
 /**
  * Word-boundary match for a denylisted function call, used by the keyword
@@ -180,86 +250,107 @@ const DESTRUCTIVE_FUNCTION_PATTERN = new RegExp(`\\b(?:${[...DESTRUCTIVE_FUNCTIO
  */
 export function classifyStatements(sql: string, dialect: Dialect): SqlClass {
 
-    const trimmed = sql.trim();
+    const permissions = sqlPermissionsFor(sql, dialect);
+    if (permissions.includes('sql:ddl')) return 'ddl';
+    if (permissions.includes('sql:write')) return 'write';
 
-    if (trimmed === '') return 'read';
+    return 'read';
 
-    // Try CST parser
-    const [result, err] = attemptSync(() =>
-        parse(trimmed, {
-            dialect: DIALECT_MAP[dialect],
-            includeComments: false,
-            includeSpaces: false,
-            includeNewlines: false,
-        }),
-    );
+}
 
-    if (!err && result) {
+/** Every SQL permission represented by a batch, including nested statements. */
+export function sqlPermissionsFor(sql: string, dialect: Dialect): Permission[] {
 
-        return classifyCst(result);
+    const trimmed = (dialect === 'mysql' ? expandExecutableComments(sql) : sql).trim();
+    if (!trimmed) return ['sql:read'];
+
+    const [program, err] = attemptSync(() => parse(trimmed, {
+        dialect: DIALECT_MAP[dialect],
+        includeComments: false,
+        includeSpaces: false,
+        includeNewlines: false,
+    }));
+    const classes = new Set<SqlClass>();
+    if (!err && program) {
+
+        collectCstClasses(program, classes);
+        if (containsFunctionCall(program, DESTRUCTIVE_FUNCTIONS)) classes.add('write');
+        if (containsFunctionCall(program, PRIVILEGED_FUNCTIONS)) classes.add('ddl');
 
     }
+    else {
 
-    // Parser failed — fall back to keyword-based
-    return classifyKeyword(trimmed, dialect);
+        const masked = maskNonCode(trimmed, dialect);
+        // A fallback statement can contain nested SQL even when its outer
+        // verb is DDL or dialect-specific. Masking removes literals, quoted
+        // identifiers and comments; conservatively retain embedded verbs.
+        if (/\bSELECT\b/i.test(masked)) classes.add('read');
+        if (/\b(?:INSERT|UPDATE|DELETE|MERGE)\b/i.test(masked)) classes.add('write');
+        if ((dialect === 'mssql' ? MSSQL_PRIVILEGED_STATEMENT_PATTERN : PRIVILEGED_STATEMENT_PATTERN).test(masked)) classes.add('ddl');
+        for (const statement of splitStatements(masked)) classifyKeywordStatement(statement, classes);
+        if (DESTRUCTIVE_FUNCTION_PATTERN.test(masked)) classes.add('write');
+        if (PRIVILEGED_FUNCTION_PATTERN.test(masked)) classes.add('ddl');
+
+    }
+    if (dialect === 'mysql') {
+
+        // The CST parser treats every `--` as a comment. Cross-check code
+        // using MySQL's actual comment and string rules even on a CST success.
+        const masked = maskNonCode(trimmed, dialect);
+        for (const statement of splitStatements(masked)) {
+
+            const verb = leadingKeyword(statement.toUpperCase());
+            if (verb && READ_KEYWORDS[verb]) classes.add('read');
+            if (verb && WRITE_KEYWORDS[verb]) classes.add('write');
+            if (verb && PRIVILEGED_STATEMENTS[verb] !== undefined) classes.add('ddl');
+
+        }
+        if (/\bSELECT\b[^;]*?\bINTO\b/i.test(masked)) classes.add('ddl');
+        if (DESTRUCTIVE_FUNCTION_PATTERN.test(masked)) classes.add('write');
+        if (PRIVILEGED_FUNCTION_PATTERN.test(masked)) classes.add('ddl');
+
+    }
+    if (dialect === 'mssql') {
+
+        const masked = maskNonCode(trimmed, dialect);
+        if (/\bSELECT\b/i.test(masked)) classes.add('read');
+        if (/\bSELECT\b(?:(?!;|\b(?:INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|EXEC|EXECUTE)\b)[\s\S])*?\bINTO\b/i.test(masked)) classes.add('ddl');
+        if (/\b(?:INSERT|UPDATE|DELETE|MERGE)\b/i.test(masked.replace(/\bON\s+(?:UPDATE|DELETE)\s+(?:CASCADE|SET\s+(?:NULL|DEFAULT)|NO\s+ACTION)\b/gi, ''))) classes.add('write');
+        if (MSSQL_PRIVILEGED_STATEMENT_PATTERN.test(masked)) classes.add('ddl');
+        if (DESTRUCTIVE_FUNCTION_PATTERN.test(masked)) classes.add('write');
+        if (PRIVILEGED_FUNCTION_PATTERN.test(masked)) classes.add('ddl');
+
+    }
+    if (classes.size === 0) classes.add('read');
+
+    return (['read', 'write', 'ddl'] as const)
+        .filter((kind) => classes.has(kind))
+        .map((kind) => `sql:${kind}` as Permission);
 
 }
 
-/**
- * Classify via CST. Highest class of any statement node anywhere in the tree
- * wins, plus `write` for a denylisted function call anywhere.
- *
- * Scanning the *whole* tree rather than just `program.statements` is the
- * point: a statement's real impact is routinely carried by a nested node —
- * a data-modifying CTE body (`WITH t AS (DELETE ...) SELECT ...`), or the
- * statement an `EXPLAIN ANALYZE` executes. The previous version enumerated
- * the nested node types it cared about and had no DDL entry, so
- * `EXPLAIN ANALYZE CREATE TABLE x AS SELECT 1` classified as `read` and
- * created the table under a `viewer` role. Walking generically inverts the
- * default: an unrecognised nested statement escalates instead of hiding.
- */
-function classifyCst(program: Program): SqlClass {
-
-    const highest = nestedStatementClass(program);
-
-    return containsDestructiveCall(program) ? maxClass(highest, 'write') : highest;
-
-}
-
-/**
- * Highest class of every `*_stmt` node reachable in the tree.
- *
- * Deliberately structural rather than type-driven: any node whose `type`
- * ends in `_stmt` is a statement, and `classifyStmtType` already fails
- * closed on statement types it does not recognise. That means a grammar
- * upgrade adding new DDL node types is covered on arrival, with no list to
- * keep in sync.
- */
-function nestedStatementClass(node: unknown): SqlClass {
+function collectCstClasses(node: unknown, classes: Set<SqlClass>): void {
 
     if (Array.isArray(node)) {
 
-        return node.reduce<SqlClass>((highest, item) => maxClass(highest, nestedStatementClass(item)), 'read');
+        for (const item of node) collectCstClasses(item, classes);
+
+        return;
 
     }
-
-    if (node === null || typeof node !== 'object') return 'read';
-
+    if (node === null || typeof node !== 'object') return;
     const { type } = node as { type?: unknown };
-    const own = typeof type === 'string' && type.endsWith('_stmt')
-        ? classifyStmtType(node as CstStatement)
-        : 'read';
+    if (typeof type === 'string' && type.endsWith('_stmt')) {
 
-    return Object.values(node).reduce<SqlClass>((highest, value) => maxClass(highest, nestedStatementClass(value)), own);
+        classes.add(classifyStmtType(node as CstStatement));
+
+    }
+    for (const value of Object.values(node)) collectCstClasses(value, classes);
 
 }
 
-/**
- * True when the tree contains a call to a `DESTRUCTIVE_FUNCTIONS` builtin
- * anywhere. Signals at least `write` regardless of what the outer/final
- * statement looks like.
- */
-function containsDestructiveCall(program: Program): boolean {
+/** Detect calls by their final, possibly schema-qualified identifier. */
+function containsFunctionCall(program: Program, functions: ReadonlySet<string>): boolean {
 
     let found = false;
 
@@ -272,7 +363,7 @@ function containsDestructiveCall(program: Program): boolean {
             // `object`, so `property` is always the rightmost/actual function name).
             const funcName = node.name.type === 'identifier' ? node.name : node.name.property;
 
-            if (funcName.type === 'identifier' && DESTRUCTIVE_FUNCTIONS.has(funcName.name.toLowerCase())) {
+            if (funcName.type === 'identifier' && functions.has(funcName.name.toLowerCase())) {
 
                 found = true;
 
@@ -335,41 +426,6 @@ function classifyStmtType(stmt: CstStatement): SqlClass {
 }
 
 /**
- * Classify via keyword analysis.
- *
- * Masks everything that isn't code (string literals, quoted identifiers,
- * comments), splits on semicolons, checks the leading keyword of each
- * statement, takes the highest class present.
- *
- * This is not a rare backstop: `mssql` has no grammar of its own here and
- * maps to the postgres parser, so MSSQL syntax lands on this path routinely.
- */
-function classifyKeyword(sql: string, dialect: Dialect): SqlClass {
-
-    const masked = maskNonCode(sql, dialect);
-    const statements = splitStatements(masked);
-
-    if (statements.length === 0) return 'read';
-
-    let highest: SqlClass = 'read';
-
-    for (const stmt of statements) {
-
-        highest = maxClass(highest, classifyKeywordStatement(stmt));
-
-    }
-
-    if (DESTRUCTIVE_FUNCTION_PATTERN.test(masked)) {
-
-        highest = maxClass(highest, 'write');
-
-    }
-
-    return highest;
-
-}
-
-/**
  * Leading keyword of a statement, ignoring wrapping parens
  * (`(SELECT 1) UNION (SELECT 2)`). `undefined` when the statement does not
  * begin with a word character at all — a leading control byte, say — which
@@ -394,37 +450,56 @@ function leadingKeyword(upper: string): string | undefined {
  * empty one (`splitStatements` already drops those), so it fails closed.
  * Answering `read` there let a leading NUL byte carry a DROP past the gate.
  */
-function classifyKeywordStatement(stmt: string): SqlClass {
+function classifyKeywordStatement(stmt: string, classes?: Set<SqlClass>): SqlClass {
 
     const upper = stmt.toUpperCase();
     const firstWord = leadingKeyword(upper);
 
-    if (!firstWord) return 'ddl';
+    if (!firstWord) {
+
+        classes?.add('ddl');
+
+        return 'ddl';
+
+    }
 
     if (firstWord === 'EXPLAIN') {
 
-        return classifyExplained(upper);
+        const result = classifyExplained(upper, classes);
+        classes?.add(result);
+
+        return result;
 
     }
 
     if (firstWord === 'SELECT') {
 
-        return hasTopLevelInto(upper) ? 'ddl' : 'read';
+        const result = hasTopLevelInto(upper) ? 'ddl' : 'read';
+        classes?.add(result);
+
+        return result;
 
     }
 
-    if (READ_KEYWORDS[firstWord]) return 'read';
+    if (READ_KEYWORDS[firstWord]) {
+
+        classes?.add('read');
+
+        return 'read';
+
+    }
 
     // Handle WITH ... <stmt> (CTE)
     if (firstWord === 'WITH') {
 
-        return classifyCte(upper);
+        return classifyCte(upper, classes);
 
     }
 
-    if (WRITE_KEYWORDS[firstWord]) return 'write';
+    const result = WRITE_KEYWORDS[firstWord] ? 'write' : 'ddl';
+    classes?.add(result);
 
-    return 'ddl';
+    return result;
 
 }
 
@@ -442,7 +517,7 @@ function classifyKeywordStatement(stmt: string): SqlClass {
  * a single bare identifier and nothing else — so it cannot be stretched to
  * cover a real verb.
  */
-function classifyExplained(upper: string): SqlClass {
+function classifyExplained(upper: string, classes?: Set<SqlClass>): SqlClass {
 
     const wrapped = stripExplainOptions(upper);
 
@@ -452,7 +527,7 @@ function classifyExplained(upper: string): SqlClass {
 
     if (keyword && !STATEMENT_KEYWORDS[keyword] && /^[\w.$]+$/.test(wrapped)) return 'read';
 
-    return classifyKeywordStatement(wrapped);
+    return classifyKeywordStatement(wrapped, classes);
 
 }
 
@@ -502,9 +577,13 @@ function stripExplainOptions(upper: string): string {
  * (DELETE ...) SELECT ...` must classify as `write` even though the final
  * statement is a SELECT — keying only off the final keyword would miss it.
  */
-function classifyCte(upper: string): SqlClass {
+function classifyCte(upper: string, classes?: Set<SqlClass>): SqlClass {
 
-    return maxClass(classifyCteDefinitions(upper), classifyCteFinalStatement(upper));
+    const definitions = classifyCteDefinitions(upper, classes);
+    const final = classifyCteFinalStatement(upper);
+    classes?.add(final);
+
+    return maxClass(definitions, final);
 
 }
 
@@ -592,7 +671,7 @@ function findCteDefinitionsEnd(upper: string): number {
  * parsed CTE's inner statement type, for dialects where the parser throws
  * and classification falls back to keywords.
  */
-function classifyCteDefinitions(upper: string): SqlClass {
+function classifyCteDefinitions(upper: string, classes?: Set<SqlClass>): SqlClass {
 
     let highest: SqlClass = 'read';
     let depth = 0;
@@ -607,7 +686,9 @@ function classifyCteDefinitions(upper: string): SqlClass {
                 const bodyEnd = findMatchingParen(upper, i);
                 const body = upper.slice(i + 1, bodyEnd).trim();
 
-                highest = maxClass(highest, classifyCteBodyKeyword(body));
+                const result = classifyCteBodyKeyword(body, classes);
+                classes?.add(result);
+                highest = maxClass(highest, result);
 
                 i = bodyEnd + 1;
                 continue;
@@ -693,12 +774,12 @@ function findMatchingParen(text: string, openIdx: number): number {
  * Classify a single CTE definition body by its leading keyword. Recurses
  * for a CTE-within-a-CTE (`t AS (WITH inner AS (...) SELECT ...)`).
  */
-function classifyCteBodyKeyword(body: string): SqlClass {
+function classifyCteBodyKeyword(body: string, classes?: Set<SqlClass>): SqlClass {
 
     const firstWord = body.match(/^(\w+)/)?.[1];
 
     if (!firstWord) return 'read';
-    if (firstWord === 'WITH') return classifyCte(body);
+    if (firstWord === 'WITH') return classifyCte(body, classes);
     if (READ_KEYWORDS[firstWord]) return 'read';
     if (WRITE_KEYWORDS[firstWord]) return 'write';
 
@@ -806,6 +887,55 @@ const QUOTE_FORMS: Record<Dialect, readonly QuoteForm[]> = {
     mssql: [SINGLE_QUOTE, DOUBLE_QUOTE, BRACKET],
 };
 
+/** MySQL and MariaDB execute these comment bodies, subject to server version. */
+function expandExecutableComments(sql: string): string {
+
+    let expanded = '';
+    let i = 0;
+    while (i < sql.length) {
+
+        const form = QUOTE_FORMS.mysql.find((candidate) => sql.startsWith(candidate.open, i));
+        if (form) {
+
+            const end = quotedRegionEnd(sql, i, form, form !== BACKTICK);
+            expanded += sql.slice(i, end);
+            i = end;
+            continue;
+
+        }
+        const marker = sql.slice(i).match(/^\/\*(?:!|M!)/i)?.[0];
+        if (marker) {
+
+            const close = sql.indexOf('*/', i + marker.length);
+            if (close === -1) {
+
+                expanded += sql.slice(i);
+                break;
+
+            }
+            const body = sql.slice(i + marker.length, close).replace(/^\d{5,6}(?=\s)/, '');
+            expanded += ` ${body} `;
+            i = close + 2;
+            continue;
+
+        }
+        const end = commentRegionEnd(sql, i, true);
+        if (end !== -1) {
+
+            expanded += sql.slice(i, end);
+            i = end;
+            continue;
+
+        }
+        expanded += sql[i];
+        i++;
+
+    }
+
+    return expanded;
+
+}
+
 /**
  * Blank every non-code region — string literals, quoted identifiers, and
  * comments — replacing each character with a space so offsets are preserved.
@@ -834,10 +964,10 @@ function maskNonCode(sql: string, dialect: Dialect): string {
         const form = forms.find((candidate) => sql.startsWith(candidate.open, i));
         const dollarTag = dollarQuotes ? dollarQuoteTag(sql, i) : undefined;
         const end = form
-            ? quotedRegionEnd(sql, i, form)
+            ? quotedRegionEnd(sql, i, form, dialect === 'mysql' && form !== BACKTICK)
             : dollarTag
                 ? dollarRegionEnd(sql, i, dollarTag)
-                : commentRegionEnd(sql, i, hashComments);
+                : commentRegionEnd(sql, i, hashComments, dialect === 'mssql' || dialect === 'postgres');
 
         if (end === -1) {
 
@@ -847,7 +977,19 @@ function maskNonCode(sql: string, dialect: Dialect): string {
 
         }
 
-        masked += ' '.repeat(end - i);
+        const identifier = form && form !== SINGLE_QUOTE && !(dialect === 'mysql' && form === DOUBLE_QUOTE)
+            ? sql.slice(i + form.open.length, end - form.close.length).toLowerCase()
+            : '';
+        if ((DESTRUCTIVE_FUNCTIONS.has(identifier) || PRIVILEGED_FUNCTIONS.has(identifier)) && /^\s*\(/.test(sql.slice(end))) {
+
+            masked += ` ${identifier} `;
+
+        }
+        else {
+
+            masked += ' '.repeat(end - i);
+
+        }
         i = end;
 
     }
@@ -859,12 +1001,20 @@ function maskNonCode(sql: string, dialect: Dialect): string {
 /**
  * Index just past a quoted region opened at `openIdx`. A doubled closing
  * delimiter (`''`, `""`, `` `` ``, `]]`) is an escaped literal, not the end.
+ * MySQL string literals also escape the character following a backslash.
  */
-function quotedRegionEnd(sql: string, openIdx: number, form: QuoteForm): number {
+function quotedRegionEnd(sql: string, openIdx: number, form: QuoteForm, backslashEscapes = false): number {
 
     let i = openIdx + form.open.length;
 
     while (i < sql.length) {
+
+        if (backslashEscapes && sql[i] === '\\') {
+
+            i += 2;
+            continue;
+
+        }
 
         if (sql.startsWith(form.close + form.close, i)) {
 
@@ -910,17 +1060,42 @@ function dollarRegionEnd(sql: string, openIdx: number, tag: string): number {
  * one. A line comment stops at (and preserves) its newline. `#` is a comment
  * introducer only on MySQL — on MSSQL it prefixes temp-table names.
  */
-function commentRegionEnd(sql: string, i: number, hashComments: boolean): number {
+function commentRegionEnd(sql: string, i: number, hashComments: boolean, nested = false): number {
 
     if (sql.startsWith('/*', i)) {
 
-        const close = sql.indexOf('*/', i + 2);
+        let depth = 1;
+        let cursor = i + 2;
+        while (cursor < sql.length) {
 
-        return close === -1 ? sql.length : close + 2;
+            if (nested && sql.startsWith('/*', cursor)) {
+
+                depth++;
+                cursor += 2;
+
+            }
+            else if (sql.startsWith('*/', cursor)) {
+
+                cursor += 2;
+                if (--depth === 0) return cursor;
+
+            }
+            else cursor++;
+
+        }
+
+        return sql.length;
 
     }
 
-    if (sql.startsWith('--', i) || (hashComments && sql[i] === '#')) {
+    let lineComment = sql.startsWith('--', i);
+    if (lineComment && hashComments) {
+
+        const nextCode = sql.charCodeAt(i + 2);
+        lineComment = nextCode <= 0x20 || nextCode === 0x7f;
+
+    }
+    if (lineComment || (hashComments && sql[i] === '#')) {
 
         const newline = sql.indexOf('\n', i);
 

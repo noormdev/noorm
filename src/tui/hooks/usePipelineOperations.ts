@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { Config } from '../../core/config/types.js';
+import { attachPolicyContext, getPolicyContext } from '../../core/policy/index.js';
 import type { Identity } from '../../core/identity/types.js';
 import type { PipelineDryRunResult, PipelineRunResult } from '../../core/pipeline/types.js';
 import type { NoormPipelineRun } from '../../core/shared/tables.js';
@@ -83,10 +84,15 @@ export function usePipelineOperations(): PipelineOperations {
         if (!activeConfig || !activeConfigName || !stateManager || !connection.db || !connection.dialect
             || connection.loading || connection.error) return null;
 
+        // structuredClone drops the non-enumerable policy context, which would deny every cell.
+        const config = structuredClone(activeConfig);
+        const policyContext = getPolicyContext(activeConfig.access);
+        if (policyContext) attachPolicyContext(config.access, policyContext);
+
         return {
             target: Object.freeze({ [targetBrand]: true as const }),
             sourceConfig: activeConfig,
-            config: structuredClone(activeConfig),
+            config,
             stateManager,
             identity: resolveScreenIdentity(identity),
             projectRoot,

@@ -1,6 +1,6 @@
 ---
 type: Domain
-reflects_rev: 69dcabdd38674a56e9b4782d96c5cd379843dea2
+reflects_rev: 47e6bbc94ac14fe8cc672a0cb5949c5a41ef9dca
 description: Typed database access, noorm management operations, and portable DT data serialization.
 tags: [database, core, transfer]
 ---
@@ -29,9 +29,11 @@ The same domain owns DT serialization in [`src/core/dt`](../../src/core/dt): por
 
 ## How it works
 
-`createContext` initializes state and settings, resolves configuration, checks `requireTest`, and resolves identity before returning. Inline `connection` fields enter the shared resolver as flags, above environment settings. The resolver owns defaults, stage constraints, stored selection, and synthetic names; see core-state. Without an explicit name, inline-only configurations use `__inline__`, while environment-only configurations use `__env__`. Synthetic names are not unique context identifiers.
+`createContext` initializes state and settings, resolves configuration, checks `requireTest`, and resolves identity before returning; the `Context` constructor does none of those. Inline `connection` fields enter the shared resolver as flags, above environment settings. The resolver owns defaults, stage constraints, stored selection, and synthetic names; see core-state. Without an explicit name, any configuration with an inline `connection` uses `__inline__`, including an environment-plus-inline one, while environment-only configurations use `__env__`. Synthetic names are not unique context identifiers.
 
-Use `createContext()` for normal consumer startup rather than constructing `Context` and supplying internal state yourself. `CreateContextOptions` includes `config`, `projectRoot`, `stage`, `requireTest`, `channel`, `yes`, and inline `connection` settings. The default channel is `user`; the SDK does not perform the CLI entrypoint's project walk-up and `chdir`.
+Use `createContext()` for normal consumer startup rather than constructing `Context` and supplying internal state yourself. `CreateContextOptions` includes `config`, `projectRoot`, `stage`, `requireTest`, `channel`, `yes`, `freshState`, and inline `connection` settings. With `freshState: true` the factory builds a new `StateManager` and `SettingsManager` from disk instead of the process-wide instances, and the `Context` carries that `StateManager` in `ContextState.stateManager`; the changes, run, secrets, and templates namespaces read state through it. `Context` also exposes `projectRoot`. The default channel is `user`; the SDK does not perform the CLI entrypoint's project walk-up and `chdir`.
+
+The `Context` constructor revalidates `config.access` through `bindSdkPolicy`, which maps `settings.access.roles` and the protected-stage ceiling from `settings.stages[*].defaults.protected` into core-state's `bindPolicyContext`, with `options.stage` as the stage name. Metadata carried from another project or an older settings snapshot cannot supply authority.
 
 Runtime password callbacks and PostgreSQL `ssl.checkServerIdentity` stay outside serializable configuration. The factory removes a shadowed stored or environment password from the resolved configuration when a callback wins. It does not write that removal back to state.
 
@@ -46,6 +48,9 @@ sequenceDiagram
     SDK->>Resolver: serializable connection flags
     Resolver-->>SDK: resolved Config
     SDK->>SDK: remove shadowed password
+    SDK->>SDK: reject callback on SQLite and checkServerIdentity off PostgreSQL
+    SDK->>SDK: checkRequireTest
+    SDK->>SDK: getIdentityForConfig
     SDK-->>Caller: unconnected Context
     Caller->>Ctx: connect()
     Ctx->>Ctx: createConnection with runtime options
@@ -77,7 +82,7 @@ flowchart TD
 
 Schema views share lifecycle and held connections rather than allocating independent pools.
 
-Routine names receive the schema prefix through `qualifyName` unless already qualified with a dot. Chained `withSchema` calls replace the schema instead of stacking it. Transactions and impersonation compose with the schema-derived Kysely handle. Management namespaces continue using shared project state rather than the view's schema.
+Routine names receive the schema prefix through `qualifyName` unless already qualified with a dot. Chained `withSchema` calls replace the schema instead of stacking it. Transactions compose with the schema-derived Kysely handle. On a view, an impersonated scope carries the schema plugin only on `scope.kysely`: `buildScope` passes `null` as the schema for `proc`, `func`, `tvf`, and `scope.transaction` routines, so those resolve against the default schema. Management namespaces continue using shared project state rather than the view's schema.
 
 The schema qualifier has dialect-specific meaning: a schema on PostgreSQL/MSSQL, a database on MySQL, or an attached database on SQLite. `withSchema()` has no dialect gate and does not change the underlying connection configuration. Dots in schema names are rejected because routine SQL quoting splits qualification at a dot; hyphens remain safe through identifier quoting.
 
@@ -90,9 +95,11 @@ PostgreSQL transaction routine dispatch consults `pg_proc` before choosing `CALL
 ```mermaid
 flowchart TD
     %% source: src/sdk/routines.ts, src/sdk/context.ts, src/sdk/impersonate/scope.ts
-    Proc["callProc"] --> Tx{"db.isTransaction?"}
+    Proc["callProc"] --> Dia{"dialect !== 'postgres'?"}
+    Dia -->|yes| Call
+    Dia -->|no| Tx{"db.isTransaction?"}
     Tx -->|yes| Catalog{"isProcedure?"}
-    Catalog -->|yes| Call["CALL"]
+    Catalog -->|yes| Call["execute call query"]
     Catalog -->|no| Tvf["callTvf"]
     Tx -->|no| Attempt["CALL via attempt"]
     Attempt -->|success| Rows["result.rows"]
@@ -102,7 +109,7 @@ flowchart TD
     Tvf --> Rows
 ```
 
-Outside transactions, PostgreSQL `proc` falls back from function-related SQLSTATE `42809` or `42883` to `callTvf`. `func` returns the first row or `null`; `proc` and `tvf` return rows. SQL builders handle dialect quoting and MSSQL table-valued parameters created by `tvp()`.
+Outside transactions, PostgreSQL `proc` falls back to `callTvf` when the SQLSTATE is `42809` or `42883` and the message contains `procedure` or the hint contains `use SELECT`. `func` returns the first row or `null`; `proc` and `tvf` return rows. SQL builders handle dialect quoting and MSSQL table-valued parameters created by `tvp()`.
 
 ### Impersonation
 
@@ -124,16 +131,16 @@ Principal names must match `[a-zA-Z0-9_@.\-\\]+`; invalid names fail before SQL 
 
 | Namespace | Operations and boundary |
 |---|---|
-| `changes` | Offline `create`, `addFile`, `removeFile`, `renameFile`, `reorderFiles`, `delete`, `discover`, `parse`, and `validate`; connected `apply`, `revert`, `ff`, `next`, `rewind`, `status`, and history reads. Deleting a local change still checks `change:rm`. |
-| `run` | Offline `discover`; connected `preview`, `file`, `files`, `dir`, and `build`. `build` returns `unmatchedInclude` and `unmatchedExclude` alongside the batch result. |
-| `pipelines` | Connected `run`, `history`, and `getRun`. `run` checks `run:dir` through `checkProtectedConfig`; see Pipelines namespace below. |
-| `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, `overview`, `previewTeardown`, `truncate`, `teardown`, and `reset`. |
+| `changes` | Offline `create`, `addFile`, `removeFile`, `renameFile`, `reorderFiles`, `delete`, `discover`, `parse`, and `validate`; connected `apply`, `revert`, `ff`, `next`, `rewind`, `status`, and history reads (`history`, `historyForChange`, and `getFileHistory` run behind the `explore` check). Deleting a local change still checks `change:rm`. |
+| `run` | Offline `discover`; connected `preview`, `file`, `files`, `dir`, and `build`. A symbol-keyed `prepareRunContext` method builds a run context for MCP approval preparation and never grants execution. `build` returns `unmatchedInclude` and `unmatchedExclude` alongside the batch result. |
+| `pipelines` | Connected `run`, `history`, and `getRun`. `run` checks `pipeline:run` through `checkProtectedConfig`; `history` and `getRun` run through `runGatedExplore`, behind the `explore` check. See Pipelines namespace below. |
+| `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, and `overview`, all run through `runGatedExplore` behind the `explore` permission (CLI, MCP, and RPC explore commands reach it through the symbol-keyed `gatedExplore` method); plus `previewTeardown` (checks `db:teardown` allow/deny without confirmation), `truncate` (`db:truncate`), `teardown` (`db:teardown`), and `reset` (`db:reset`). |
 | `dt` | `exportTable` and `importFile`; import checks `db:reset`. |
 | `lock` | `acquire`, `release`, `status`, `withLock`, and `forceRelease`; force release checks `lock:force`. |
-| `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. |
+| `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. `set` and `propagate` check `vault:read` as well as `vault:write`/`vault:propagate`. `copy` binds the destination through `bindSdkPolicy`, checks `vault:read` on the source and `vault:write` on the destination (write skipped on dry run), and runs under `withPolicyConfirmation` for both configs; `withDestinationRead` also checks `vault:read` on the destination. |
 | `secrets` | Config-scoped `get`, `list`, `set`, and `delete`, gated by `secret:read` or `secret:write`. |
-| `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. It passes the resolved `Config` to `processFile` without a cast. |
-| `transfer` | `to` and `plan`; writes check the destination config's `db:reset`, not the source config's permission. |
+| `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. It resolves secrets and global secrets into the returned string and passes the resolved `Config` to `processFile` without a cast. |
+| `transfer` | `to` and `plan`; both rebind the destination config's access roles, protected-stage ceiling, and policy context through `bindSdkPolicy` first, and pass the context's channel to core so an agent-channel context is never authorised with user permissions. Writes check the destination config's `db:reset`, not the source config's permission. |
 | `utils` | Offline SHA-256 `checksum`; `testConnection` returns `{ ok, error? }` rather than throwing connection failures. |
 
 The public entrypoint re-exports namespace classes, option/result types, `ExtractArgs`/`ExtractReturn`, `TransactionScope`, policy types, `tvp()`/`TvpValue`, and catchable errors:
@@ -151,13 +158,13 @@ The public entrypoint re-exports namespace classes, option/result types, `Extrac
 
 ### Pipelines namespace
 
-`ctx.noorm.pipelines` is the connected entry to SQL pipelines. It sits beside `run` and `templates`: all three render author-written SQL through the template engine with the resolved `Config`, secrets, and global secrets, but only `pipelines` adds admission, run history, and the input contract. `run` and `templates` pass `processFile` the typed `Config` directly. `pipelines.run` hands it to `buildPipelineContext` in `src/core/pipeline/context.ts`, which resolves the vault key and secrets and returns the executor context.
+`ctx.noorm.pipelines` is the connected entry to SQL pipelines. It sits beside `run` and `templates`: all three render author-written SQL through the template engine with the resolved `Config`, secrets, and global secrets, but only `pipelines` adds admission, run history, and the input contract. `run` and `templates` pass `processFile` the typed `Config` directly. `pipelines.run` hands it to `buildPipelineContext` in [`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts), which resolves the vault key and secrets and returns the executor context.
 
 ```mermaid
 flowchart TD
     %% source: src/sdk/namespaces/pipelines.ts
     A["pipelines.run(slug, options)"] --> B["#connected()"]
-    B --> C["checkProtectedConfig('run:dir')"]
+    B --> C["checkProtectedConfig('pipeline:run')"]
     C --> D["buildPipelineContext:<br/>ensureSchemaVersion, then buildRunContext"]
     D --> F["runPipeline(context, slug, options)"]
     F --> G{"coded failure?"}
@@ -165,7 +172,7 @@ flowchart TD
     G -->|no| I["resolves result with status<br/>and transactionOutcome"]
 ```
 
-The guard runs before any context is built, and `ensureSchemaVersion()` runs before the executor receives the context. The same `#connected()` and `ensureSchemaVersion()` steps precede `history` and `getRun`.
+The guard runs before any context is built, and `ensureSchemaVersion()` runs before the executor receives the context. `history` and `getRun` also call `#connected()` and `ensureSchemaVersion()`, inside `runGatedExplore`, so they gate on `explore` rather than `pipeline:run`.
 
 | Method | Returns | Failure |
 |---|---|---|
@@ -173,20 +180,20 @@ The guard runs before any context is built, and `ensureSchemaVersion()` runs bef
 | `history(slug, { limit })` | `NoormPipelineRun[]` for the active config, newest first | `assertHistoryLimit` throws unless `limit` is an integer from 1 to 100. |
 | `getRun(id)` | `PipelineHistoryRecord` (`run` and `steps`), or `null` | `assertRunId` throws unless `id` is a positive safe integer; an unknown id or another config's run returns `null`. |
 
-The shared validators live in `src/core/pipeline/parse.ts`. `parseRunId` and `parseHistoryLimit` accept only whole-number text, so the CLI and TUI accept the same strings the SDK accepts as numbers.
+The shared validators live in [`src/core/pipeline/parse.ts`](../../src/core/pipeline/parse.ts). `parseRunId` and `parseHistoryLimit` accept only whole-number text, so the CLI and TUI accept the same strings the SDK accepts as numbers.
 
-`PipelineHistoryOptions` and `PipelineHistoryRecord` are exported types; the record type is defined in `src/core/pipeline/history.ts`, not the namespace file.
+`PipelineHistoryOptions` and `PipelineHistoryRecord` are exported types; the record type is defined in [`src/core/pipeline/history.ts`](../../src/core/pipeline/history.ts), not the namespace file.
 
 #### Error handling
 
-Pre-run failures are `PipelineCodedError` instances (`src/core/pipeline/errors.ts`) whose `code` decides how callers classify them, not the message text. The code is not exported from the SDK entrypoint; `PipelineBusyError` is the one pipeline error class the SDK re-exports.
+Pre-run failures are `PipelineCodedError` instances ([`src/core/pipeline/errors.ts`](../../src/core/pipeline/errors.ts)) whose `code` decides how callers classify them, not the message text. The code is not exported from the SDK entrypoint; `PipelineBusyError` is the one pipeline error class the SDK re-exports.
 
 | `code` | Raised when | CLI exit |
 |---|---|---|
 | `PIPELINE_INVALID_DEFINITION` | The definition fails a rule (`PipelineDefinitionError.rule`), or a step fails to prepare. | `2` |
 | `PIPELINE_INVALID_INPUT` | Supplied input fails the declared inputs. | `2` |
 | `PIPELINE_NOT_FOUND` | The slug names no pipeline. | `2` |
-| `PIPELINE_POLICY_BLOCKED` | `checkConfigPolicy` for `run:dir` denies the channel. | `1` |
+| `PIPELINE_POLICY_BLOCKED` | `checkConfigPolicy` for `pipeline:run` denies the channel. | `1` |
 | `PIPELINE_CONFIRMATION_REQUIRED` | Policy requires confirmation and `yes` is unset. | `1` |
 | `PIPELINE_BUSY` | A `singleRun` pipeline already has an active run (`PipelineBusyError`). | `1` |
 
@@ -194,7 +201,7 @@ Pre-run failures are `PipelineCodedError` instances (`src/core/pipeline/errors.t
 
 #### Input quoting
 
-Pipeline input reaches SQL only through template helpers. When `pipelineDialect` is set, `$.quote` is the dialect-specific literal builder from `src/core/pipeline/sql-literal.ts` and `$.escape` throws `PipelineEscapeError`. `prepare.ts` converts that into `PipelineDefinitionError` with rule `escape-unavailable`, so a step that calls `$.escape` fails the whole run with `PIPELINE_INVALID_DEFINITION` before admission.
+Pipeline input reaches SQL only through template helpers. When `pipelineDialect` is set, `$.quote` is the dialect-specific literal builder from [`src/core/pipeline/sql-literal.ts`](../../src/core/pipeline/sql-literal.ts) and `$.escape` throws `PipelineEscapeError`. `prepare.ts` converts that into `PipelineDefinitionError` with rule `escape-unavailable`, so a step that calls `$.escape` fails the whole run with `PIPELINE_INVALID_DEFINITION` before admission.
 
 | Dialect | `$.quote` of a string |
 |---|---|
@@ -232,10 +239,10 @@ Compute workers transform rows while `OrderBuffer` preserves export ordering.
 | Path | Role |
 | --- | --- |
 | [`src/sdk/index.ts`](../../src/sdk/index.ts), [`src/sdk/types.ts`](../../src/sdk/types.ts) | Factory, runtime overrides, public exports, options and routine types. |
-| [`src/sdk/context.ts`](../../src/sdk/context.ts), [`src/sdk/state.ts`](../../src/sdk/state.ts) | Shared state, connection lifecycle, schema views, transaction and impersonation entry points. |
+| [`src/sdk/context.ts`](../../src/sdk/context.ts), [`src/sdk/state.ts`](../../src/sdk/state.ts) | Shared state, `runGatedExplore`, connection lifecycle, schema views, transaction and impersonation entry points. |
 | [`src/sdk/routines.ts`](../../src/sdk/routines.ts), [`src/sdk/sql.ts`](../../src/sdk/sql.ts), [`src/sdk/tvp.ts`](../../src/sdk/tvp.ts) | Routine dispatch, dialect SQL builders, MSSQL table-valued parameters. |
 | [`src/sdk/impersonate/`](../../src/sdk/impersonate) | Dedicated-connection scopes and dialect impersonation/revert strategies. |
-| [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts), [`src/sdk/namespaces/`](../../src/sdk/namespaces), [`src/sdk/guards.ts`](../../src/sdk/guards.ts) | Lazy management wrappers and policy enforcement. |
+| [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts), [`src/sdk/namespaces/`](../../src/sdk/namespaces), [`src/sdk/guards.ts`](../../src/sdk/guards.ts) | Lazy management wrappers; `guards.ts` holds `checkRequireTest`, `checkProtectedConfig`, and `bindSdkPolicy`. |
 | [`src/sdk/namespaces/pipelines.ts`](../../src/sdk/namespaces/pipelines.ts), [`src/core/pipeline/errors.ts`](../../src/core/pipeline/errors.ts), [`src/core/pipeline/parse.ts`](../../src/core/pipeline/parse.ts), [`src/core/pipeline/sql-literal.ts`](../../src/core/pipeline/sql-literal.ts) | `pipelines` wrapper, coded errors, run-ID and limit validators, pipeline-mode `$.quote`/`$.escape`. Execution belongs to core-runner. |
 | [`src/core/dt/index.ts`](../../src/core/dt/index.ts), [`src/core/dt/paging.ts`](../../src/core/dt/paging.ts), [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts) | Export/import orchestration, keyset paging, schema construction and validation. |
 | [`src/core/dt/writer.ts`](../../src/core/dt/writer.ts), [`src/core/dt/reader.ts`](../../src/core/dt/reader.ts), [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts) | File streams, compression, encryption. |
@@ -249,7 +256,7 @@ Compute workers transform rows while `OrderBuffer` preserves export ordering.
 
 DT navigation includes `buildDtSchema()`, `validateSchema()`, and `queryPrimaryKeyColumns()` in [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts); `resolveExportExtension()`, `resolveExportPath()`, `resolveExportTables()`, and `ensureExportDirectory()` in [`src/core/dt/paths.ts`](../../src/core/dt/paths.ts); and `encryptWithPassphrase()`/`decryptWithPassphrase()` in [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts).
 
-SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL builders, and impersonation. Live SDK integration tests cover TVF/TVP execution, vault operations, and reset round trips.
+SDK unit tests cover namespace behavior by role, guard errors, policy attachment (`policy-attach.test.ts`), explore gating (`explore-policy.test.ts`), destructive operations, SQL builders, and impersonation. Live SDK integration tests cover TVF/TVP execution, vault, transfer, and DT namespaces, and reset round trips.
 
 | Reference | Use |
 |---|---|
@@ -268,11 +275,12 @@ SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL
 - PostgreSQL `ssl.checkServerIdentity` must be a function and is rejected for other dialects. TLS identity options require explicitly enabled TLS and certificate verification; incompatible options fail connection creation. Physical pool, session timeout, keep-alive, and TLS behavior belong to core-db.
 - `requireTest: true` rejects a configuration without `isTest: true`, including ordinary inline-only configurations. Inline connection settings do not mark a database as a test database.
 - `requireTest` failures throw `RequireTestError`. The factory resolves identity through `getIdentityForConfig()` after checking this guard.
-- The SDK cannot prompt. Guarded operations throw `ProtectedConfigError` on denial or unconfirmed user-channel operations. `yes: true` supplies user confirmation but cannot override agent-channel denial; core-policy owns the matrix.
-- Direct SDK callers supply `yes: true`; the guard's `NOORM_YES` hint describes CLI use, whose helpers translate that environment value into the option. The SDK guard itself reads `options.yes`.
-- Truncate, teardown, and reset use their own permissions. Dry-run truncate/teardown still require permission but do not require confirmation. Reset does not preserve configured tables because rebuilding would collide with existing objects.
+- The SDK cannot prompt. Guarded operations throw `ProtectedConfigError` on denial or unconfirmed user-channel operations. `yes: true` supplies user confirmation but cannot override agent-channel denial, because `confirm` collapses to deny on the agent channel before `options.yes` is read; core-policy owns the matrix.
+- `NOORM_YES` in an SDK process has no effect. The guard in [`src/sdk/guards.ts`](../../src/sdk/guards.ts) reads only `options.yes`, though its error text names `NOORM_YES`; CLI helpers translate that variable into the option.
+- Exploration reads (`db` listing, describe, and overview methods, change history, and pipeline history) require the `explore` permission via `runGatedExplore`; denial throws `ProtectedConfigError`, and the gate passes config name, access, and channel to core explore.
+- Truncate (`db:truncate`), teardown (`db:teardown`), and reset (`db:reset`) use their own permissions. Dry-run truncate/teardown still require permission but do not require confirmation. Reset does not preserve configured tables because rebuilding would collide with existing objects.
 - Standalone truncate and teardown honor `settings.teardown.preserveTables` (truncate can override it with `options.preserve`). A full reset deliberately ignores that setting before rebuilding.
-- `withSchema` accepts only alphanumerics, underscores, and hyphens. Invalid names throw synchronously. Raw `sql` fragments are not rewritten, and exploration methods still require their explicit schema argument when needed.
+- `withSchema` accepts only alphanumerics, underscores, and hyphens; invalid names throw synchronously. Raw `sql` fragments resolve against the connection's default schema, so raw SQL issued through a schema view hits the wrong schema. The `describe*` methods ignore the view's schema and take their own optional `schema` argument; `listTables()` takes none.
 - PostgreSQL transaction procedure detection matches names and namespaces, not argument overloads or search-path precedence. A same-named function/procedure ambiguity can still select a failing `CALL`; use `tvf` when calling the function.
 - SQLite has no procedure support. TVFs and impersonation support PostgreSQL and MSSQL, not MySQL or SQLite. TVPs are MSSQL-only, enforce consistent row keys, and obey the `2100` parameter limit.
 - Vault decryption needs a private key. `vault.set` throws `VaultAccessError` without a usable vault key; reads can return `null` or an empty object instead. DT import and transfer writes use destination reset permission; export is ungated by the DT wrapper.
@@ -285,10 +293,11 @@ SDK unit tests cover admin/operator/viewer namespace behavior, guard errors, SQL
 
 ## Coupling
 
-- Core-state owns configuration precedence, synthetic naming, state persistence, settings, and the resolver used by the factory. Core-identity supplies environment identity overrides, config identity, and vault primitives.
+- Core-state owns configuration precedence, synthetic naming, state persistence, settings, and the resolver used by the factory; `freshState` bypasses its per-project manager singletons. Core-identity supplies environment identity overrides, config identity, and vault primitives.
 - Core-db owns physical connections, pool behavior, database exploration, teardown, and live transfer. The SDK forwards runtime credentials and PostgreSQL TLS callbacks through the connection runtime-options boundary.
-- Core-policy owns channel/role decisions. Namespace wrappers enforce those decisions; direct Kysely access remains the raw SQL surface.
+- Core-policy owns channel/role decisions, including `withPolicyConfirmation`. The `Context` constructor, transfer, and vault copy bind policy through `bindSdkPolicy`, which calls core-state's `bindPolicyContext`. Namespace wrappers enforce those decisions; direct Kysely access remains the raw SQL surface.
 - Core-runner and core-change own SQL execution and migration semantics behind the SDK namespaces. Wrapper signatures and returned core result types must stay aligned.
+- `mcp-rpc` creates contexts in [`src/mcp/server.ts`](../../src/mcp/server.ts) (`channel: 'agent'`, `freshState: true`); [`src/mcp/prepared.ts`](../../src/mcp/prepared.ts) calls `run[prepareRunContext]`. `cli` drives the SDK through `withContext` in [`src/cli/_utils.ts`](../../src/cli/_utils.ts), and [`src/cli/run/_render-secrets.ts`](../../src/cli/run/_render-secrets.ts) creates one for the preview/inspect secret probe.
 - Worker-bridge owns the compute protocol and ordered worker infrastructure consumed by DT. Live transfer consumes DT's in-memory conversion.
 - `noormObserver` exports the process-global observer, not a per-context bus. Consumers sharing a process filter context-scoped events by `configName`; synthetic inline names alone cannot distinguish unrelated inline contexts.
 - Infra owns SDK bundling and declaration generation. [`tests/sdk/bundle-smoke.test.ts`](../../tests/sdk/bundle-smoke.test.ts) consumes built output; [`tests/integration/connection/postgres-packed-sdk.test.ts`](../../tests/integration/connection/postgres-packed-sdk.test.ts) verifies installed CommonJS/ESM consumers, plain Jest, PostgreSQL queries, and NodeNext declarations. [`tests/integration/sdk/`](../../tests/integration/sdk) exercises live schema, routine, impersonation, and management behavior.

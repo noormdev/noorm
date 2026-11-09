@@ -9,6 +9,15 @@ Issue: https://github.com/noormdev/noorm/issues/40
 Access control is a single `protected: boolean` per config. It cannot express intermediate access levels, cannot give different levels to different callers on the same config, and cannot hide a config from MCP entirely. Enforcement is also scattered: only `sql`/`run_sql` check `protected` on the MCP path — `change_run`, `change_ff`, `change_revert`, `run_file`, and `run_build` reach `ctx.noorm.*` with no gate, and `checkProtection` has no runtime callers at all.
 
 
+## Decision note, 2026-11-09
+
+
+The first design hard-coded three roles and listed custom roles as out of scope. That decision is reversed: `settings.yml` now overrides built-in cells and defines custom roles that extend any known role, so a project can describe the access it wants instead of picking the nearest of three. Roles guard noorm's tools, not an agent with direct access to policy files or credentials; whoever can edit `settings.yml` could already change a role, so editable roles remove no protection. Safety did not move: a protected stage caps every cell by the unmodified built-in matrix, so a project override cannot loosen what a protected stage allows. The spec holds the current rules (`docs/spec/config-access-roles.md`).
+
+MCP changed with it. The `run_noorm_cmd` gate is gone; each command is its own tool on a stateless `2026-07-28` server, with no session and no `connect`. Policy runs per request against an explicit config, and `confirm` becomes a human approval through the client. The channel is `agent`, not `mcp`, because the CLI can be driven by an agent too.
+
+Read permissions (`explore`, `sql:read`) apply to the agent channel only. The user channel always reads them as `allow`: the person at the keyboard can loosen any role, so a user-channel read gate protects nothing.
+
 ## Model
 
 
@@ -24,7 +33,7 @@ Each config declares what each channel gets:
         mcp:  false | 'viewer' | 'operator' | 'admin',
     }
 
-`mcp: false` means invisible: absent from `list_configs`, and `connect` fails with the byte-identical error an unknown config produces. Omission must not leak existence. `mcp: 'viewer'` is the softer posture — the agent sees schema and reads, touches nothing.
+`mcp: false` means invisible: absent from `list_configs`, and any call naming it fails with the error an unknown config produces. Omission must not leak existence. `mcp: 'viewer'` is the softer posture — the agent sees schema and reads, touches nothing.
 
 The `access: {}` grouping (rather than flat top-level `user:` / `mcp:` keys) is deliberate: a top-level `user` key would sit lines away from `connection.user` (the database login) and read ambiguously.
 
@@ -32,7 +41,7 @@ The `access: {}` grouping (rather than flat top-level `user:` / `mcp:` keys) is 
 ## Role matrix
 
 
-Hard-coded. Cells: allow (✓) / confirm / deny (✗). Not user-extensible.
+Built-in defaults. Cells: allow (✓) / confirm / deny (✗). `settings.yml` can override a built-in cell and define custom roles (see the 2026-11-09 decision note).
 
 | permission | viewer | operator | admin |
 |---|---|---|---|
@@ -80,10 +89,10 @@ One function in core:
 
 Same result shape as the old `ProtectionCheck`, so confirm-dialog plumbing carries over.
 
-- **MCP**: `RpcCommand` gains a required `permission` field. A single gate in `run_noorm_cmd` dispatch resolves (channel, config, command.permission) before any handler runs. Every current and future command is covered by construction — the class of bug where a new command forgets its check cannot exist.
+- **MCP**: `RpcCommand` gains a required `permission` field. A single gate in MCP tool dispatch resolves (channel, config, command.permission) before any handler runs; each command is its own tool. Every current and future command is covered by construction — the class of bug where a new command forgets its check cannot exist.
 - **CLI/TUI**: same `checkPolicy`, prompting on `confirm`.
 - **SDK**: `createContext` stamps channel `user`. Side effect worth having: a `viewer` config is read-only even from application code — enforced above the driver, belt to the DB-grant suspenders.
-- **Invisibility**: `list_configs` filters `mcp: false` configs for the mcp channel; `SessionManager.connect`/`getContext` reject them with the unknown-config error.
+- **Invisibility**: `list_configs` filters `mcp: false` configs for the mcp channel; every tool call and resource read naming one is rejected with the unknown-config error.
 
 
 ## Settings stages and display
@@ -91,7 +100,7 @@ Same result shape as the old `ProtectionCheck`, so confirm-dialog plumbing carri
 
 Scoping surfaced two `protected` consumers beyond the config itself; both get explicit mappings rather than silent deletion:
 
-- **Stage defaults** (`settings.yml`) may set `protected: true`, and stage enforcement forbids overriding it to `false`. The stage keyword survives as authoring vocabulary, redefined as an **access ceiling**: a stage with `protected: true` clamps resolved access to at most `{ user: 'operator', mcp: 'viewer' }`. A config may be stricter (`viewer`, `mcp: false`), never looser. Adding full `access` blocks to stage defaults is a separate issue.
+- **Stage defaults** (`settings.yml`) may set `protected: true`, and stage enforcement forbids overriding it to `false`. The stage keyword survives as authoring vocabulary, redefined as an **access ceiling**: a stage with `protected: true` clamps resolved access to at most `{ user: 'operator', mcp: 'viewer' }` (superseded by per-cell ceilings; see the 2026-11-09 decision note). A config may be stricter (`viewer`, `mcp: false`), never looser. Adding full `access` blocks to stage defaults is a separate issue.
 - **Rule matching and display** need a one-word notion of "this config is guarded." Defined as `guarded(config) := access.user !== 'admin'`. Settings rules' `match.protected` matches `guarded`, TUI yellow-border styling keys off `guarded`, and `config list`'s `[protected]` tag becomes the access levels.
 
 The SDK's existing destructive-op guards (`src/sdk/guards.ts`) stop consulting `protected` and consult `checkPolicy` on the `user` channel — one enforcement path, not two.
@@ -111,6 +120,6 @@ Both preserve today's observed behavior, with one intended tightening: protected
 ## Out of scope
 
 
-- User-defined or custom roles — the set is fixed in the app.
+- ~~User-defined or custom roles~~ — reversed 2026-11-09; see the decision note.
 - Identity/authn — channel is process context; no user accounts.
 - Content-classifying change/run files — they are command-gated by design.

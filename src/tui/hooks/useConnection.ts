@@ -26,7 +26,7 @@
  * });
  * ```
  */
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
@@ -60,6 +60,9 @@ export interface ConnectionState {
  * Options for the useConnection hook.
  */
 export interface UseConnectionOptions {
+    /** Whether this screen may request and prepare a connection. */
+    enabled?: boolean;
+
 
     /**
      * Run ensureSchemaVersion after connecting.
@@ -99,14 +102,12 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
         readyError: null,
     });
 
-    const cancelledRef = useRef(false);
-
     // Request connection on mount
     useEffect(() => {
 
-        requestConnection();
+        if (options?.enabled !== false) requestConnection();
 
-    }, [requestConnection]);
+    }, [requestConnection, options?.enabled]);
 
     // Reset local state when provider connection changes (e.g., config switch)
     useEffect(() => {
@@ -127,6 +128,13 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
     // Run ensureSchema + onReady when connection becomes available
     useEffect(() => {
 
+        if (options?.enabled === false) {
+
+            setLocalState((prev) => prev.readyLoading ? { ...prev, readyLoading: false } : prev);
+
+            return;
+
+        }
         if (!providerState.db || !providerState.dialect) return;
         if (localState.readyDone || localState.readyLoading) return;
 
@@ -135,7 +143,7 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
 
         if (!needsSchema && !needsReady) return;
 
-        cancelledRef.current = false;
+        let cancelled = false;
 
         setLocalState((prev) => ({ ...prev, readyLoading: true }));
 
@@ -151,7 +159,7 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
                     ensureSchemaVersion(db, dialect),
                 );
 
-                if (cancelledRef.current) return;
+                if (cancelled) return;
 
                 if (schemaErr) {
 
@@ -171,10 +179,10 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
             if (options?.onReady) {
 
                 const [, readyErr] = await attempt(() =>
-                    options.onReady!(db, () => cancelledRef.current, dialect),
+                    options.onReady!(db, () => cancelled, dialect),
                 );
 
-                if (cancelledRef.current) return;
+                if (cancelled) return;
 
                 if (readyErr) {
 
@@ -190,7 +198,7 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
 
             }
 
-            if (!cancelledRef.current) {
+            if (!cancelled) {
 
                 setLocalState({
                     schemaEnsured: true,
@@ -207,11 +215,11 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
 
         return () => {
 
-            cancelledRef.current = true;
+            cancelled = true;
 
         };
 
-    }, [providerState.db, providerState.dialect, localState.schemaEnsured, localState.readyDone, options?.ensureSchema]);
+    }, [providerState.db, providerState.dialect, localState.schemaEnsured, localState.readyDone, options?.ensureSchema, options?.enabled]);
 
     // Compose final state
     const needsPostConnect = options?.ensureSchema || options?.onReady;

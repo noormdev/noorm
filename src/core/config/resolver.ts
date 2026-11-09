@@ -16,7 +16,8 @@ import { parseConfig, type ConfigSchemaType } from './schema.js';
 import { getEnvConfig } from './index.js';
 import { stageFields } from './stage.js';
 import type { SettingsManager, StageDefaults } from '../settings/index.js';
-import { clampToCeiling, PROTECTED_STAGE_CEILING } from '../policy/index.js';
+import { attachPolicyContext, getPolicyContext, isBuiltinRole, policyTargetIdentity, UnknownAccessRoleError } from '../policy/index.js';
+import type { ConfigAccess, RoleDefinition } from '../policy/index.js';
 
 /**
  * Interface for state manager dependency.
@@ -60,6 +61,19 @@ export class SettingsProvider {
 
     }
 
+    /** Get the project-defined role definitions. */
+    getRoles() {
+
+        return this.#manager.settings.access?.roles;
+
+    }
+
+    get projectRoot(): string {
+
+        return this.#manager.projectRoot;
+
+    }
+
 }
 
 /**
@@ -86,23 +100,123 @@ const DEFAULTS: ConfigInput = {
     },
 };
 
+/** Reject role references that cannot be resolved against project settings. */
+export function validateAccessRoles(
+    access: ConfigAccess,
+    roles: Record<string, unknown> | undefined,
+): void {
+
+    for (const role of [access.user, access.agent]) {
+
+        if (role !== false && !isBuiltinRole(role)
+            && !Object.hasOwn(roles ?? {}, role)) {
+
+            throw new UnknownAccessRoleError(role);
+
+        }
+
+    }
+
+}
+
+function isProtectedStage(stageName: string, settings: SettingsProvider): boolean {
+
+    return settings.getStage(stageName)?.defaults?.protected === true;
+
+}
+
+interface PolicyBinding {
+    roles?: Record<string, RoleDefinition>;
+    projectRoot?: string;
+    stageIsProtected: (stageName: string) => boolean;
+
+    /** Stage names beyond the config's own (e.g. an explicit `stage` option). */
+    stageNames?: string[];
+
+    /**
+     * Trusted `isTest` only (never an env/flag overlay on a stored config).
+     * Omitted keeps the bound value while the connection target (credentials aside) is unchanged.
+     */
+    isTest?: boolean;
+
+    validate?: boolean;
+}
+
 /**
- * Applies the stage `protected: true` access ceiling to a resolved config.
+ * Callers can only add restriction.
  *
- * A `protected: true` stage caps how open the config's access can be.
- * Stricter configs (e.g. an already-viewer config) are left alone.
+ * Approvals are keyed by the bound context, so a site that binds it
+ * differently gets a fingerprint no grant matches.
+ *
+ * @example
+ * ```typescript
+ * const bound = bindPolicyContext(config, {
+ *     roles: settings.access?.roles,
+ *     projectRoot,
+ *     stageIsProtected: (name) => settings.stages?.[name]?.defaults?.protected === true,
+ * })
+ * ```
  */
-function applyStageCeiling(
+export function bindPolicyContext<T extends { name: string; access: ConfigAccess; connection: Partial<ConfigInput>['connection'] }>(
+    config: T,
+    binding: PolicyBinding,
+): T {
+
+    const { roles, projectRoot, stageIsProtected, stageNames = [], validate = true } = binding;
+    const prior = getPolicyContext(config.access);
+    const targetIdentity = projectRoot ? policyTargetIdentity(projectRoot, config.connection) : undefined;
+    const testTargetIdentity = projectRoot ? policyTargetIdentity(projectRoot, connectionTarget(config.connection)) : undefined;
+    const isTest = binding.isTest
+        ?? (prior?.isTest === true && testTargetIdentity !== undefined && prior.testTargetIdentity === testTargetIdentity);
+    const access = { ...config.access };
+
+    if (validate) validateAccessRoles(access, roles);
+
+    attachPolicyContext(access, {
+        roles,
+        protectedStage: prior?.protectedStage === true
+            || [config.name, ...stageNames].some(stageIsProtected),
+        isTest,
+        testTargetIdentity,
+        targetIdentity,
+    });
+
+    return { ...config, access };
+
+}
+
+function applyPolicyContext(
     config: ConfigSchemaType,
-    stageDefaults: StageDefaults | null,
+    stageNames: string[],
+    isTest: boolean,
+    settings?: SettingsProvider,
+    validate = true,
 ): ConfigSchemaType {
 
-    if (stageDefaults?.protected !== true) return config;
+    if (!settings) return config;
 
-    return {
-        ...config,
-        access: clampToCeiling(config.access, PROTECTED_STAGE_CEILING),
-    };
+    return bindPolicyContext(config, {
+        roles: settings.getRoles?.(),
+        projectRoot: settings.projectRoot,
+        stageIsProtected: (stageName) => isProtectedStage(stageName, settings),
+        stageNames,
+        isTest,
+        validate,
+    });
+
+}
+
+// The lookup name can differ from the merged name (env or flags rename it); both feed the ceiling.
+function stageNamesOf(name: string, stage?: string): string[] {
+
+    return stage ? [name, stage] : [name];
+
+}
+
+/** Apply project policy to a stored config without environment overrides. */
+export function withConfigPolicy(config: Config, settings: SettingsProvider, validate = true): Config {
+
+    return applyPolicyContext(config, [], config.isTest === true, settings, validate);
 
 }
 
@@ -126,9 +240,8 @@ export interface ResolveOptions {
 /**
  * Message for a config name that has no stored config.
  *
- * Single source of truth: `SessionManager`'s agent-channel invisibility deny
- * (`src/rpc/session.ts`) reuses this so a hidden config's connect error is
- * byte-identical to an unknown config's, rather than hand-copying the string.
+ * Single source of truth: the MCP server (`src/mcp/server.ts`) reuses this
+ * so a hidden config's error is byte-identical to an unknown config's.
  *
  * @example
  * configNotFoundMessage('prod') // 'Config "prod" not found'
@@ -198,7 +311,7 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
         if (options.flags?.connection || (envConfig.connection && connection.dialect && connection.database)) {
 
-            return resolveFromEnvOnly(envConfig, options.flags, options.stage, options.settings);
+            return resolveFromEnvOnly(state, envConfig, options.flags, options.stage, options.settings);
 
         }
 
@@ -229,11 +342,17 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     }
 
     merged = merge(merged, stored);
+
+    // Captured before the env/flag overlays so they cannot grant the isTest relaxation.
+    const storedConnection = { ...merged.connection };
+    const storedIsTest = stored.isTest === true;
+
     merged = merge(merged, envConfig);
     merged = merge(merged, options.flags ?? {});
 
-    // 5. Validate, apply defaults, and clamp to the stage's access ceiling
-    return applyStageCeiling(parseConfig(merged), stageDefaults);
+    const trustedIsTest = storedIsTest && sameTarget(storedConnection, merged.connection);
+
+    return applyPolicyContext(parseConfig(merged), stageNamesOf(configName, options.stage), trustedIsTest, options.settings);
 
 }
 
@@ -258,11 +377,87 @@ function getStageDefaults(
 }
 
 /**
+ * The fields that decide which database a connection reaches (no credentials); sqlite ignores host and port.
+ *
+ * @example
+ * ```typescript
+ * const retargeted = connectionTarget(stored.connection) !== connectionTarget(resolved.connection)
+ * ```
+ */
+export function connectionTarget(connection: Partial<ConfigInput>['connection']): string {
+
+    const { dialect, host, port, database, filename } = connection ?? {};
+
+    if (dialect === 'sqlite') return JSON.stringify([dialect, database, filename]);
+
+    return JSON.stringify([dialect, host, port === undefined ? undefined : String(port), database, filename]);
+
+}
+
+/**
+ * Whether a resolved connection still reaches the trusted source's database.
+ * A port the trusted source leaves undeclared is not part of its target, so an env port is not a retarget.
+ */
+export function sameTarget(trusted: Partial<ConfigInput>['connection'], resolved: Partial<ConfigInput>['connection']): boolean {
+
+    const declared = { ...DEFAULTS.connection, ...trusted };
+    const compared = declared.port === undefined ? { ...resolved, port: undefined } : resolved;
+
+    return connectionTarget(declared) === connectionTarget(compared);
+
+}
+
+interface EnvOnlyTrust {
+    parsed: ConfigSchemaType;
+    stageDefaults: StageDefaults | null;
+    stageNames: string[];
+    settings: SettingsProvider | undefined;
+    supplied: ConfigInput['connection'];
+}
+
+/**
+ * A stored config or a stage declaring a database decides; otherwise env counts only when no protected stage
+ * applies and env or flags supply the target.
+ */
+function envOnlyIsTest(state: StateProvider, trust: EnvOnlyTrust): boolean {
+
+    const { parsed, stageDefaults, stageNames, settings, supplied } = trust;
+    const declared = [stageDefaults, ...stageNames.map((stage) => settings?.findStageForConfig(stage)?.defaults)]
+        .map((defaults) => defaults?.isTest);
+
+    if (declared.includes(false) || !parsed.isTest) return false;
+
+    const stored = state.getConfig(parsed.name);
+
+    if (stored) {
+
+        return stored.isTest === true && sameTarget(stored.connection, parsed.connection);
+
+    }
+
+    const stageTarget = stageDefaults ? stageFields(stageDefaults, true).connection : undefined;
+
+    if (stageDefaults?.isTest === true && stageTarget?.database) {
+
+        return sameTarget(stageTarget, parsed.connection);
+
+    }
+
+    if (settings && stageNames.some((stage) => isProtectedStage(stage, settings))) return false;
+
+    const needsHost = parsed.connection.dialect !== 'sqlite';
+
+    return Boolean(supplied?.database) && (!needsHost || Boolean(supplied?.host));
+
+}
+
+/**
  * Build a config purely from environment variables (CI mode).
  *
  * Useful when no stored config exists but env vars provide all needed values.
  */
 function resolveFromEnvOnly(
+    state: StateProvider,
     envConfig: ConfigInput,
     flags?: ConfigInput,
     stageName?: string,
@@ -294,7 +489,12 @@ function resolveFromEnvOnly(
 
     }
 
-    return applyStageCeiling(parseConfig(merged), stageDefaults);
+    const parsed = parseConfig(merged);
+    const stageNames = stageNamesOf(name, stageName);
+    const supplied = { ...envConfig.connection, ...flags?.connection };
+    const trustedIsTest = envOnlyIsTest(state, { parsed, stageDefaults, stageNames, settings, supplied });
+
+    return applyPolicyContext(parsed, stageNames, trustedIsTest, settings);
 
 }
 
@@ -374,9 +574,8 @@ export function checkConfigCompleteness(
     // Check stage constraint violations
     const defaults = stage.defaults ?? {} as ConfigInput;
 
-    // protected: true is enforced as an access ceiling at resolution
-    // (resolveConfig/applyStageCeiling), so a resolved config can no longer
-    // violate it here — it's clamped before this function ever sees it.
+    // protected: true is enforced as a policy ceiling at resolution, so it
+    // is not a completeness violation.
 
     // isTest: true cannot be overridden to false
     if (defaults.isTest === true && config.isTest === false) {
@@ -478,6 +677,41 @@ export function assertCanDeleteConfig(
     if (!check.allowed) {
 
         throw new ConfigStageLockedError(configName, stageName ?? configName);
+
+    }
+
+}
+
+/** Thrown when a copy or rename would shed a protected stage's ceiling.
+ * @example throw new ProtectedStageEscapeError('copy', 'prod', 'scratch') */
+export class ProtectedStageEscapeError extends Error {
+
+    override readonly name = 'ProtectedStageEscapeError' as const;
+
+    constructor(
+        public readonly operation: 'copy' | 'rename',
+        public readonly source: string,
+        public readonly destination: string,
+    ) {
+
+        super(`Cannot ${operation} a protected-stage config to an unprotected stage: "${source}" -> "${destination}"`);
+
+    }
+
+}
+
+/** Blocks copy/rename of a protected config to an unprotected name, which would drop its ceiling.
+ * @example assertCanMoveProtectedConfig('rename', 'prod', 'scratch', settings) */
+export function assertCanMoveProtectedConfig(
+    operation: 'copy' | 'rename',
+    source: string,
+    destination: string,
+    settings: SettingsProvider,
+): void {
+
+    if (isProtectedStage(source, settings) && !isProtectedStage(destination, settings)) {
+
+        throw new ProtectedStageEscapeError(operation, source, destination);
 
     }
 

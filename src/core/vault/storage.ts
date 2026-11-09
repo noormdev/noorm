@@ -4,7 +4,7 @@
  * Database CRUD operations for the vault table and vault key management.
  * All operations use Kysely for type-safe queries.
  */
-import type { Kysely } from 'kysely';
+import { sql, type Kysely, type RawBuilder, type SqlBool } from 'kysely';
 
 import { attempt, attemptSync } from '@logosdx/utils';
 
@@ -33,6 +33,28 @@ import type { VaultPolicyGate } from './policy.js';
  * environment and not the other.
  */
 const SECRET_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*$/;
+
+/**
+ * Bind a captured key byte-for-byte, including legacy MSSQL text columns and
+ * databases whose default collation compares strings case-insensitively.
+ */
+export function matchVaultPublicKey(publicKey: string, dialect: Dialect): RawBuilder<SqlBool> {
+
+    if (dialect === 'mssql') {
+
+        return sql<SqlBool>`convert(varbinary(max), convert(varchar(max), public_key))
+            = convert(varbinary(max), convert(varchar(max), ${publicKey}))`;
+
+    }
+    if (dialect === 'mysql') {
+
+        return sql<SqlBool>`cast(public_key as binary) = cast(${publicKey} as binary)`;
+
+    }
+
+    return sql<SqlBool>`public_key = ${publicKey}`;
+
+}
 
 /**
  * Reject secret key names the template layer can't address.
@@ -130,17 +152,24 @@ export async function initializeVault(
     const encryptedJson = JSON.stringify(encrypted);
 
     // Update user's identity row
-    const [, updateErr] = await attempt(async () => {
+    const [updated, updateErr] = await attempt(async () => {
 
         return ndb
             .updateTable(tables.identities as keyof NoormDatabase)
             .set({ encrypted_vault_key: encryptedJson })
             .where('identity_hash', '=', identityHash)
-            .execute();
+            .where(matchVaultPublicKey(publicKey, dialect))
+            .where('encrypted_vault_key', 'is', null)
+            .executeTakeFirst();
 
     });
 
     if (updateErr) return [null, updateErr];
+    if (!updated || updated.numUpdatedRows !== 1n) {
+
+        return [null, new Error('Vault identity must be registered with the supplied key before initialization')];
+
+    }
 
     observer.emit('vault:initialized', { identityHash });
 

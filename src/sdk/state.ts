@@ -11,8 +11,10 @@ import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import type { ChangeManager } from '../core/change/index.js';
+import type { StateManager } from '../core/state/index.js';
+import type { ExploreGate } from '../core/explore/index.js';
 
-import { NotConnectedError } from './guards.js';
+import { NotConnectedError, checkProtectedConfig } from './guards.js';
 import type { CreateContextOptions } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -26,6 +28,7 @@ export interface ContextState {
     identity: Identity;
     options: CreateContextOptions;
     projectRoot: string;
+    stateManager: StateManager;
     changeManager: ChangeManager | null;
 }
 
@@ -50,5 +53,28 @@ export function requireConnection(state: ContextState): ConnectionResult {
     }
 
     return state.connection;
+
+}
+
+/**
+ * Runs a core explore read behind the `explore` check, throwing `ProtectedConfigError`.
+ *
+ * @example
+ * ```typescript
+ * const tables = await runGatedExplore(state, 'explore tables', (gate) => fetchList(db, dialect, 'tables', { gate }))
+ * ```
+ */
+export async function runGatedExplore<T>(
+    state: ContextState,
+    operation: string,
+    run: (gate: ExploreGate) => Promise<T>,
+): Promise<T> {
+
+    const { config, options } = state;
+    const gate: ExploreGate = { configName: config.name, access: config.access, channel: options.channel ?? 'user' };
+
+    checkProtectedConfig(config, options, 'explore', operation);
+
+    return run(gate);
 
 }

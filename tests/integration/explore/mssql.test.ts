@@ -12,6 +12,7 @@ import {
     fetchList,
     fetchDetail,
 } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER } from '../../../src/core/explore/index.js';
 import type {
     TableSummary,
     ViewSummary,
@@ -77,7 +78,7 @@ describe('integration: mssql explore', () => {
 
         it('should return correct counts for all object types', async () => {
 
-            const overview = await fetchOverview(db, 'mssql');
+            const overview = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             // From fixtures: 3 tables, 3 views, 8 functions (4 scalar + 4 TVFs), 17 procedures, 7 types (5 scalar + 2 TVPs)
             expect(overview.tables).toBe(3);
@@ -95,7 +96,7 @@ describe('integration: mssql explore', () => {
         it('should exclude noorm tables by default', async () => {
 
             // Even if __noorm_* tables exist, they should not be counted
-            const overview = await fetchOverview(db, 'mssql');
+            const overview = await fetchOverview(db, 'mssql', { gate: GATED_BY_CALLER });
 
             expect(overview.tables).toBe(3);
 
@@ -107,7 +108,7 @@ describe('integration: mssql explore', () => {
 
         it('should return all 3 tables with column counts', async () => {
 
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
 
             expect(tables).toHaveLength(3);
 
@@ -120,7 +121,7 @@ describe('integration: mssql explore', () => {
 
         it('should include column counts for each table', async () => {
 
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
 
             const usersTable = tables.find((t: TableSummary) => t.name === 'users');
             expect(usersTable).toBeDefined();
@@ -138,7 +139,7 @@ describe('integration: mssql explore', () => {
 
         it('should include schema information', async () => {
 
-            const tables = await fetchList(db, 'mssql', 'tables');
+            const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER });
 
             const usersTable = tables.find((t: TableSummary) => t.name === 'users');
             expect(usersTable).toBeDefined();
@@ -152,7 +153,7 @@ describe('integration: mssql explore', () => {
 
         it('should return all 3 views', async () => {
 
-            const views = await fetchList(db, 'mssql', 'views');
+            const views = await fetchList(db, 'mssql', 'views', { gate: GATED_BY_CALLER });
 
             expect(views).toHaveLength(3);
 
@@ -165,7 +166,7 @@ describe('integration: mssql explore', () => {
 
         it('should include column counts for each view', async () => {
 
-            const views = await fetchList(db, 'mssql', 'views');
+            const views = await fetchList(db, 'mssql', 'views', { gate: GATED_BY_CALLER });
 
             for (const view of views) {
 
@@ -177,7 +178,7 @@ describe('integration: mssql explore', () => {
 
         it('should indicate whether views are updatable', async () => {
 
-            const views = await fetchList(db, 'mssql', 'views');
+            const views = await fetchList(db, 'mssql', 'views', { gate: GATED_BY_CALLER });
 
             for (const view of views) {
 
@@ -193,7 +194,7 @@ describe('integration: mssql explore', () => {
 
         it('should return all 8 functions (4 scalar + 4 TVFs)', async () => {
 
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
 
             expect(functions).toHaveLength(8);
 
@@ -211,7 +212,7 @@ describe('integration: mssql explore', () => {
 
         it('should include parameter counts and return types', async () => {
 
-            const functions = await fetchList(db, 'mssql', 'functions');
+            const functions = await fetchList(db, 'mssql', 'functions', { gate: GATED_BY_CALLER });
 
             const emailFn = functions.find((f: FunctionSummary) => f.name === 'fn_IsValidEmail');
             expect(emailFn).toBeDefined();
@@ -230,7 +231,7 @@ describe('integration: mssql explore', () => {
 
         it('should return all 16 stored procedures', async () => {
 
-            const procedures = await fetchList(db, 'mssql', 'procedures');
+            const procedures = await fetchList(db, 'mssql', 'procedures', { gate: GATED_BY_CALLER });
 
             expect(procedures.length).toBeGreaterThanOrEqual(16);
 
@@ -262,7 +263,7 @@ describe('integration: mssql explore', () => {
 
         it('should include parameter counts', async () => {
 
-            const procedures = await fetchList(db, 'mssql', 'procedures');
+            const procedures = await fetchList(db, 'mssql', 'procedures', { gate: GATED_BY_CALLER });
 
             // create_user has 5 parameters (email, username, password_hash, display_name, avatar_url)
             const createUser = procedures.find((p: ProcedureSummary) => p.name === 'create_user');
@@ -282,7 +283,7 @@ describe('integration: mssql explore', () => {
 
         it('should return all 7 custom types (5 scalar + 2 TVPs)', async () => {
 
-            const types = await fetchList(db, 'mssql', 'types');
+            const types = await fetchList(db, 'mssql', 'types', { gate: GATED_BY_CALLER });
 
             expect(types).toHaveLength(7);
 
@@ -299,7 +300,7 @@ describe('integration: mssql explore', () => {
 
         it('should identify type kinds correctly', async () => {
 
-            const types = await fetchList(db, 'mssql', 'types');
+            const types = await fetchList(db, 'mssql', 'types', { gate: GATED_BY_CALLER });
 
             for (const type of types) {
 
@@ -316,7 +317,7 @@ describe('integration: mssql explore', () => {
 
         it('should return full table detail for users table', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -328,7 +329,7 @@ describe('integration: mssql explore', () => {
 
         it('should include columns with correct metadata', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', { schema: 'dbo', gate: GATED_BY_CALLER });
             const tableDetail = detail as TableDetail;
 
             expect(tableDetail.columns).toBeDefined();
@@ -351,7 +352,7 @@ describe('integration: mssql explore', () => {
 
         it('should include indexes', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'tables', 'users', { schema: 'dbo', gate: GATED_BY_CALLER });
             const tableDetail = detail as TableDetail;
 
             expect(tableDetail.indexes).toBeDefined();
@@ -364,7 +365,7 @@ describe('integration: mssql explore', () => {
 
         it('should include foreign keys for child tables', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'tables', 'todo_lists', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'tables', 'todo_lists', { schema: 'dbo', gate: GATED_BY_CALLER });
             const tableDetail = detail as TableDetail;
 
             expect(tableDetail.foreignKeys).toBeDefined();
@@ -378,7 +379,7 @@ describe('integration: mssql explore', () => {
 
         it('should return null for non-existent table', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'tables', 'nonexistent_table', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'tables', 'nonexistent_table', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -390,7 +391,7 @@ describe('integration: mssql explore', () => {
 
         it('should return full view detail for v_active_users', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -402,7 +403,7 @@ describe('integration: mssql explore', () => {
 
         it('should include columns for the view', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', { schema: 'dbo', gate: GATED_BY_CALLER });
             const viewDetail = detail as ViewDetail;
 
             expect(viewDetail.columns).toBeDefined();
@@ -418,7 +419,7 @@ describe('integration: mssql explore', () => {
 
         it('should include view definition', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'views', 'v_active_users', { schema: 'dbo', gate: GATED_BY_CALLER });
             const viewDetail = detail as ViewDetail;
 
             // Definition might be available depending on permissions
@@ -436,7 +437,7 @@ describe('integration: mssql explore', () => {
 
         it('should return full function detail for fn_IsValidEmail', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -448,7 +449,7 @@ describe('integration: mssql explore', () => {
 
         it('should include parameters with correct metadata', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', { schema: 'dbo', gate: GATED_BY_CALLER });
             const fnDetail = detail as FunctionDetail;
 
             expect(fnDetail.parameters).toBeDefined();
@@ -463,7 +464,7 @@ describe('integration: mssql explore', () => {
 
         it('should include return type', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'functions', 'fn_IsValidEmail', { schema: 'dbo', gate: GATED_BY_CALLER });
             const fnDetail = detail as FunctionDetail;
 
             expect(fnDetail.returnType).toBeDefined();
@@ -478,7 +479,7 @@ describe('integration: mssql explore', () => {
 
         it('should return full procedure detail for create_user', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -490,7 +491,7 @@ describe('integration: mssql explore', () => {
 
         it('should include parameters with correct metadata', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', { schema: 'dbo', gate: GATED_BY_CALLER });
             const procDetail = detail as ProcedureDetail;
 
             expect(procDetail.parameters).toBeDefined();
@@ -508,7 +509,7 @@ describe('integration: mssql explore', () => {
 
         it('should include procedure definition', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'procedures', 'create_user', { schema: 'dbo', gate: GATED_BY_CALLER });
             const procDetail = detail as ProcedureDetail;
 
             // Definition might be available depending on permissions
@@ -526,7 +527,7 @@ describe('integration: mssql explore', () => {
 
         it('should return full type detail for EmailAddress', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'types', 'EmailAddress', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'types', 'EmailAddress', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -538,7 +539,7 @@ describe('integration: mssql explore', () => {
 
         it('should identify type as domain/alias', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'types', 'EmailAddress', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'types', 'EmailAddress', { schema: 'dbo', gate: GATED_BY_CALLER });
             const typeDetail = detail as TypeDetail;
 
             // MSSQL alias types are domains
@@ -555,7 +556,7 @@ describe('integration: mssql explore', () => {
 
         it('should return null for non-existent type', async () => {
 
-            const detail = await fetchDetail(db, 'mssql', 'types', 'NonExistentType', 'dbo');
+            const detail = await fetchDetail(db, 'mssql', 'types', 'NonExistentType', { schema: 'dbo', gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 

@@ -24,6 +24,7 @@ import { observer } from '../../../../src/core/observer.js';
 import { ConnectionProvider, useConnectionContext, type ConnectionContextValue } from '../../../../src/tui/providers/ConnectionProvider.js';
 import { usePipelineOperations, type PipelineOperations } from '../../../../src/tui/hooks/usePipelineOperations.js';
 import { ShutdownProvider, useShutdown, type ShutdownContextValue } from '../../../../src/tui/shutdown.js';
+import { withPolicy } from '../../../utils/access.js';
 
 const actualAppContext = { ...appContext };
 const createConnection = connections.createConnection;
@@ -77,7 +78,7 @@ async function until(predicate: () => boolean) {
 function config(name: string): Config {
 
     return {
-        name, type: 'local', isTest: true, access: { user: 'admin', agent: 'admin' },
+        name, type: 'local', isTest: true, access: withPolicy({ user: 'admin', agent: 'admin' }),
         connection: { dialect: 'sqlite', database: ':memory:' },
     };
 

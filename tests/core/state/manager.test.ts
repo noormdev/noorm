@@ -5,11 +5,12 @@
  * polluting the project directory.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync, statSync } from 'fs';
 import { join, dirname } from 'path';
-import { StateManager, resetStateManager, getPackageVersion, InvalidSecretKeyError } from '../../../src/core/state/index.js';
+import { StateManager, resetStateManager, getPackageVersion, InvalidSecretKeyError, ConfigAccessInvalidError } from '../../../src/core/state/index.js';
 import type { Config, Stage } from '../../../src/core/config/types.js';
-import { ConfigStageLockedError } from '../../../src/core/config/index.js';
+import { ConfigStageLockedError, ProtectedStageEscapeError } from '../../../src/core/config/index.js';
 import { SettingsProvider } from '../../../src/core/config/resolver.js';
 import type { KnownUser } from '../../../src/core/identity/types.js';
 import { generateKeyPair } from '../../../src/core/identity/crypto.js';
@@ -381,32 +382,146 @@ describe('state: manager', () => {
 
         });
 
-        it('should repair a malformed access found at the current schema version', async () => {
-
-            // `{}` is truthy, so the `if (!config.access)` guard skipped it
-            // and every later command failed zod validation instead.
-            const statePath = state.getStatePath();
-
-            writeCurrentState(statePath, testPrivateKey, {
-                broken: {
-                    name: 'broken',
-                    type: 'local',
-                    isTest: false,
-                    access: {},
-                    connection: { dialect: 'sqlite', database: ':memory:' },
-                },
-            });
+        it('isolates malformed access, preserves encrypted data, and repairs only that access', async () => {
 
             await state.load();
+            await state.setConfig('good', createTestConfig('good'));
+            await state.setConfig('broken', createTestConfig('broken'));
+            await state.setSecret('good', 'TOKEN', 'good-secret');
+            await state.setSecret('broken', 'TOKEN', 'broken-secret');
+            await state.setGlobalSecret('GLOBAL', 'global-secret');
 
-            expect(state.getConfig('broken')?.access).toEqual({ user: 'viewer', agent: 'viewer' });
+            const statePath = state.getStatePath();
+            const payload = JSON.parse(readFileSync(statePath, 'utf8')) as EncryptedPayload;
+            const stored = JSON.parse(decrypt(payload, testPrivateKey));
+            stored.configs.broken.access = { user: 'admin' };
+            stored.knownUsers.example = { identityHash: 'example', email: 'test@example.com' };
+            writeFileSync(statePath, JSON.stringify(encrypt(JSON.stringify(stored), testPrivateKey)));
 
-            const raw = readFileSync(statePath, 'utf8');
-            const decrypted = JSON.parse(
-                decrypt(JSON.parse(raw) as EncryptedPayload, testPrivateKey),
-            ) as { configs: Record<string, Record<string, unknown>> };
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state', stateFile: 'state.enc', privateKey: testPrivateKey,
+            });
+            const before = readFileSync(statePath, 'utf8');
+            await reader.load();
+            expect(readFileSync(statePath, 'utf8')).toBe(before);
+            expect(reader.listConfigs().map((config) => config.name)).toEqual(['good']);
+            expect(reader.listAccessErrors()[0]?.message).toContain('Config "broken": Invalid config access');
+            expect(() => reader.getConfig('broken')).toThrow('Config "broken": Invalid config access');
+            const [, accessErr] = attemptSync(() => reader.getConfig('broken'));
+            expect(accessErr).toBeInstanceOf(ConfigAccessInvalidError);
+            expect(reader.getConfig('good')?.name).toBe('good');
+            expect(reader.getSecret('good', 'TOKEN')).toBe('good-secret');
+            expect(reader.getGlobalSecret('GLOBAL')).toBe('global-secret');
+            expect(reader.getKnownUsers()['example']?.email).toBe('test@example.com');
 
-            expect(decrypted.configs['broken']?.['access']).toEqual({ user: 'viewer', agent: 'viewer' });
+            await reader.setGlobalSecret('OTHER', 'preserved');
+            const retained = JSON.parse(decrypt(
+                JSON.parse(readFileSync(statePath, 'utf8')) as EncryptedPayload, testPrivateKey,
+            ));
+            expect(retained.configs.broken.access).toEqual({ user: 'admin' });
+
+            await reader.repairConfigAccess('broken', { user: 'viewer', agent: false });
+            expect(reader.getConfig('broken')?.access).toEqual({ user: 'viewer', agent: false });
+            expect(reader.getSecret('broken', 'TOKEN')).toBe('broken-secret');
+            expect(reader.getSecret('good', 'TOKEN')).toBe('good-secret');
+            expect(reader.getGlobalSecret('OTHER')).toBe('preserved');
+
+        });
+
+        describe('writes onto a malformed-access entry', () => {
+
+            const settings = createMockSettings();
+            let reader: StateManager;
+            let storedBefore: unknown;
+
+            beforeEach(async () => {
+
+                await state.load();
+                await state.setConfig('good', createTestConfig('good'));
+                await state.setConfig('broken', createTestConfig('broken'));
+                await state.setConfig('doomed', createTestConfig('doomed'));
+                await state.setSecret('broken', 'TOKEN', 'broken-secret');
+
+                const statePath = state.getStatePath();
+                const stored = JSON.parse(decrypt(
+                    JSON.parse(readFileSync(statePath, 'utf8')) as EncryptedPayload, testPrivateKey,
+                ));
+                stored.configs.broken.access = { user: 'admin' };
+                stored.configs.doomed.access = { user: 'admin' };
+                writeFileSync(statePath, JSON.stringify(encrypt(JSON.stringify(stored), testPrivateKey)));
+                storedBefore = stored.configs.broken;
+
+                reader = new StateManager(tempDir, {
+                    stateDir: '.test-state', stateFile: 'state.enc', privateKey: testPrivateKey,
+                });
+                await reader.load();
+
+            });
+
+            it('should refuse setConfig and name the remedy', async () => {
+
+                const [, err] = await attempt(() => reader.setConfig('broken', createTestConfig('broken')));
+
+                expect(err).toBeInstanceOf(ConfigAccessInvalidError);
+                expect(err?.message).toContain('noorm config repair-access "broken"');
+                expect(err?.message).toContain('noorm config rm "broken"');
+
+            });
+
+            it('should refuse copyConfig onto it and leave the entry and its secrets intact', async () => {
+
+                const [, err] = await attempt(() => reader.copyConfig('good', 'broken', settings));
+
+                expect(err).toBeInstanceOf(ConfigAccessInvalidError);
+
+                const persisted = JSON.parse(decrypt(
+                    JSON.parse(readFileSync(reader.getStatePath(), 'utf8')) as EncryptedPayload, testPrivateKey,
+                ));
+                expect(persisted.configs.broken).toEqual(storedBefore);
+                expect(reader.getSecret('broken', 'TOKEN')).toBe('broken-secret');
+
+            });
+
+            it('should still let repair and delete act on it', async () => {
+
+                await reader.repairConfigAccess('broken', { user: 'viewer', agent: false });
+                expect(reader.getConfig('broken')?.access).toEqual({ user: 'viewer', agent: false });
+
+                expect(reader.getConfigAccessError('doomed')).not.toBeNull();
+                await reader.deleteConfig('doomed');
+                expect(reader.getConfig('doomed')).toBeNull();
+
+            });
+
+        });
+
+        it('isolates and names partial access during v2 and v3 migrations', async () => {
+
+            for (const schemaVersion of [1, 2]) {
+
+                const path = join(tempDir, `migration-${schemaVersion}`, 'state.enc');
+                mkdirSync(dirname(path), { recursive: true });
+                const broken = { ...createTestConfig('broken'), access: { user: 'admin' } };
+                const stored = {
+                    version: getPackageVersion(), schemaVersion, configs: {
+                        good: createTestConfig('good'), broken,
+                    }, activeConfig: null, secrets: { good: { TOKEN: 'secret' } },
+                    globalSecrets: {}, knownUsers: {},
+                };
+                writeFileSync(path, JSON.stringify(encrypt(JSON.stringify(stored), testPrivateKey)));
+                const reader = new StateManager(tempDir, {
+                    stateDir: `migration-${schemaVersion}`, privateKey: testPrivateKey,
+                });
+                await reader.load();
+                expect(reader.getConfig('good')?.name).toBe('good');
+                expect(reader.getSecret('good', 'TOKEN')).toBe('secret');
+                expect(() => reader.getConfig('broken')).toThrow('Config "broken": Invalid config access');
+                const persisted = JSON.parse(decrypt(
+                    JSON.parse(readFileSync(path, 'utf8')) as EncryptedPayload, testPrivateKey,
+                ));
+                expect(persisted.configs.broken).toEqual(broken);
+
+            }
 
         });
 
@@ -460,6 +575,142 @@ describe('state: manager', () => {
     // Config Operations
     // ─────────────────────────────────────────────────────────────
 
+    describe('protected-stage escape', () => {
+
+        const settings = createMockSettings({
+            prod: { defaults: { protected: true } },
+            staging: { defaults: { protected: true } },
+            dev: { defaults: {} },
+        });
+
+        beforeEach(async () => {
+
+            await state.load();
+            await state.setConfig('prod', createTestConfig('prod'));
+
+        });
+
+        it('should refuse copying a protected-stage config to an unprotected name', async () => {
+
+            const [, err] = await attempt(() => state.copyConfig('prod', 'scratch', settings));
+
+            expect(err).toBeInstanceOf(ProtectedStageEscapeError);
+            expect(state.getConfig('scratch')).toBeNull();
+
+        });
+
+        it('should copy a protected-stage config to another protected stage name', async () => {
+
+            await state.copyConfig('prod', 'staging', settings);
+
+            expect(state.getConfig('staging')).toEqual(createTestConfig('staging'));
+            expect(state.getConfig('prod')).not.toBeNull();
+
+        });
+
+        it('should copy an unprotected config to any name', async () => {
+
+            await state.setConfig('dev', createTestConfig('dev'));
+            await state.copyConfig('dev', 'scratch', settings);
+
+            expect(state.getConfig('scratch')?.name).toBe('scratch');
+
+        });
+
+        it('should refuse renaming a protected-stage config to an unprotected name', async () => {
+
+            const renamed = createTestConfig('scratch');
+            const [, err] = await attempt(() => state.renameConfig('prod', renamed, settings));
+
+            expect(err).toBeInstanceOf(ProtectedStageEscapeError);
+            expect(state.getConfig('prod')).not.toBeNull();
+            expect(state.getConfig('scratch')).toBeNull();
+
+        });
+
+        it('should rename a protected-stage config to another protected stage name', async () => {
+
+            await state.renameConfig('prod', createTestConfig('staging'), settings);
+
+            expect(state.getConfig('prod')).toBeNull();
+            expect(state.getConfig('staging')).not.toBeNull();
+
+        });
+
+        it('should carry secrets and the active config over a rename', async () => {
+
+            await state.setSecret('prod', 'API_KEY', 'secret-value');
+            await state.setActiveConfig('prod');
+            await state.renameConfig('prod', createTestConfig('staging'), settings);
+
+            expect(state.getSecret('staging', 'API_KEY')).toBe('secret-value');
+            expect(state.getSecret('prod', 'API_KEY')).toBeNull();
+            expect(state.getActiveConfigName()).toBe('staging');
+
+        });
+
+        it('should leave the source config intact when the renamed access is invalid', async () => {
+
+            await state.setSecret('prod', 'API_KEY', 'secret-value');
+            const invalid = createTestConfig('staging', { access: { user: '', agent: false } });
+            const [, err] = await attempt(() => state.renameConfig('prod', invalid, settings));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(state.getConfig('prod')).not.toBeNull();
+            expect(state.getConfig('staging')).toBeNull();
+            expect(state.getSecret('prod', 'API_KEY')).toBe('secret-value');
+
+        });
+
+        it('should refuse renaming a config that does not exist', async () => {
+
+            const [, err] = await attempt(() => state.renameConfig('missing', createTestConfig('staging'), settings));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err?.message).toContain('missing');
+            expect(state.getConfig('staging')).toBeNull();
+
+        });
+
+        it('should refuse renaming onto an existing config and leave both intact', async () => {
+
+            await state.setConfig('staging', createTestConfig('staging'));
+            await state.setSecret('staging', 'API_KEY', 'keep-me');
+            const [, err] = await attempt(() => state.renameConfig('prod', createTestConfig('staging'), settings));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err?.message).toContain('staging');
+            expect(state.getConfig('prod')).not.toBeNull();
+            expect(state.getSecret('staging', 'API_KEY')).toBe('keep-me');
+
+        });
+
+        it('should persist a rename exactly once', async () => {
+
+            const persisted: unknown[] = [];
+            const off = observer.on('state:persisted', (data) => persisted.push(data));
+            await state.renameConfig('prod', createTestConfig('staging'), settings);
+            off();
+
+            expect(persisted).toHaveLength(1);
+
+        });
+
+        it('should refuse a rename that deleteConfig would block on a locked stage', async () => {
+
+            const locked = createMockSettings({
+                prod: { locked: true, defaults: { protected: true } },
+                staging: { defaults: { protected: true } },
+            });
+            const [, err] = await attempt(() => state.renameConfig('prod', createTestConfig('staging'), locked));
+
+            expect(err).toBeInstanceOf(ConfigStageLockedError);
+            expect(state.getConfig('prod')).not.toBeNull();
+
+        });
+
+    });
+
     describe('config operations', () => {
 
         beforeEach(async () => {
@@ -475,6 +726,32 @@ describe('state: manager', () => {
 
             const retrieved = state.getConfig('dev');
             expect(retrieved).toEqual(config);
+
+        });
+
+        it('preserves custom roles across encrypted reload and listings', async () => {
+
+            const access = { user: 'auditor', agent: 'automation' };
+            await state.setConfig('custom', createTestConfig('custom', { access }));
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+
+            expect(reader.getConfig('custom')?.access).toEqual(access);
+            expect(reader.listConfigs().find((config) => config.name === 'custom')?.access).toEqual(access);
+
+        });
+
+        it('rejects malformed explicit access before saving a config', async () => {
+
+            const config = createTestConfig('invalid');
+            const invalid = { ...config, access: {} } as unknown as typeof config;
+            await expect(state.setConfig('invalid', invalid)).rejects.toThrow('Invalid config access');
+            expect(state.getConfig('invalid')).toBeNull();
 
         });
 

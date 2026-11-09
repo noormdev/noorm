@@ -8,6 +8,7 @@ import { getPipelineRun } from '../../../src/core/pipeline/history.js';
 import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 for (const sqliteFile of [true, false]) {
 
@@ -24,7 +25,7 @@ for (const sqliteFile of [true, false]) {
                 await mkdir(folder, { recursive: true });
                 const context: PipelineContext = { db, dialect: 'sqlite', connectionConfig: connection,
                     configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root,
-                    access: { user: 'admin', agent: 'admin' }, channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
+                    access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
                 const run = async (bodies: string[]) => {
 
                     await Promise.all(bodies.map((body, i) => writeFile(join(folder, `${i}.sql`), body)));
@@ -92,7 +93,7 @@ for (const dialect of ['postgres', 'mysql', 'mssql', 'sqlite'] as const) {
                 await mkdir(folder, { recursive: true });
                 const context: PipelineContext = { db, dialect, connectionConfig: connection,
                     configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root,
-                    access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                    access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                     pipelinesPath: './db/pipelines', cliVersion: 'test', poolMax: 1 };
                 const run = async (bodies: string[], graph = false) => {
 

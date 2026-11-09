@@ -15,6 +15,9 @@ import { CURRENT_VERSIONS } from '../core/version/types.js';
 import { getFullVersionRecord } from '../core/version/schema/index.js';
 import type { FullVersionRecord } from '../core/version/schema/index.js';
 import { fetchOverview } from '../core/explore/index.js';
+import { SettingsProvider, withConfigPolicy } from '../core/config/resolver.js';
+import { getSettingsManager } from '../core/settings/index.js';
+import { resolveChannel } from '../core/policy/index.js';
 import type { ExploreOverview } from '../core/explore/index.js';
 import { loadIdentityMetadata } from '../core/identity/storage.js';
 import { detectAgentHarness } from '../core/policy/harness.js';
@@ -135,13 +138,14 @@ async function gatherInfo(): Promise<InfoResult> {
     const harness = detectAgentHarness();
 
     const projectResult = findProjectRoot();
+    const projectRoot = projectResult.hasProject ? projectResult.projectRoot : null;
 
     // === Business logic block ===
-    if (projectResult.hasProject && projectResult.projectRoot) {
+    if (projectRoot) {
 
         const [manager] = await attempt(async () => {
 
-            const mgr = getStateManager(projectResult.projectRoot!);
+            const mgr = getStateManager(projectRoot);
             await mgr.load();
 
             return mgr;
@@ -177,19 +181,27 @@ async function gatherInfo(): Promise<InfoResult> {
 
                     const db = conn.db as Kysely<NoormDatabase>;
 
-                    const [results] = await attempt(() =>
-                        Promise.all([
-                            getFullVersionRecord(db, active.connection.dialect),
-                            fetchOverview(db as Kysely<unknown>, active.connection.dialect),
-                        ]),
-                    );
+                    const settingsManager = getSettingsManager(projectRoot);
+                    const [, settingsErr] = await attempt(() => settingsManager.load());
 
-                    if (results) {
+                    // No settings means unresolvable roles: skip the overview, don't read it unchecked.
+                    const gate = settingsErr
+                        ? null
+                        : {
+                            configName: active.name,
+                            access: withConfigPolicy(active, new SettingsProvider(settingsManager), false).access,
+                            channel: resolveChannel(),
+                        };
 
-                        versionRecord = results[0];
-                        overview = results[1];
+                    const [[versionResult], [overviewResult]] = await Promise.all([
+                        attempt(() => getFullVersionRecord(db, active.connection.dialect)),
+                        attempt(async () => gate
+                            ? fetchOverview(db as Kysely<unknown>, active.connection.dialect, { gate })
+                            : null),
+                    ]);
 
-                    }
+                    versionRecord = versionResult ?? null;
+                    overview = overviewResult ?? null;
 
                     if (identityMeta?.identityHash) {
 

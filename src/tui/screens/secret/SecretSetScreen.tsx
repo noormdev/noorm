@@ -25,7 +25,8 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useVaultSecretKeys } from '../../hooks/index.js';
-import { Panel, SecretValueForm, useToast } from '../../components/index.js';
+import { Panel, ProtectedConfirm, SecretValueForm, SmartConfirm, useToast } from '../../components/index.js';
+import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint } from '../../../core/policy/index.js';
 
 /**
  * Simple error screen for when no active config exists.
@@ -77,10 +78,13 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets, vaultError } = useVaultSecretKeys();
+    const readCheck = activeConfig ? checkConfigPolicy('user', activeConfig, 'secret:read') : null;
+    const canRead = !!readCheck?.allowed && !readCheck.requiresConfirmation;
+    const { vaultSecretKeys, requiredSecrets: rawRequiredSecrets, vaultError, vaultConfirmation } = useVaultSecretKeys(canRead);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [pending, setPending] = useState<{ key: string; value: string; fingerprint: string } | null>(null);
 
     // Key from params (if editing existing secret)
     const secretKey = params.name;
@@ -109,11 +113,11 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
     // Check if secret already exists locally
     const secretExists = useMemo(() => {
 
-        if (!stateManager || !activeConfigName || !secretKey) return false;
+        if (!canRead || !stateManager || !activeConfigName || !secretKey) return false;
 
         return stateManager.getSecret(activeConfigName, secretKey) !== null;
 
-    }, [stateManager, activeConfigName, secretKey]);
+    }, [canRead, stateManager, activeConfigName, secretKey]);
 
     // Check if secret exists in vault (will be overridden by local)
     const existsInVault = useMemo(() => {
@@ -127,25 +131,44 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
     // Get unset required secrets for suggestions
     const unsetRequired = useMemo(() => {
 
-        if (!stateManager || !activeConfigName) return [];
+        if (!canRead || !stateManager || !activeConfigName) return requiredSecrets;
 
         return requiredSecrets.filter(
             (s) => stateManager.getSecret(activeConfigName, s.key) === null,
         );
 
-    }, [requiredSecrets, stateManager, activeConfigName]);
+    }, [canRead, requiredSecrets, stateManager, activeConfigName]);
 
     // Handle form submission
     const handleSubmit = useCallback(
-        async (key: string, value: string) => {
+        async (key: string, value: string, approvedFingerprint?: string) => {
 
-            if (!stateManager || !activeConfigName) {
+            if (!stateManager || !activeConfigName || !activeConfig) {
 
                 setError('No active configuration');
 
                 return;
 
             }
+            const check = checkConfigPolicy('user', activeConfig, 'secret:write');
+            if (!check.allowed) {
+
+                setPending(null);
+                setError(check.blockedReason ?? 'Secret write is not allowed');
+
+                return;
+
+            }
+            const fingerprint = `${activeConfigName}:${getPolicyFingerprint(activeConfig)}`;
+            if (check.requiresConfirmation && approvedFingerprint !== fingerprint) {
+
+                setPending({ key, value, fingerprint });
+
+                return;
+
+            }
+            setPending(null);
+
 
             setSaving(true);
             setError(null);
@@ -174,7 +197,7 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, activeConfigName, refresh, showToast, back],
+        [stateManager, activeConfig, activeConfigName, refresh, showToast, back],
     );
 
     // Handle cancel
@@ -195,6 +218,39 @@ export function SecretSetScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (vaultConfirmation) {
+
+        return (
+            <SmartConfirm
+                {...vaultConfirmation}
+                requiresConfirmation
+                action="read vault secret keys"
+                message="Read vault secret keys?"
+            />
+        );
+
+    }
+
+    if (pending) {
+
+        const check = checkConfigPolicy('user', activeConfig, 'secret:write');
+
+        return (
+            <ProtectedConfirm
+                configName={activeConfigName}
+                confirmPhrase={check.confirmationPhrase ?? confirmationPhraseFor(activeConfigName)}
+                action={`save secret "${pending.key}"`}
+                onConfirm={() => {
+
+                    void handleSubmit(pending.key, pending.value, pending.fingerprint);
+
+                }}
+                onCancel={() => setPending(null)}
+            />
+        );
+
+    }
+
 
     // Title based on mode
     const title = secretKey

@@ -22,7 +22,7 @@ import { getEnvConfig } from '../../core/config/index.js';
 import { parseConfig } from '../../core/config/schema.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConnectionConfig } from '../../core/connection/types.js';
-import { DEFAULT_ACCESS } from '../../core/policy/index.js';
+import { DEFAULT_ACCESS, resolveChannel } from '../../core/policy/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
@@ -79,6 +79,14 @@ const initCommand = defineCommand({
         if (args.type && args.type !== 'local' && args.type !== 'remote') {
 
             outputError(args, '--type must be local or remote');
+            process.exit(EXIT.USAGE);
+
+        }
+
+        // isTest relaxes db lifecycle permissions, so an agent must not mint it at a target it chose.
+        if (args.test && resolveChannel() === 'agent') {
+
+            outputError(args, '--test is not available on the agent channel: isTest configs are created by a human.');
             process.exit(EXIT.USAGE);
 
         }

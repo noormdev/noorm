@@ -2,8 +2,6 @@ import type { StageDefaults } from '../settings/types.js';
 import { parseConfig } from './schema.js';
 import type { Config, ConfigInput } from './types.js';
 
-import { clampToCeiling, PROTECTED_STAGE_CEILING } from '../policy/index.js';
-
 /** Map stage defaults to config fields; persisted materialization excludes passwords. */
 export function stageFields(defaults: StageDefaults, includePassword = false): Partial<ConfigInput> {
 
@@ -35,6 +33,12 @@ export function materializeStage(
     password?: string,
 ): Config {
 
+    if (defaults.protected && name !== stageName) {
+
+        throw new Error('A protected stage must use its stage name as the config name');
+
+    }
+
     const fields = stageFields(defaults);
     const connection = {
         host: 'localhost',
@@ -51,19 +55,11 @@ export function materializeStage(
 
     }
 
-    const config = parseConfig({
+    return parseConfig({
         name,
         type: defaults.type ?? (connection.host === 'localhost' ? 'local' : 'remote'),
         ...fields,
         connection,
     });
-
-    if (defaults.protected) {
-
-        config.access = clampToCeiling(config.access, PROTECTED_STAGE_CEILING);
-
-    }
-
-    return config;
 
 }

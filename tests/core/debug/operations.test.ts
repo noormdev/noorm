@@ -32,6 +32,7 @@ import { createDebugOperations, type DebugPolicyContext } from '../../../src/cor
 import { NOORM_TABLES, type NoormDatabase, type NoormTableName } from '../../../src/core/shared/index.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { observer } from '../../../src/core/observer.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -62,6 +63,10 @@ const AGENT_ADMIN: DebugPolicyContext = {
     channel: 'agent',
     config: { name: 'test', access: { user: 'admin', agent: 'admin' } },
 };
+attachPolicyContext(ADMIN.config.access!, {});
+attachPolicyContext(OPERATOR.config.access!, {});
+attachPolicyContext(VIEWER.config.access!, {});
+attachPolicyContext(AGENT_ADMIN.config.access!, {});
 
 /**
  * A live in-memory SQLite database with noorm's v1 schema.

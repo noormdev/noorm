@@ -27,6 +27,7 @@ import {
 import { propagateVaultKeyChecked, propagateVaultKeyToChecked } from '../../../src/core/vault/propagate.js';
 import type { VaultPolicyGate } from '../../../src/core/vault/policy.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
+import { attachPolicyContext, withPolicyConfirmation } from '../../../src/core/policy/index.js';
 import {
     NOORM_TABLES,
     type NoormDatabase,
@@ -51,6 +52,8 @@ const gateFor = (access: ConfigAccess): VaultPolicyGate => ({
 
 const VIEWER = gateFor({ user: 'viewer', agent: 'viewer' });
 const ADMIN = gateFor({ user: 'admin', agent: 'admin' });
+attachPolicyContext(VIEWER.access!, {});
+attachPolicyContext(ADMIN.access!, {});
 
 async function createTestDb(): Promise<Kysely<NoormDatabase>> {
 
@@ -186,7 +189,9 @@ describe('vault: policy gate', () => {
         const bob = await seedIdentity(db, 'bob@example.com', 'Bob');
 
         const [, err] = await attempt(() =>
-            propagateVaultKeyChecked(VIEWER, db, vaultKey, 'sqlite'),
+            propagateVaultKeyChecked(VIEWER, db, vaultKey, 'sqlite', {
+                reviewedRecipients: [{ ...bob, name: 'Bob', email: 'bob@example.com' }],
+            }),
         );
 
         expect(err).toBeInstanceOf(Error);
@@ -221,6 +226,44 @@ describe('vault: policy gate', () => {
         expect(err?.message).toContain('no access configuration');
 
     });
+    it('requires scoped confirmation for custom read and write cells', async () => {
+
+        const previous = process.env['NOORM_YES'];
+        delete process.env['NOORM_YES'];
+        try {
+
+            const access: ConfigAccess = { user: 'reviewer', agent: 'reviewer' };
+            attachPolicyContext(access, { roles: { reviewer: { permissions: {
+                'vault:read': 'confirm', 'vault:write': 'confirm',
+            } } } });
+            const gate = gateFor(access);
+            const target = { name: gate.configName, access };
+
+            await expect(listVaultSecretKeysChecked(gate, db, 'sqlite')).rejects.toThrow(/requires confirmation/);
+            await expect(setVaultSecretChecked(gate, db, vaultKey, 'API_KEY', 'value', 'alice', 'sqlite'))
+                .rejects.toThrow(/requires confirmation/);
+            expect(await getVaultSecret(db, vaultKey, 'API_KEY', 'sqlite')).toBeNull();
+
+            const [, err] = await withPolicyConfirmation(target, ['vault:write'], () =>
+                setVaultSecretChecked(gate, db, vaultKey, 'API_KEY', 'value', 'alice', 'sqlite'),
+            );
+            expect(err).toBeNull();
+            expect(await withPolicyConfirmation(target, ['vault:read'], () =>
+                listVaultSecretKeysChecked(gate, db, 'sqlite'),
+            )).toContain('API_KEY');
+            await expect(listVaultSecretKeysChecked({ ...gate, channel: 'agent' }, db, 'sqlite'))
+                .rejects.toThrow(/requires confirmation/);
+
+        }
+        finally {
+
+            if (previous === undefined) delete process.env['NOORM_YES'];
+            else process.env['NOORM_YES'] = previous;
+
+        }
+
+    });
+
 
     it('should let an admin through every gated operation', async () => {
 

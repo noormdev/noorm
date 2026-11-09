@@ -20,6 +20,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast, MissingParamPanel, NotFoundPanel, TextInput } from '../../components/index.js';
+import { SettingsProvider } from '../../../core/config/resolver.js';
 import { getErrorMessage, validateConfigName } from '../../utils/index.js';
 
 /**
@@ -29,10 +30,15 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
 
     const { back } = useRouter();
     const { isFocused } = useFocusScope('ConfigCopy');
-    const { stateManager, configs, refresh } = useAppContext();
+    const { stateManager, settingsManager, configs, refresh } = useAppContext();
     const { showToast } = useToast();
 
     const configName = params.name;
+
+    const settingsProvider = useMemo(
+        () => (settingsManager ? new SettingsProvider(settingsManager) : null),
+        [settingsManager],
+    );
 
     const [copying, setCopying] = useState(false);
     const [newName, setNewName] = useState('');
@@ -81,13 +87,9 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            // Create copy with new name
-            const newConfig = {
-                ...config,
-                name: newName,
-            };
+            if (!settingsProvider) throw new Error('Settings are not available');
 
-            await stateManager.setConfig(newName, newConfig);
+            await stateManager.copyConfig(configName, newName, settingsProvider);
             await refresh();
 
         });
@@ -111,7 +113,7 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
         });
         back();
 
-    }, [stateManager, config, configName, newName, configs, refresh, showToast, back]);
+    }, [stateManager, config, configName, newName, configs, settingsProvider, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {

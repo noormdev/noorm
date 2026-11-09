@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsup';
 import { readFileSync } from 'fs';
+import { markdownText } from './tsup.markdown-plugin.js';
 
 // Read CLI package version for injection at build time
 const cliPkg = JSON.parse(readFileSync('packages/cli/package.json', 'utf8'));
@@ -25,6 +26,7 @@ export default defineConfig({
     minify: true,
     clean: true,
     outDir: 'packages/cli/dist',
+    esbuildPlugins: [markdownText],
     // Bundle everything by default
     noExternal: [/.*/],
     esbuildOptions(options) {

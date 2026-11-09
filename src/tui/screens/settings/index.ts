@@ -2,6 +2,8 @@
  * Settings screens barrel export.
  */
 export { SettingsListScreen } from './SettingsListScreen.js';
+export { SettingsAccessListScreen } from './SettingsAccessListScreen.js';
+export { SettingsAccessEditScreen } from './SettingsAccessEditScreen.js';
 export { SettingsInitScreen } from './SettingsInitScreen.js';
 export { SettingsBuildScreen } from './SettingsBuildScreen.js';
 export { SettingsPathsScreen } from './SettingsPathsScreen.js';

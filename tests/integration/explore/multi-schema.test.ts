@@ -14,7 +14,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 
-import { fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
 
 /** Prefixed so a shared container can host several suites at once. */
@@ -92,7 +92,7 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should list only the requested schema', async () => {
 
-        const tables = await fetchList(db, 'postgres', 'tables', { schema: ALT_SCHEMA });
+        const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER, schema: ALT_SCHEMA });
 
         expect(tables.map((t) => t.name)).toEqual([TABLE]);
         expect(tables[0]?.schema).toBe(ALT_SCHEMA);
@@ -101,7 +101,7 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should list both same-named tables, distinguishable by schema, when unfiltered', async () => {
 
-        const tables = await fetchList(db, 'postgres', 'tables');
+        const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER });
         const matches = tables.filter((t) => t.name === TABLE);
 
         expect(matches.map((t) => t.schema).sort()).toEqual([ALT_SCHEMA, 'public']);
@@ -110,7 +110,7 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should describe the requested schema, indexes included', async () => {
 
-        const detail = await fetchDetail(db, 'postgres', 'tables', TABLE, ALT_SCHEMA);
+        const detail = await fetchDetail(db, 'postgres', 'tables', TABLE, { schema: ALT_SCHEMA, gate: GATED_BY_CALLER });
 
         expect(detail?.schema).toBe(ALT_SCHEMA);
         expect(detail?.columns.map((c) => c.name)).toEqual(['id', 'note']);
@@ -125,7 +125,7 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should scope the overview to the requested schema', async () => {
 
-        const overview = await fetchOverview(db, 'postgres', { schema: ALT_SCHEMA });
+        const overview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER, schema: ALT_SCHEMA });
 
         expect(overview.tables).toBe(1);
         expect(overview.procedures).toBe(0);
@@ -134,7 +134,7 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should return procedure parameters, not an empty list', async () => {
 
-        const detail = await fetchDetail(db, 'postgres', 'procedures', PROC, 'public');
+        const detail = await fetchDetail(db, 'postgres', 'procedures', PROC, { schema: 'public', gate: GATED_BY_CALLER });
 
         expect(detail?.parameters.map((p) => [p.name, p.mode])).toEqual([
             ['p_id', 'IN'],
@@ -145,9 +145,9 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should agree with the list view on parameter count', async () => {
 
-        const summaries = await fetchList(db, 'postgres', 'procedures', { schema: 'public' });
+        const summaries = await fetchList(db, 'postgres', 'procedures', { gate: GATED_BY_CALLER, schema: 'public' });
         const summary = summaries.find((p) => p.name === PROC);
-        const detail = await fetchDetail(db, 'postgres', 'procedures', PROC, 'public');
+        const detail = await fetchDetail(db, 'postgres', 'procedures', PROC, { schema: 'public', gate: GATED_BY_CALLER });
 
         expect(detail?.parameters).toHaveLength(summary!.parameterCount);
 
@@ -155,13 +155,13 @@ describe('integration: postgres multi-schema explore', () => {
 
     it('should only count locks held against this database', async () => {
 
-        const locks = await fetchList(db, 'postgres', 'locks');
+        const locks = await fetchList(db, 'postgres', 'locks', { gate: GATED_BY_CALLER });
 
         // Cluster-wide pg_locks would include other databases on the container;
         // every returned relation must resolve inside this one.
         expect(Array.isArray(locks)).toBe(true);
 
-        const [, err] = await attempt(() => fetchList(db, 'postgres', 'locks'));
+        const [, err] = await attempt(() => fetchList(db, 'postgres', 'locks', { gate: GATED_BY_CALLER }));
 
         expect(err).toBeNull();
 
@@ -211,7 +211,7 @@ describe('integration: mysql cross-database explore', () => {
 
     it('should read indexes from the requested database, not the connected one', async () => {
 
-        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE, MYSQL_ALT_DB);
+        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE, { schema: MYSQL_ALT_DB, gate: GATED_BY_CALLER });
         const indexNames = detail!.indexes.map((i) => i.name);
 
         expect(detail?.schema).toBe(MYSQL_ALT_DB);
@@ -223,7 +223,7 @@ describe('integration: mysql cross-database explore', () => {
 
     it('should not label a row with one database while sourcing it from another', async () => {
 
-        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE, MYSQL_ALT_DB);
+        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE, { schema: MYSQL_ALT_DB, gate: GATED_BY_CALLER });
 
         expect(detail!.indexes.every((i) => i.tableSchema === MYSQL_ALT_DB)).toBe(true);
 
@@ -231,7 +231,7 @@ describe('integration: mysql cross-database explore', () => {
 
     it('should list tables from the requested database', async () => {
 
-        const tables = await fetchList(db, 'mysql', 'tables', { schema: MYSQL_ALT_DB });
+        const tables = await fetchList(db, 'mysql', 'tables', { gate: GATED_BY_CALLER, schema: MYSQL_ALT_DB });
         const found = tables.find((t) => t.name === TABLE);
 
         expect(found?.schema).toBe(MYSQL_ALT_DB);
@@ -241,7 +241,7 @@ describe('integration: mysql cross-database explore', () => {
 
     it('should still default to the connected database', async () => {
 
-        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE);
+        const detail = await fetchDetail(db, 'mysql', 'tables', TABLE, { gate: GATED_BY_CALLER });
 
         expect(detail?.columns.map((c) => c.name)).toEqual(['id', 'a', 'b']);
         expect(detail!.indexes.map((i) => i.name)).toContain(`idx_${TABLE}_home_a`);
@@ -299,7 +299,7 @@ describe('integration: mssql multi-schema explore', () => {
 
     it('should list only the requested schema', async () => {
 
-        const tables = await fetchList(db, 'mssql', 'tables', { schema: ALT_SCHEMA });
+        const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER, schema: ALT_SCHEMA });
 
         expect(tables.map((t) => t.name)).toEqual([TABLE]);
         expect(tables[0]?.schema).toBe(ALT_SCHEMA);
@@ -308,7 +308,7 @@ describe('integration: mssql multi-schema explore', () => {
 
     it('should describe the requested schema, indexes included', async () => {
 
-        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, ALT_SCHEMA);
+        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, { schema: ALT_SCHEMA, gate: GATED_BY_CALLER });
         const indexNames = detail!.indexes.map((i) => i.name);
 
         expect(detail?.columns.map((c) => c.name)).toEqual(['id', 'note']);
@@ -319,8 +319,8 @@ describe('integration: mssql multi-schema explore', () => {
 
     it('should report rowCountEstimate as a number, not driver text', async () => {
 
-        const tables = await fetchList(db, 'mssql', 'tables', { schema: ALT_SCHEMA });
-        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, ALT_SCHEMA);
+        const tables = await fetchList(db, 'mssql', 'tables', { gate: GATED_BY_CALLER, schema: ALT_SCHEMA });
+        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, { schema: ALT_SCHEMA, gate: GATED_BY_CALLER });
 
         expect(typeof tables[0]?.rowCountEstimate).toBe('number');
         expect(tables[0]?.rowCountEstimate).toBe(2);
@@ -330,7 +330,7 @@ describe('integration: mssql multi-schema explore', () => {
 
     it('should report an empty table as undefined rather than zero-as-text', async () => {
 
-        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, 'dbo');
+        const detail = await fetchDetail(db, 'mssql', 'tables', TABLE, { schema: 'dbo', gate: GATED_BY_CALLER });
 
         expect(detail?.rowCountEstimate).toBeUndefined();
 
@@ -377,7 +377,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should list every table, including hostile names', async () => {
 
-        const tables = await fetchList(db, 'sqlite', 'tables');
+        const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
         const names = tables.map((t) => t.name);
 
         for (const name of HOSTILE) {
@@ -390,7 +390,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should keep unrelated tables describable when a hostile name exists', async () => {
 
-        const detail = await fetchDetail(db, 'sqlite', 'tables', 'plain');
+        const detail = await fetchDetail(db, 'sqlite', 'tables', 'plain', { gate: GATED_BY_CALLER });
 
         expect(detail?.name).toBe('plain');
 
@@ -398,7 +398,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should describe a hostile-named table', async () => {
 
-        const detail = await fetchDetail(db, 'sqlite', 'tables', 'we"ird');
+        const detail = await fetchDetail(db, 'sqlite', 'tables', 'we"ird', { gate: GATED_BY_CALLER });
 
         expect(detail?.columns.map((c) => c.name)).toEqual(['id', 'val']);
 
@@ -406,7 +406,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should produce an overview rather than a syntax error', async () => {
 
-        const overview = await fetchOverview(db, 'sqlite');
+        const overview = await fetchOverview(db, 'sqlite', { gate: GATED_BY_CALLER });
 
         expect(overview.tables).toBe(3 + HOSTILE.length);
         expect(overview.triggers).toBe(2);
@@ -415,7 +415,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should read trigger events from the header, against real sqlite_master text', async () => {
 
-        const triggers = await fetchList(db, 'sqlite', 'triggers');
+        const triggers = await fetchList(db, 'sqlite', 'triggers', { gate: GATED_BY_CALLER });
         const cascade = triggers.find((t) => t.name === 'cascade_delete');
         const named = triggers.find((t) => t.name === 'before_update_log');
 
@@ -430,7 +430,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should describe a trigger without inventing events from its body', async () => {
 
-        const detail = await fetchDetail(db, 'sqlite', 'triggers', 'cascade_delete');
+        const detail = await fetchDetail(db, 'sqlite', 'triggers', 'cascade_delete', { gate: GATED_BY_CALLER });
 
         expect(detail?.events).toEqual(['DELETE']);
         expect(detail?.tableName).toBe('plain');
@@ -439,7 +439,7 @@ describe('integration: sqlite hostile identifiers', () => {
 
     it('should not execute appended DDL smuggled through a table name', async () => {
 
-        await fetchList(db, 'sqlite', 'tables');
+        await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
 
         const survivors = await sql<{ name: string }>`
             SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'canary'
@@ -452,7 +452,7 @@ describe('integration: sqlite hostile identifiers', () => {
     it('should reject a schema filter instead of silently returning nothing', async () => {
 
         const [result, err] = await attempt(() =>
-            fetchList(db, 'sqlite', 'tables', { schema: 'app' }),
+            fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER, schema: 'app' }),
         );
 
         expect(result).toBeNull();

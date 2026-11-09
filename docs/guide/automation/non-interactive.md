@@ -23,7 +23,7 @@ This scaffolds a project if there is none, then builds it.
 
 `--yes` (or `-y`) answers a confirmation for one command. `NOORM_YES` answers for every command: any non-empty value counts except `0` and `false`, in any letter case. The flag beats `NOORM_YES=0`.
 
-A run with no terminal stops at the first gate it cannot answer. The role cells come from [Access roles](/guide/environments/configs#access-roles), and on the `agent` channel `confirm` is `deny`:
+A run with no terminal stops at the first gate it cannot answer. The role cells come from [Access roles](/guide/environments/configs#access-roles), and an agent-channel CLI call treats `confirm` as `deny`. MCP can separately mediate human approval through a supporting client.
 
 ```mermaid
 flowchart TD

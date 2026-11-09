@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 
-import { sessionCommands } from '../../../src/rpc/commands/session.js';
 import { queryCommands } from '../../../src/rpc/commands/query.js';
 import { exploreCommands } from '../../../src/rpc/commands/explore.js';
 import { changesCommands } from '../../../src/rpc/commands/changes.js';
 import { runCommands } from '../../../src/rpc/commands/run.js';
 import { RpcError } from '../../../src/rpc/types.js';
 import type { RpcSession } from '../../../src/rpc/types.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { ConfigAccess, Channel } from '../../../src/core/policy/index.js';
 import type { Context } from '../../../src/sdk/context.js';
 
@@ -31,13 +31,16 @@ interface MockContextOptions {
  */
 function createMockSession(options: MockContextOptions = {}): RpcSession {
 
+    const access = options.access ?? { user: 'admin', agent: 'admin' };
+    attachPolicyContext(access, {});
+
     const mockContext = {
         kysely: {},
         dialect: options.dialect ?? 'postgres',
         noorm: {
             config: {
                 name: options.configName ?? 'test',
-                access: options.access ?? { user: 'admin', agent: 'admin' },
+                access,
                 connection: { database: options.database ?? 'testdb' },
             },
             changes: {
@@ -56,16 +59,6 @@ function createMockSession(options: MockContextOptions = {}): RpcSession {
     return {
         channel: options.channel ?? 'agent',
         getContext: () => mockContext,
-        connect: async (config?: string) => ({
-            name: config ?? 'test',
-            dialect: 'postgres',
-            database: 'testdb',
-            role: 'admin',
-        }),
-        disconnect: async () => {},
-        disconnectAll: async () => {},
-        hasConnection: () => true,
-        listConnections: () => ['test'],
     };
 
 }
@@ -86,11 +79,6 @@ function createDisconnectedSession(): RpcSession {
             throw new RpcError('Not connected — call connect first');
 
         },
-        connect: async () => ({ name: 'test', dialect: 'postgres', database: 'testdb', role: 'admin' }),
-        disconnect: async () => {},
-        disconnectAll: async () => {},
-        hasConnection: () => false,
-        listConnections: () => [],
     };
 
 }
@@ -205,107 +193,6 @@ describe('rpc commands: sql', () => {
         const input = cmd.inputSchema.parse({ query: 'INSERT INTO t VALUES (1)' });
 
         await expect(cmd.handler(input, session)).rejects.toThrow(/sql:write/i);
-
-    });
-
-});
-
-// === Group 2: Session Commands ===
-
-describe('rpc commands: session', () => {
-
-    it('connect should delegate to session.connect()', async () => {
-
-        let connectCalled = false;
-        let receivedConfig: string | undefined;
-
-        const session: RpcSession = {
-            ...createMockSession(),
-            connect: async (config?: string) => {
-
-                connectCalled = true;
-                receivedConfig = config;
-
-                return { name: config ?? 'test', dialect: 'postgres', database: 'testdb', role: 'admin' };
-
-            },
-        };
-
-        const cmd = sessionCommands.find(c => c.name === 'connect')!;
-        const input = cmd.inputSchema.parse({ config: 'dev' });
-        await cmd.handler(input, session);
-
-        expect(connectCalled).toBe(true);
-        expect(receivedConfig).toBe('dev');
-
-    });
-
-    it('connect without config should call session.connect() with undefined', async () => {
-
-        let receivedConfig: string | undefined = 'sentinel';
-
-        const session: RpcSession = {
-            ...createMockSession(),
-            connect: async (config?: string) => {
-
-                receivedConfig = config;
-
-                return { name: 'test', dialect: 'postgres', database: 'testdb', role: 'admin' };
-
-            },
-        };
-
-        const cmd = sessionCommands.find(c => c.name === 'connect')!;
-        const input = cmd.inputSchema.parse({});
-        await cmd.handler(input, session);
-
-        expect(receivedConfig).toBeUndefined();
-
-    });
-
-    it('disconnect should delegate to session.disconnect()', async () => {
-
-        let disconnectCalled = false;
-        let receivedConfig: string | undefined;
-
-        const session: RpcSession = {
-            ...createMockSession(),
-            disconnect: async (config?: string) => {
-
-                disconnectCalled = true;
-                receivedConfig = config;
-
-            },
-        };
-
-        const cmd = sessionCommands.find(c => c.name === 'disconnect')!;
-        const input = cmd.inputSchema.parse({ config: 'dev' });
-        await cmd.handler(input, session);
-
-        expect(disconnectCalled).toBe(true);
-        expect(receivedConfig).toBe('dev');
-
-    });
-
-    it('disconnect should return { disconnected: true }', async () => {
-
-        const session = createMockSession();
-        const cmd = sessionCommands.find(c => c.name === 'disconnect')!;
-        const input = cmd.inputSchema.parse({});
-        const result = await cmd.handler(input, session);
-
-        expect(result).toEqual({ disconnected: true });
-
-    });
-
-    it('connect should return connection info', async () => {
-
-        const session = createMockSession();
-        const cmd = sessionCommands.find(c => c.name === 'connect')!;
-        const input = cmd.inputSchema.parse({ config: 'mydb' });
-        const result = await cmd.handler(input, session);
-
-        expect(result).toMatchObject({ name: 'mydb', dialect: 'postgres', database: 'testdb' });
 
     });
 

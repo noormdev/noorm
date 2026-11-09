@@ -19,7 +19,7 @@ import type { Kysely } from 'kysely';
 import type { TruncateResult } from '../../../core/teardown/index.js';
 import type { TableSummary } from '../../../core/explore/types.js';
 import { truncateData } from '../../../core/teardown/index.js';
-import { fetchList } from '../../../core/explore/operations.js';
+import { GATED_BY_CALLER, fetchList } from '../../../core/explore/operations.js';
 
 import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
@@ -92,7 +92,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
         if (!db || !dialect || connLoading) return;
 
         const [tableList, tableListErr] = await attempt(
-            () => fetchList(db as Kysely<unknown>, dialect, 'tables'),
+            () => fetchList(db as Kysely<unknown>, dialect, 'tables', { gate: GATED_BY_CALLER }),
         );
 
         if (!isCancelled() && tableListErr) {
