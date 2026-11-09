@@ -176,6 +176,9 @@ export interface PathConfig {
 
     /** Path to change files (relative to project root) */
     changes?: string;
+
+    /** Path to pipelines (relative to project root) */
+    pipelines?: string;
 }
 
 /**

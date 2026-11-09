@@ -16,6 +16,9 @@ export {
     checkFilesStatus,
 } from './runner.js';
 
+// Context builder
+export { buildRunContext, type BuildRunContextOptions } from './context.js';
+
 // Tracker
 export { Tracker, decideNeedsRun } from './tracker.js';
 

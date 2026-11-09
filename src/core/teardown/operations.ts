@@ -220,7 +220,7 @@ export async function truncateData(
         const label = displayName(tableName, table.schema, dialect);
 
         // Always preserve noorm tables
-        if (isNoormTable(tableName)) {
+        if (isNoormTable(tableName) || table.schema === 'noorm') {
 
             preserved.push(label);
             continue;
@@ -358,7 +358,7 @@ export async function teardownSchema(
     observer.emit('teardown:start', { type: 'schema' });
 
     const preserveSet = new Set(options.preserveTables ?? []);
-    const preserveSchemaSet = new Set(options.preserveSchemas ?? []);
+    const preserveSchemaSet = new Set(['noorm', ...(options.preserveSchemas ?? [])]);
 
     /** Whether an object belongs to a schema the caller asked to leave alone. */
     const inPreservedSchema = (schema?: string): boolean => Boolean(schema && preserveSchemaSet.has(schema));

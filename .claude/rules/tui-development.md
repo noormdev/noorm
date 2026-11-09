@@ -333,11 +333,12 @@ The existing fixed-sleep tests have not been converted. Convert one when you tou
 
 Hotkey registry. Verify against the screen source before changing any of it.
 
-**Home** (`src/tui/screens/home.tsx:248`):
+**Home** (the `useInput` handler in `HomeScreen`, `src/tui/screens/home.tsx`):
 
 | Key | Action |
 |-----|--------|
 | `r` | run |
+| `p` | pipelines |
 | `c` | config |
 | `g` | changes |
 | `d` | db |

@@ -15,7 +15,7 @@ describe('version: types', () => {
 
         it('should have schema version', () => {
 
-            expect(CURRENT_VERSIONS.schema).toBe(2);
+            expect(CURRENT_VERSIONS.schema).toBe(3);
 
         });
 

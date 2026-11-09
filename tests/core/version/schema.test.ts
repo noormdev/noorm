@@ -19,10 +19,12 @@ import {
     getLatestVersionRecord,
     getFullVersionRecord,
 } from '../../../src/core/version/schema/index.js';
+import { v3 } from '../../../src/core/version/schema/migrations/v3.js';
 import { getCurrentVersion } from '../../../src/core/update/checker.js';
 
 describe('version: schema', () => {
 
+    let untypedDb: Kysely<unknown>;
     let db: Kysely<NoormDatabase>;
 
     beforeEach(() => {
@@ -30,11 +32,12 @@ describe('version: schema', () => {
         observer.clear();
 
         // Create in-memory SQLite database for each test
-        db = new Kysely<NoormDatabase>({
+        untypedDb = new Kysely<unknown>({
             dialect: new SqliteDialect({
                 database: new BunSqliteDatabase(':memory:') as never,
             }),
         });
+        db = untypedDb.withTables<Pick<NoormDatabase, keyof NoormDatabase>>();
 
     });
 
@@ -386,16 +389,53 @@ describe('version: schema', () => {
 
     });
 
-    describe('migration v2', () => {
+    describe('migration v3', () => {
 
-        it('should be a no-op for sqlite', async () => {
+        it('should bootstrap sqlite at the current schema version', async () => {
 
             await bootstrapSchema(db, 'sqlite');
-            const exists = await tablesExist(db, 'sqlite');
-            expect(exists).toBe(true);
-            // Version should be 2 (CURRENT_VERSIONS.schema was bumped)
-            const version = await getSchemaVersion(db, 'sqlite');
-            expect(version).toBe(2);
+
+            expect(await getSchemaVersion(db, 'sqlite')).toBe(CURRENT_VERSIONS.schema);
+
+        });
+
+        it('should succeed when run twice', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+
+            await v3.up(untypedDb, 'sqlite');
+
+            const { rows } = await sql`SELECT 1 FROM __noorm_pipeline_step__`.execute(db);
+
+            expect(rows).toHaveLength(0);
+
+        });
+
+        it('should finish after a run that created tables but no index', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+            await sql`DROP INDEX idx_pipeline_run_active_key`.execute(db);
+
+            await v3.up(untypedDb, 'sqlite');
+
+            const { rows } = await sql<{ name: string }>`
+                SELECT name FROM sqlite_master WHERE name = 'idx_pipeline_run_active_key'
+            `.execute(db);
+
+            expect(rows).toHaveLength(1);
+
+        });
+
+        it('should finish after a run that created only the run table', async () => {
+
+            await bootstrapSchema(db, 'sqlite');
+            await sql`DROP TABLE __noorm_pipeline_step__`.execute(db);
+
+            await v3.up(untypedDb, 'sqlite');
+
+            const { rows } = await sql`SELECT 1 FROM __noorm_pipeline_step__`.execute(db);
+
+            expect(rows).toHaveLength(0);
 
         });
 

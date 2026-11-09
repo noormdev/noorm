@@ -73,7 +73,7 @@ export class TemplatesNamespace {
 
         return processFile(absolutePath, {
             projectRoot: this.#state.projectRoot,
-            config: this.#state.config as unknown as Record<string, unknown>,
+            config: this.#state.config,
             secrets: await buildSecretsContext(state, this.#state.config.name, db, vaultKey, conn?.dialect),
             globalSecrets: state.getAllGlobalSecrets(),
         });

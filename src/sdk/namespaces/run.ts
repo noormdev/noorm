@@ -276,7 +276,7 @@ export class RunNamespace {
             dialect,
             access: this.#state.config.access,
             channel: this.#state.options.channel ?? 'user',
-            config: this.#state.config as unknown as Record<string, unknown>,
+            config: this.#state.config,
             secrets: await buildSecretsContext(state, this.#state.config.name, db, vaultKey, dialect),
             globalSecrets: state.getAllGlobalSecrets(),
         };

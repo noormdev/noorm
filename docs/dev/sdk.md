@@ -70,6 +70,7 @@ The Context API is split into two levels:
 
 **ctx.noorm** — noorm management operations, organized by namespace:
 - `run`: `build()`, `file()`, `files()`, `dir()`, `discover()`, `preview()`
+- `pipelines`: `run()`, `history()`, `getRun()`
 - `db`: `truncate()`, `teardown()`, `previewTeardown()`, `reset()`, `overview()`, `listTables()`, `describeTable()`, `listViews()`, `describeView()`, `listProcedures()`, `describeProcedure()`, `listFunctions()`, `describeFunction()`, `listTypes()`, `describeType()`, `listIndexes()`, `listForeignKeys()`
 - `changes`: `apply()`, `revert()`, `ff()`, `next()`, `rewind()`, `status()`, `pending()`, `history()`, `historyForChange()`, `getFileHistory()`, `create()`, `addFile()`, `removeFile()`, `renameFile()`, `reorderFiles()`, `delete()`, `discover()`, `parse()`, `validate()`
 - `lock`: `acquire()`, `release()`, `status()`, `withLock()`, `forceRelease()`
@@ -80,6 +81,8 @@ The Context API is split into two levels:
 - `vault`: `init()`, `status()`, `set()`, `get()`, `getAll()`, `list()`, `delete()`, `exists()`, `propagate()`, `copy()`
 - `utils`: `checksum()`, `testConnection()`
 - Properties: `config`, `settings`, `identity`
+
+For a connected pipeline invocation and history lookup, see [SQL pipelines](/guide/sql-pipelines#sdk) and the [SDK reference](/reference/sdk#ctx-noorm-pipelines).
 
 The event bus is **not** on the context. It is a process-global singleton exported
 as `noormObserver` from the package root — one `ObserverEngine` shared by every

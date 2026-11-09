@@ -20,9 +20,9 @@ import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SearchableList, KeyHandler, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
-import { discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
+import { buildRunContext, discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, withScreenConnection } from '../../utils/index.js';
 import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 

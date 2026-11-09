@@ -93,7 +93,7 @@ Materialization fixes the requested name and takes top-level behavior from stage
 
 ### Settings retain a separate persisted document
 
-`SettingsManager` keeps `#document` for YAML persistence and `#settings` for the environment-overlaid accessor view. Mutators update the document and refresh the resolved view; they do not save the environment overlay into `.noorm/settings.yml`. `allSettingsEnv()` constructs its accessor per call with `memoizeOpts: false`, excluding CLI metadata, identity variables, and connection variables.
+`SettingsManager` keeps `#document` for YAML persistence and `#settings` for the environment-overlaid accessor view. Mutators update the document and refresh the resolved view; they do not save the environment overlay into `.noorm/settings.yml`. `setPaths` merges the supplied keys over the stored `paths` and emits `settings:paths-updated` with a clone of the merged result, so a caller that saves only `sql` and `changes` keeps a configured `pipelines` path. The resolved view fills `paths.pipelines` with `DEFAULT_PIPELINES_PATH` (`./<db dir>/pipelines`) when the document has none; that default is not written to the document. `allSettingsEnv()` constructs its accessor per call with `memoizeOpts: false`, excluding CLI metadata, identity variables, and connection variables.
 
 ### Initialization establishes identity before state loading
 
@@ -155,7 +155,35 @@ flowchart TD
 | `access.agent: false` | Remains invisible to agents. |
 | Non-object access | `resolveLegacyAccess` supplies `DEFAULT_ACCESS`, or `GUARDED_ACCESS` when the legacy `protected` value is truthy. |
 
-`CURRENT_VERSIONS` in [`src/core/version/types.ts`](../../src/core/version/types.ts) sets database schema version `2`, state schema version `3`, and settings schema version `1`, independently of the package version.
+`CURRENT_VERSIONS` in [`src/core/version/types.ts`](../../src/core/version/types.ts) sets database schema version `3`, state schema version `3`, and settings schema version `1`, independently of the package version.
+
+### Schema v3 adds pipeline tracking tables and can be retried
+
+Schema v3 (`src/core/version/schema/migrations/v3.ts`) adds the pipeline run and step tracking tables. `v3.up` runs `ensureRunTable` and `ensureStepTable`. Each creates its table only when a catalog query (`tableExists`) finds it missing, then creates any missing index or column. A failed run therefore leaves a partial state that the next run completes instead of failing on "already exists".
+
+```mermaid
+flowchart TD
+    %% source: src/core/version/schema/migrations/v3.ts
+    A["v3.up"] --> B{"run table exists?"}
+    B -->|no| C["createRunTable"]
+    B -->|yes| D{"idx_pipeline_run_active_key exists?"}
+    C --> D
+    D -->|no| E["create unique index on active_key"]
+    D -->|yes| F{"step table exists?"}
+    E --> F
+    F -->|no| G["createStepTable"]
+    F -->|yes| H{"mysql or mssql?"}
+    G --> H
+    H -->|yes| I["name_key column, then uq_pipeline_step_run_name"]
+    H -->|no| J["done"]
+    I --> J
+```
+
+Every existence check runs again after a retry, so a partial first run is completed. `indexExists` checks `idx_pipeline_run_active_key` and, on MySQL and SQL Server, `uq_pipeline_step_run_name`; `nameKeyExists` checks the generated `name_key` column before `addNameKey` adds it. Each check queries the dialect's catalog (`pg_indexes`, `sys.indexes`, `information_schema.statistics`, `sqlite_master`). The run index is unique on `active_key`; on SQL Server it is filtered to non-null values. `timestampType` is exported from `migrations/v1.ts` and shared with v3.
+
+`migrateSchema` wraps each pending migration's failure in `MigrationError` and writes the version record only after all pending migrations succeed. When tables exist but no version record does, it starts from version 1, so every v2+ migration must be idempotent. `tests/integration/version/schema-v3.test.ts` drops the run index, the step table, and `name_key` between runs on Postgres, MySQL, and SQL Server, then asserts the columns and both indexes exist; `tests/core/version/schema.test.ts` covers SQLite.
+
+`buildPipelineContext` in `src/core/pipeline/context.ts` calls `ensureSchemaVersion` before it builds the run context, so tracking tables reach the current version before any pipeline call reads or writes them. It then checks `input.signal?.throwIfAborted()`, so an abort during migration rejects before secrets are read.
 
 State persistence uses a content fingerprint and `mergeState` for three-way reconciliation between the loaded baseline, local mutations, and concurrent disk changes. `acquireWriteLock` uses exclusive `wx` (`O_EXCL`) creation rather than `flock`, which can be ineffective on network mounts. It waits up to 5s and treats locks older than 30s as abandoned. `backupExisting` attempts a previous-generation `.bak` copy before each overwrite; `writeFileAtomicSync` flushes a sibling file before renaming it over the target. State writes use mode `0o600`, and backup permissions are set to the same mode.
 

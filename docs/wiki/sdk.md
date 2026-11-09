@@ -118,7 +118,7 @@ Principal names must match `[a-zA-Z0-9_@.\-\\]+`; invalid names fail before SQL 
 
 ### Management namespaces
 
-`ctx.noorm` lazily creates `NoormOps`; each namespace is also lazy and cached. It exposes changes (scaffolding, discovery, validation, execution, history), run (discovery, preview, file, directory, build), db (exploration, teardown preview, truncate, teardown, reset), dt (table export and file import), lock, vault, secrets, templates, transfer, and utils. `db.reset` delegates rebuilding to `run.build`.
+`ctx.noorm` lazily creates `NoormOps`; each namespace is also lazy and cached. It exposes changes (scaffolding, discovery, validation, execution, history), run (discovery, preview, file, directory, build), pipelines (run, history, run lookup), db (exploration, teardown preview, truncate, teardown, reset), dt (table export and file import), lock, vault, secrets, templates, transfer, and utils. `db.reset` delegates rebuilding to `run.build`.
 
 `run.build` applies settings include/exclude and rule filtering, returning unmatched include/exclude entries. Template rendering does not execute SQL. Utilities provide file checksums and a non-throwing connection test result. Vault methods include initialization, status, secret CRUD, propagation, and copying; local secrets remain configuration-scoped.
 
@@ -126,12 +126,13 @@ Principal names must match `[a-zA-Z0-9_@.\-\\]+`; invalid names fail before SQL 
 |---|---|
 | `changes` | Offline `create`, `addFile`, `removeFile`, `renameFile`, `reorderFiles`, `delete`, `discover`, `parse`, and `validate`; connected `apply`, `revert`, `ff`, `next`, `rewind`, `status`, and history reads. Deleting a local change still checks `change:rm`. |
 | `run` | Offline `discover`; connected `preview`, `file`, `files`, `dir`, and `build`. `build` returns `unmatchedInclude` and `unmatchedExclude` alongside the batch result. |
+| `pipelines` | Connected `run`, `history`, and `getRun`. `run` checks `run:dir` through `checkProtectedConfig`; see Pipelines namespace below. |
 | `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, `overview`, `previewTeardown`, `truncate`, `teardown`, and `reset`. |
 | `dt` | `exportTable` and `importFile`; import checks `db:reset`. |
 | `lock` | `acquire`, `release`, `status`, `withLock`, and `forceRelease`; force release checks `lock:force`. |
 | `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. |
 | `secrets` | Config-scoped `get`, `list`, `set`, and `delete`, gated by `secret:read` or `secret:write`. |
-| `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. |
+| `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. It passes the resolved `Config` to `processFile` without a cast. |
 | `transfer` | `to` and `plan`; writes check the destination config's `db:reset`, not the source config's permission. |
 | `utils` | Offline SHA-256 `checksum`; `testConnection` returns `{ ok, error? }` rather than throwing connection failures. |
 
@@ -146,6 +147,62 @@ The public entrypoint re-exports namespace classes, option/result types, `Extrac
 | `ImpersonationError` | Unsupported dialect or invalid principal name. |
 | `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` | Re-exported core change errors for validation, lookup, state, and manifest failures. |
 | `LockAcquireError`, `LockExpiredError` | Re-exported core lock failures. |
+| `PipelineBusyError` | `pipelines.run` on a `singleRun` pipeline that already has an active run. |
+
+### Pipelines namespace
+
+`ctx.noorm.pipelines` is the connected entry to SQL pipelines. It sits beside `run` and `templates`: all three render author-written SQL through the template engine with the resolved `Config`, secrets, and global secrets, but only `pipelines` adds admission, run history, and the input contract. `run` and `templates` pass `processFile` the typed `Config` directly. `pipelines.run` hands it to `buildPipelineContext` in `src/core/pipeline/context.ts`, which resolves the vault key and secrets and returns the executor context.
+
+```mermaid
+flowchart TD
+    %% source: src/sdk/namespaces/pipelines.ts
+    A["pipelines.run(slug, options)"] --> B["#connected()"]
+    B --> C["checkProtectedConfig('run:dir')"]
+    C --> D["buildPipelineContext:<br/>ensureSchemaVersion, then buildRunContext"]
+    D --> F["runPipeline(context, slug, options)"]
+    F --> G{"coded failure?"}
+    G -->|yes| H["throws PipelineCodedError"]
+    G -->|no| I["resolves result with status<br/>and transactionOutcome"]
+```
+
+The guard runs before any context is built, and `ensureSchemaVersion()` runs before the executor receives the context. The same `#connected()` and `ensureSchemaVersion()` steps precede `history` and `getRun`.
+
+| Method | Returns | Failure |
+|---|---|---|
+| `run(slug, { input, dryRun, signal })` | `PipelineRunResult`, or `PipelineDryRunResult` with `dryRun` | Throws for pre-run failures; a run that fails resolves with `status` and `transactionOutcome` set so callers see what committed. |
+| `history(slug, { limit })` | `NoormPipelineRun[]` for the active config, newest first | `assertHistoryLimit` throws unless `limit` is an integer from 1 to 100. |
+| `getRun(id)` | `PipelineHistoryRecord` (`run` and `steps`), or `null` | `assertRunId` throws unless `id` is a positive safe integer; an unknown id or another config's run returns `null`. |
+
+The shared validators live in `src/core/pipeline/parse.ts`. `parseRunId` and `parseHistoryLimit` accept only whole-number text, so the CLI and TUI accept the same strings the SDK accepts as numbers.
+
+`PipelineHistoryOptions` and `PipelineHistoryRecord` are exported types; the record type is defined in `src/core/pipeline/history.ts`, not the namespace file.
+
+#### Error handling
+
+Pre-run failures are `PipelineCodedError` instances (`src/core/pipeline/errors.ts`) whose `code` decides how callers classify them, not the message text. The code is not exported from the SDK entrypoint; `PipelineBusyError` is the one pipeline error class the SDK re-exports.
+
+| `code` | Raised when | CLI exit |
+|---|---|---|
+| `PIPELINE_INVALID_DEFINITION` | The definition fails a rule (`PipelineDefinitionError.rule`), or a step fails to prepare. | `2` |
+| `PIPELINE_INVALID_INPUT` | Supplied input fails the declared inputs. | `2` |
+| `PIPELINE_NOT_FOUND` | The slug names no pipeline. | `2` |
+| `PIPELINE_POLICY_BLOCKED` | `checkConfigPolicy` for `run:dir` denies the channel. | `1` |
+| `PIPELINE_CONFIRMATION_REQUIRED` | Policy requires confirmation and `yes` is unset. | `1` |
+| `PIPELINE_BUSY` | A `singleRun` pipeline already has an active run (`PipelineBusyError`). | `1` |
+
+`checkProtectedConfig` throws `ProtectedConfigError` before the executor starts, so a denied SDK call surfaces that error rather than a coded one. Messages and causes stay free of input values: `classOnlyCause` keeps only the cause's class name, and `PipelineDefinitionError.rule` is a fixed identifier.
+
+#### Input quoting
+
+Pipeline input reaches SQL only through template helpers. When `pipelineDialect` is set, `$.quote` is the dialect-specific literal builder from `src/core/pipeline/sql-literal.ts` and `$.escape` throws `PipelineEscapeError`. `prepare.ts` converts that into `PipelineDefinitionError` with rule `escape-unavailable`, so a step that calls `$.escape` fails the whole run with `PIPELINE_INVALID_DEFINITION` before admission.
+
+| Dialect | `$.quote` of a string |
+|---|---|
+| `postgres` | `U&'...'` with every code point as a Unicode escape; fails closed (`0A000`) when `standard_conforming_strings` is off. |
+| `mysql` | `_utf8mb4 X'<hex>'`, independent of backslash SQL modes. |
+| `mssql` | `N'...'`, preserving a backslash before a line break that T-SQL would otherwise treat as a continuation. |
+
+Non-string values use `sqlQuote`. Outside pipelines `$.escape` is `sqlEscape` and `$.quote` is `sqlQuote`.
 
 ### DT export and import
 
@@ -179,6 +236,7 @@ Compute workers transform rows while `OrderBuffer` preserves export ordering.
 | [`src/sdk/routines.ts`](../../src/sdk/routines.ts), [`src/sdk/sql.ts`](../../src/sdk/sql.ts), [`src/sdk/tvp.ts`](../../src/sdk/tvp.ts) | Routine dispatch, dialect SQL builders, MSSQL table-valued parameters. |
 | [`src/sdk/impersonate/`](../../src/sdk/impersonate) | Dedicated-connection scopes and dialect impersonation/revert strategies. |
 | [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts), [`src/sdk/namespaces/`](../../src/sdk/namespaces), [`src/sdk/guards.ts`](../../src/sdk/guards.ts) | Lazy management wrappers and policy enforcement. |
+| [`src/sdk/namespaces/pipelines.ts`](../../src/sdk/namespaces/pipelines.ts), [`src/core/pipeline/errors.ts`](../../src/core/pipeline/errors.ts), [`src/core/pipeline/parse.ts`](../../src/core/pipeline/parse.ts), [`src/core/pipeline/sql-literal.ts`](../../src/core/pipeline/sql-literal.ts) | `pipelines` wrapper, coded errors, run-ID and limit validators, pipeline-mode `$.quote`/`$.escape`. Execution belongs to core-runner. |
 | [`src/core/dt/index.ts`](../../src/core/dt/index.ts), [`src/core/dt/paging.ts`](../../src/core/dt/paging.ts), [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts) | Export/import orchestration, keyset paging, schema construction and validation. |
 | [`src/core/dt/writer.ts`](../../src/core/dt/writer.ts), [`src/core/dt/reader.ts`](../../src/core/dt/reader.ts), [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts) | File streams, compression, encryption. |
 | [`src/core/dt/serialize.ts`](../../src/core/dt/serialize.ts), [`src/core/dt/deserialize.ts`](../../src/core/dt/deserialize.ts), [`src/core/dt/type-map.ts`](../../src/core/dt/type-map.ts), [`src/core/dt/dialects/`](../../src/core/dt/dialects) | Universal values and dialect type conversion. |

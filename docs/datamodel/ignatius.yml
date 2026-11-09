@@ -1,0 +1,2 @@
+name: Noorm internal schema
+description: Implemented database bookkeeping and independent SQL pipeline run and step tracking through schema v3, reconstructed from schema migrations. Model examples illustrate contracts, not runtime execution proof.

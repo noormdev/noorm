@@ -23,12 +23,12 @@ export default withMermaid(
         //
         // The rest are the same class of thing: specs, design notes, scratch
         // output, and the tape sources, none of which are published pages.
-        // `models/**` joins the list for the same reason as `tapes/**`: it is
-        // source for a generated artifact, not pages. Left in, VitePress
-        // compiles every entity file into a route like
+        // `models/**` and `datamodel/**` join the list for the same reason as
+        // `tapes/**`: they are source for a generated artifact, not pages.
+        // Left in, VitePress compiles every entity file into a route like
         // /models/todo-list/data/core/users.html. `parts/**` holds fragments
         // that pages pull in with `<!--@include: -->`; they are not pages either.
-        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**', 'models/**', 'parts/**'],
+        srcExclude: ['wiki/**', 'spec/**', 'design/**', 'superpowers/**', 'tmp/**', 'tapes/**', 'models/**', 'datamodel/**', 'parts/**'],
 
         markdown: {
             // The terminal recordings are the heaviest assets on the site
@@ -187,6 +187,9 @@ gtag('config', 'G-Y69K95866J');`],
                             { text: 'Organization', link: '/guide/sql-files/organization' },
                             { text: 'Templates', link: '/guide/sql-files/templates' },
                             { text: 'Execution', link: '/guide/sql-files/execution' },
+                            { text: 'SQL Pipelines', link: '/guide/sql-pipelines' },
+                            { text: 'Pipelines in the Terminal', link: '/guide/pipeline-terminal' },
+                            { text: 'Pipeline Recovery', link: '/guide/pipeline-recovery' },
                         ],
                     },
                     {
@@ -236,6 +239,7 @@ gtag('config', 'G-Y69K95866J');`],
                         text: 'Reference',
                         items: [
                             { text: 'CLI', link: '/headless' },
+                            { text: 'Pipeline CLI', link: '/cli/pipeline' },
                             { text: 'SDK', link: '/reference/sdk' },
                             { text: 'Terminal UI', link: '/tui' },
                         ],

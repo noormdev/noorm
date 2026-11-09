@@ -13,6 +13,7 @@ import { observer } from '../observer.js';
 import { parseSettings, validateSettings } from './schema.js';
 import {
     DEFAULT_SETTINGS,
+    DEFAULT_PIPELINES_PATH,
     SETTINGS_DIR_PATH,
     createDefaultSettings,
 } from './defaults.js';
@@ -732,18 +733,22 @@ export class SettingsManager {
 
     /**
      * Update path configuration.
+     *
+     * Keys omitted from `paths` keep their stored value.
      */
     async setPaths(paths: PathConfig): Promise<void> {
 
-        this.#assertLoaded();
+        const document = this.#assertLoaded();
 
-        this.#document!.paths = clone(paths);
+        const merged = { ...document.paths, ...clone(paths) };
+
+        document.paths = merged;
 
         await this.save();
 
         this.#refreshResolved();
 
-        observer.emit('settings:paths-updated', { paths });
+        observer.emit('settings:paths-updated', { paths: clone(merged) });
 
     }
 
@@ -1028,13 +1033,15 @@ export class SettingsManager {
     /**
      * Assert that settings have been loaded.
      */
-    #assertLoaded(): void {
+    #assertLoaded(): Settings {
 
         if (!this.#loaded || !this.#document) {
 
             throw new Error('SettingsManager not loaded. Call load() first.');
 
         }
+
+        return this.#document;
 
     }
 
@@ -1054,8 +1061,11 @@ export class SettingsManager {
         // parsed, so env values arrive unchecked, and a scalar in an array
         // field (NOORM_BUILD_INCLUDE=00_tables) used to be iterated character
         // by character and silently match nothing. Asserting rather than
-        // transforming keeps the view shaped exactly like the document.
+        // transforming keeps the view the same as the document before the
+        // pipelines default is filled in below.
         validateSettings(merged);
+
+        merged.paths = { ...merged.paths, pipelines: merged.paths?.pipelines ?? DEFAULT_PIPELINES_PATH };
 
         this.#settings = merged as Settings;
 

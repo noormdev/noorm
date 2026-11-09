@@ -52,6 +52,20 @@ await ctx.disconnect();
 
 For an unsaved connection, pass `connection` instead of selecting a stored config. It accepts runtime password callbacks for PostgreSQL, MySQL, and MSSQL. See [inline resolution and runtime credentials](https://noorm.dev/reference/sdk#createcontext-options) for the type, physical-connection lifecycle, and error-handling contract.
 
+## SQL pipelines
+
+Run a defined operational workflow through a connected context and inspect its config-scoped history:
+
+```typescript
+const result = await ctx.noorm.pipelines.run('close-period', {
+    input: { period: '2026-10' },
+});
+const runs = await ctx.noorm.pipelines.history('close-period', { limit: 20 });
+```
+
+The `close-period` definition declares the `period` input and its SQL steps in `db/pipelines/close-period/pipeline.yml`. Each invocation runs fresh. See the [SQL pipelines guide](https://noorm.dev/guide/sql-pipelines) for a complete definition and transaction behavior.
+
+
 
 ## Testing
 

@@ -1,6 +1,6 @@
 ---
 title: SDK reference
-description: createContext, the Kysely-backed Context, and the ten ctx.noorm namespaces, with signatures, access gates, result shapes, events, and errors.
+description: createContext, the Kysely-backed Context, and the ctx.noorm namespaces, with signatures, access gates, result shapes, events, and errors.
 ---
 
 # SDK reference
@@ -657,6 +657,7 @@ Three exceptions to the plain rule:
 | Namespace | Does |
 |---|---|
 | [`run`](#ctx-noorm-run) | Executes and previews SQL files, and builds the schema |
+| [`pipelines`](#ctx-noorm-pipelines) | Runs named SQL workflows and reads their independent history |
 | [`changes`](#ctx-noorm-changes) | Scaffolds, applies, reverts, and reports changes |
 | [`db`](#ctx-noorm-db) | Explores the schema, truncates, tears down, and resets |
 | [`lock`](#ctx-noorm-lock) | Holds the per-config lock that serializes schema operations |
@@ -666,6 +667,52 @@ Three exceptions to the plain rule:
 | [`transfer`](#ctx-noorm-transfer) | Copies data between two configs |
 | [`dt`](#ctx-noorm-dt) | Exports and imports `.dt` data files |
 | [`utils`](#ctx-noorm-utils) | Checksums a file and probes a connection |
+
+
+### ctx.noorm.pipelines
+
+The context must be connected. Run and dry run both enforce `run:dir`; the SDK does not prompt.
+
+| Method | Returns | Notes |
+|---|---|---|
+| `run(slug, { input?, dryRun?, signal? }?)` | `Promise<PipelineDryRunResult \| PipelineRunResult>` | Validates typed JSON input and runs fresh. Preflight, policy, and busy errors throw; admitted workflow failures return a structured result. |
+| `history(slug, { limit? }?)` | `Promise<NoormPipelineRun[]>` | Scoped to the current config, newest ID first. Default 20; integer limits 1 through 100. |
+| `getRun(runId)` | `Promise<PipelineHistoryRecord \| null>` | Positive safe integer ID. Returns `{ run, steps }` in declaration order, or `null` for a missing or foreign-config run. |
+
+Results distinguish execution status from transaction outcome and retain primary and secondary errors. They do not return domain query rowsets. Raw input and rendered SQL are not stored in history. See [SQL pipelines](/guide/sql-pipelines) for input, transaction, and recovery semantics.
+
+`run`, `history` and `getRun` migrate an older tracking schema to the current one before touching the tracking tables.
+
+**Results**
+
+| Type | Fields |
+|---|---|
+| `PipelineDryRunResult` | `dryRun: true`, `runId: null`, `status: 'success'`, `transactionOutcome: 'no_effects'`, `slug`, `mode`, `transaction`, `concurrency`, `singleRun`, `steps: PipelineStepMetadata[]` |
+| `PipelineRunResult` | `dryRun: false`, `runId`, `status`, `transactionOutcome`, `startedAt`, `finishedAt`, `durationMs`, the plan fields above, `steps: PipelineStepResult[]`, `primaryError`, `secondaryErrors` |
+| `PipelineStepResult` | `stepNo`, `name`, `filepath`, `checksum`, `needs`, `status`, `transactionOutcome`, `startedAt`, `finishedAt`, `durationMs`, `error`, `skipReason?` |
+| `PipelineError` | `phase` (`execute`, `commit`, `rollback`, `audit`, `cleanup` or `interrupted`), `message`, `stepNo?`, `code?` |
+| `PipelineHistoryRecord` | `{ run: NoormPipelineRun, steps: NoormPipelineStep[] }` |
+
+`message` is fixed text, never driver output. `code` carries a database error code, or `TRANSACTION_ESCAPED` or `OWNERSHIP_UNVERIFIED` when the runtime ownership check fails (see [pipeline recovery](/guide/pipeline-recovery#errors-that-leave-an-unknown-outcome)).
+
+**Values**
+
+| Field | Values |
+|---|---|
+| run `status` | `pending`, `running`, `success`, `failed`, `partial`, `interrupted`, `unknown` |
+| step `status` | `pending`, `running`, `success`, `failed`, `skipped`, `interrupted`, `unknown` |
+| `transactionOutcome` | `pending`, `committed`, `rolled_back`, `partial`, `no_effects`, `unknown`; a step also reports `not_started` |
+| `mode` | `linear`, `graph` |
+| `transaction` | `pipeline`, `step`, `none` |
+
+**Errors**
+
+| Error | When |
+|---|---|
+| `PipelineBusyError` | A `singleRun` pipeline already has an active run for this config. Exported; thrown by `run` before history is created |
+| `ProtectedConfigError` | The config's access policy denies or needs confirmation for `run:dir` |
+| `VersionMismatchError` | The database schema is newer than this client |
+| other `Error` | An unknown slug, an invalid definition, or invalid input rejects before admission. The class, `name` and properties of these errors are not part of the API. The `message` is human-readable and may include the slug, input names or step IDs, never input values; do not parse it. Call with `dryRun: true` to validate a definition and input before a real run. A failed run does not throw; it resolves with `status` and `primaryError` |
 
 
 ### ctx.noorm.run

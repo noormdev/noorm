@@ -1,0 +1,10 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM recording.period_cache
+        WHERE period = {%~ $.quote($.input.period) %} AND unpaid_count = 0
+    ) THEN
+        RAISE EXCEPTION 'Period has unpaid invoices or no invoice cache' USING ERRCODE = 'P0001';
+    END IF;
+END;
+$$;

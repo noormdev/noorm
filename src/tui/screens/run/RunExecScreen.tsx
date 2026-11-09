@@ -36,11 +36,10 @@ import {
     useToast,
 } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS, modeBannerRows } from '../../hooks/index.js';
-import { discoverFiles, runFiles } from '../../../core/runner/index.js';
+import { buildRunContext, discoverFiles, runFiles } from '../../../core/runner/index.js';
 import {
     getErrorMessage,
     resolveScreenIdentity,
-    buildRunContext,
     withScreenConnection,
     progressPercentage,
     runCancelMessage,

@@ -57,8 +57,9 @@ interface TestIdentity {
     privateKey: string;
 }
 
-// Children before parents (executions -> change FK). Same order v1.down uses.
-const DROP_ORDER: Array<keyof NoormTableNames> = ['vault', 'identities', 'lock', 'executions', 'change', 'version'];
+const DROP_ORDER: Array<keyof NoormTableNames> = [
+    'pipelineStep', 'pipelineRun', 'vault', 'identities', 'lock', 'executions', 'change', 'version',
+];
 
 /**
  * Drop every noorm tracking table, in both possible locations.

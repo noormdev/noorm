@@ -117,7 +117,7 @@ A command with nothing to report still writes a result: `change list` on a proje
 ## Exit codes
 
 
-Defined in `src/cli/_exit.ts`. The split between `1` and `3` matters most in a pipeline.
+Defined in `src/cli/_exit.ts`. The split between `1` and `3` matters most in a CI pipeline.
 
 | Code | Name | Meaning | Remedy |
 |---|---|---|---|
@@ -130,6 +130,7 @@ Commands that can exit `3`:
 
 - `run build`, `run dir`, `run exec`, `run files`
 - `change ff`, `change next`, `change rewind`
+- `pipeline run`: confirmed partial committed work. An unknown transaction outcome exits `1`, since nothing confirms what committed
 - `db transfer` (database to database), `ci secrets`, `vault propagate`
 - `dev test-helpers`, `dev test-workers`
 
@@ -206,7 +207,7 @@ On the `agent` channel a `confirm` cell is a deny, so `--yes` never unlocks it. 
 | `sql:write` | `sql query` with `INSERT`, `UPDATE`, `DELETE`, `MERGE` | deny | allow | allow |
 | `sql:ddl` | `sql query` with any other statement | deny | deny | allow |
 | `change:run`, `change:revert` | `change run`, `ff`, `next`, `revert`, `rewind` | deny | confirm | allow |
-| `run:build`, `run:file`, `run:dir` | `run build`, `file`, `dir`, `exec`, `files`, and `inspect`, `preview` against a resolved config | deny | confirm | allow |
+| `run:build`, `run:file`, `run:dir` | `run build`, `file`, `dir`, `exec`, `files`, `pipeline run <slug>`, and `inspect`, `preview` against a resolved config | deny | confirm | allow |
 | `db:create`, `db:reset` | `db create`, `db reset`, `db transfer --to`, `db transfer --import` | deny | confirm | allow |
 | `db:truncate` | `db truncate` | deny | confirm | confirm |
 | `db:teardown` | `db teardown` | deny | deny | confirm |
@@ -781,6 +782,18 @@ noorm run preview db/sql/09_seeds/01_products.sql.tmpl > rendered.sql
 ```
 
 Text mode writes only the SQL to stdout, so redirecting works. JSON: `filepath`, `sql`, `durationMs`. A missing template exits 2. A render error exits 1. The output contains resolved secrets in plaintext, so it needs `run:file` like `inspect`.
+
+
+### SQL pipelines
+
+`noorm pipeline run <slug>` runs a named workflow fresh, with independent pipeline history. Use `noorm pipeline history <slug>` and `noorm pipeline show <run-id>` to inspect the selected config. Put `--cwd` before `pipeline` and operation flags after the slug or subcommand.
+
+```bash
+noorm --cwd /path/to/project pipeline run close-period --input '{"period":"2026-10"}' --dry-run
+noorm pipeline history close-period --limit 20 --json
+```
+
+See the [pipeline CLI reference](/cli/pipeline) for generated input flags and exit codes, the [pipeline guide](/guide/sql-pipelines) for transaction and history behavior, and [recovery](/guide/pipeline-recovery) for a retained guard.
 
 
 ### Changes

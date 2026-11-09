@@ -9,7 +9,7 @@ import { ObserverEngine } from '@logosdx/observer';
 
 import { Context } from '../../src/sdk/context.js';
 import { NoormOps } from '../../src/sdk/noorm-ops.js';
-import { noormObserver } from '../../src/sdk/index.js';
+import * as sdk from '../../src/sdk/index.js';
 import { ChangesNamespace } from '../../src/sdk/namespaces/changes.js';
 import { RunNamespace } from '../../src/sdk/namespaces/run.js';
 import { DbNamespace } from '../../src/sdk/namespaces/db.js';
@@ -337,8 +337,29 @@ describe('sdk: noormObserver export', () => {
 
     it('should be importable from the SDK entry point as an ObserverEngine instance', () => {
 
-        expect(noormObserver).toBeInstanceOf(ObserverEngine);
-        expect(typeof noormObserver.on).toBe('function');
+        expect(sdk.noormObserver).toBeInstanceOf(ObserverEngine);
+        expect(typeof sdk.noormObserver.on).toBe('function');
+
+    });
+
+});
+
+describe('sdk: pipeline error export', () => {
+
+    it('should export PipelineBusyError as an Error subclass callers can match with instanceof', () => {
+
+        const err = new sdk.PipelineBusyError();
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err).toBeInstanceOf(sdk.PipelineBusyError);
+        expect(err.name).toBe('PipelineBusyError');
+
+    });
+
+    it('should keep the coded base classes internal', () => {
+
+        expect(Object.keys(sdk)).not.toContain('PipelineCodedError');
+        expect(Object.keys(sdk)).not.toContain('PipelineDefinitionError');
 
     });
 

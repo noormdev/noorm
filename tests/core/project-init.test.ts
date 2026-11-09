@@ -191,7 +191,7 @@ describe('core: performProjectInit', () => {
 
         const settings = await new SettingsManager(tmpDir).load();
 
-        expect(settings.paths).toEqual({ sql: './sql', changes: './changes' });
+        expect(settings.paths).toMatchObject({ sql: './sql', changes: './changes' });
         expect(existsSync(join(tmpDir, 'db'))).toBe(false);
         expect(result.createdFiles.some((f) => f.startsWith('db/'))).toBe(false);
 

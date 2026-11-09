@@ -48,6 +48,7 @@ flowchart TD
 | `db transfer` with a `.dtzx` file | `--passphrase`, or exit 2 |
 | `sql repl` | `--yes` exits 2. Use `noorm sql query "SELECT 1"` or `--file query.sql` |
 | `settings edit` | `--yes` exits 2. Edit `.noorm/settings.yml`, then `noorm settings build` |
+| `pipeline run <slug>` | Supply required inputs with `--input` or generated flags. Missing values do not prompt in CI, JSON, `--yes`, or agent mode. See [pipeline CLI](/cli/pipeline). |
 | `settings secret` | `--yes` exits 2. Edit `secrets:`, and set values with `noorm secret set <key> --stdin` |
 
 

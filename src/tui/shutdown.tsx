@@ -17,8 +17,9 @@
  */
 import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode, ReactElement } from 'react';
-import { useApp, Box, Text } from 'ink';
+import { useInput, Box, Text } from 'ink';
 import { Spinner } from '@inkjs/ui';
+import { attempt } from '@logosdx/utils';
 
 import { getLifecycleManager } from '../core/lifecycle/manager.js';
 import type { LifecycleManager } from '../core/lifecycle/manager.js';
@@ -60,10 +61,17 @@ const ShutdownContext = createContext<ShutdownContextValue | null>(null);
  * Full-screen modal showing shutdown progress with phase indicators.
  * Replaces the entire TUI during graceful shutdown.
  */
-function ShutdownScreen(): ReactElement {
+function ShutdownScreen({ onForceExit }: { onForceExit: () => void }): ReactElement {
 
     const [currentPhase, setCurrentPhase] = useState<string>('stopping');
     const [completedPhases, setCompletedPhases] = useState<Set<string>>(new Set());
+    const [timedOutPhases, setTimedOutPhases] = useState<Set<string>>(new Set());
+
+    useInput((input, key) => {
+
+        if (key.ctrl && input === 'c') onForceExit();
+
+    });
 
     useEffect(() => {
 
@@ -74,9 +82,14 @@ function ShutdownScreen(): ReactElement {
                 setCurrentPhase(data.phase);
 
             }
-            else if (data.status === 'completed' || data.status === 'timeout') {
+            else if (data.status === 'completed') {
 
                 setCompletedPhases((prev) => new Set([...prev, data.phase]));
+
+            }
+            else if (data.status === 'timeout') {
+
+                setTimedOutPhases((prev) => new Set([...prev, data.phase]));
 
             }
 
@@ -96,20 +109,30 @@ function ShutdownScreen(): ReactElement {
             {phases.map(([key, label]) => {
 
                 const isDone = completedPhases.has(key);
-                const isActive = currentPhase === key && !isDone;
+                const timedOut = timedOutPhases.has(key);
+                const isActive = currentPhase === key && !isDone && !timedOut;
 
                 return (
                     <Box key={key} gap={1}>
                         {isDone && <Text color="green">✓</Text>}
+                        {timedOut && <Text color="yellow">!</Text>}
                         {isActive && <Spinner />}
-                        {!isDone && !isActive && <Text dimColor> </Text>}
-                        <Text dimColor={!isActive && !isDone} color={isDone ? 'green' : undefined}>
-                            {label}
+                        {!isDone && !isActive && !timedOut && <Text dimColor> </Text>}
+                        <Text dimColor={!isActive && !isDone && !timedOut} color={timedOut ? 'yellow' : isDone ? 'green' : undefined}>
+                            {label}{timedOut ? ' (timed out)' : ''}
                         </Text>
                     </Box>
                 );
 
             })}
+            {timedOutPhases.size > 0 && (
+                <Box marginTop={1}>
+                    <Text color="yellow">Shutdown incomplete. Running SQL or transaction cleanup may not have settled.</Text>
+                </Box>
+            )}
+            <Box marginTop={1}>
+                <Text dimColor>Ctrl+C again forces exit. Running SQL may continue.</Text>
+            </Box>
         </Box>
     );
 
@@ -144,14 +167,29 @@ export interface ShutdownProviderProps {
  */
 export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProps): ReactElement {
 
-    const { exit } = useApp();
+    const exitEmittedRef = useRef(false);
     const lifecycleRef = useRef<LifecycleManager | null>(null);
     const isShuttingDownRef = useRef(false);
     const isReadyRef = useRef(false);
+    const incompleteRef = useRef(false);
+
+    const emitExit = useCallback((code: number) => {
+
+        if (exitEmittedRef.current) return;
+        exitEmittedRef.current = true;
+        observer.emit('app:exit', { code });
+
+    }, []);
     const [isShuttingDown, setIsShuttingDown] = useState(false);
 
     // Initialize lifecycle manager on mount
     useEffect(() => {
+
+        const unsubscribePhase = observer.on('app:shutdown:phase', (event) => {
+
+            if (event.status === 'timeout') incompleteRef.current = true;
+
+        });
 
         const lifecycle = getLifecycleManager(projectRoot, { mode: 'tui' });
         lifecycleRef.current = lifecycle;
@@ -173,6 +211,8 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
         // Cleanup on unmount - this runs when Ink exits
         return () => {
 
+            unsubscribePhase();
+
             if (lifecycleRef.current && !isShuttingDownRef.current) {
 
                 // Perform shutdown if not already done
@@ -190,8 +230,8 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
         if (isShuttingDownRef.current) {
 
-            // Already shutting down — force exit on second attempt
-            exit();
+            // Force does not establish that SQL or transaction cleanup settled.
+            emitExit(1);
 
             return;
 
@@ -214,20 +254,23 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
 
         }
 
-        // Perform graceful shutdown
-        if (lifecycleRef.current) {
+        const lifecycle = lifecycleRef.current;
+        if (lifecycle && isReadyRef.current) {
 
-            await lifecycleRef.current.shutdown('user');
+            const [, shutdownError] = await attempt(() => lifecycle.shutdown('user'));
+            if (shutdownError) incompleteRef.current = true;
+
+        }
+        else {
+
+            incompleteRef.current = true;
 
         }
 
-        // Signal index.tsx to clear output and unmount Ink.
-        // We emit an event instead of calling exit() directly so the
-        // render instance can call clear() before unmount(), preventing
-        // the shutdown screen from lingering in the terminal.
-        observer.emit('app:exit', { code: 0 });
+        // The CLI clears Ink before unmounting and preserves this exit code.
+        emitExit(incompleteRef.current ? 1 : lifecycleRef.current?.exitCode ?? 1);
 
-    }, [exit]);
+    }, [emitExit]);
 
     const value: ShutdownContextValue = {
         gracefulExit,
@@ -237,7 +280,11 @@ export function ShutdownProvider({ children, projectRoot }: ShutdownProviderProp
     // Render shutdown screen when shutting down, otherwise render children
     return (
         <ShutdownContext.Provider value={value}>
-            {isShuttingDown ? <ShutdownScreen /> : children}
+            {isShuttingDown ? <ShutdownScreen onForceExit={() => {
+
+                void gracefulExit();
+
+            }} /> : children}
         </ShutdownContext.Provider>
     );
 

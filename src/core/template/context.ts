@@ -25,11 +25,21 @@ import { readdir, readFile } from 'node:fs/promises';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import { guardPipelineInput } from '../pipeline/input.js';
 import type { TemplateContext, RenderOptions } from './types.js';
 import { HELPER_FILENAME } from './types.js';
 import { loadHelpers } from './helpers.js';
 import { loadDataFile, hasLoader, isExecutableExtension } from './loaders/index.js';
 import { toContextKey, sqlEscape, sqlQuote, generateUuid, isoNow, isWithinRoot } from './utils.js';
+import { mysqlPipelineQuote, mssqlPipelineQuote, pipelineEscape, postgresPipelineQuote } from '../pipeline/sql-literal.js';
+import type { Dialect } from '../connection/types.js';
+
+const PIPELINE_QUOTES: Record<Dialect, typeof sqlQuote> = {
+    sqlite: sqlQuote,
+    mysql: mysqlPipelineQuote,
+    mssql: mssqlPipelineQuote,
+    postgres: postgresPipelineQuote,
+};
 
 /**
  * Tiers `$.secrets` actually resolves from, in priority order.
@@ -131,6 +141,27 @@ function createSecretsProxy(secrets: Record<string, string>): Record<string, str
 
 }
 
+// A preparation reuses its immutable snapshot across every step and include.
+// Cache the guarded view so those renders never recursively copy it again.
+const guardedInputs = new WeakMap<
+    NonNullable<RenderOptions['pipelineInput']>,
+    NonNullable<RenderOptions['pipelineInput']>
+>();
+
+function createInputProxy(input: NonNullable<RenderOptions['pipelineInput']>): NonNullable<RenderOptions['pipelineInput']> {
+
+    let guarded = guardedInputs.get(input);
+    if (!guarded) {
+
+        guarded = guardPipelineInput(input);
+        guardedInputs.set(input, guarded);
+
+    }
+
+    return guarded;
+
+}
+
 /**
  * Build the template context ($) for a template file.
  *
@@ -180,11 +211,12 @@ export async function buildContext(
 
         // Built-in helpers
         include: createIncludeHelper(templateDir, projectRoot, options),
-        escape: sqlEscape,
-        quote: sqlQuote,
+        escape: options.pipelineDialect ? pipelineEscape : sqlEscape,
+        quote: options.pipelineDialect ? PIPELINE_QUOTES[options.pipelineDialect] : sqlQuote,
         json: (value: unknown) => JSON.stringify(value),
         now: isoNow,
         uuid: generateUuid,
+        ...(options.pipelineInput !== undefined ? { input: createInputProxy(options.pipelineInput) } : {}),
     };
 
     return ctx;
