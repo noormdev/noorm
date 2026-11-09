@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
+import { parse as parseYaml } from 'yaml';
 
 import { offerSkill } from '../../../src/cli/update.js';
 import {
@@ -178,6 +179,34 @@ describe('update: skill', () => {
             expect(printed).toContain('https://cli.github.com');
 
         });
+
+    });
+
+});
+
+describe('update: shipped skills', () => {
+
+    const skillsRoot = join(import.meta.dir, '../../../skills');
+
+    it('should give every shipped skill frontmatter that strict YAML parsers accept', async () => {
+
+        const names = await readdir(skillsRoot);
+
+        expect(names.length).toBeGreaterThan(0);
+
+        for (const name of names) {
+
+            const text = await readFile(join(skillsRoot, name, 'SKILL.md'), 'utf8');
+            const frontmatter = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+
+            // `skills add` rejects the skill outright when this fails, so `noorm update` cannot install it.
+            const [meta, err] = attemptSync(() => parseYaml(frontmatter));
+
+            expect(err).toBeNull();
+            expect(meta?.name).toBe(name);
+            expect(typeof meta?.description).toBe('string');
+
+        }
 
     });
 
