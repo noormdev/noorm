@@ -69,6 +69,16 @@ noorm ci init --name ci     # reads NOORM_IDENTITY_* and NOORM_CONNECTION_*
 noorm run build
 ```
 
+For a defined operational workflow, pipelines run SQL steps fresh and keep separate run history. For example, with a `close-period` manifest declaring a `period` input:
+
+```bash
+noorm pipeline run close-period --period 2026-10
+noorm pipeline history close-period --limit 20
+```
+
+See the [SQL pipelines guide](https://noorm.dev/guide/sql-pipelines) for the manifest and SQL files.
+
+
 
 ## How it works
 

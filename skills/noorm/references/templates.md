@@ -151,6 +151,17 @@ UPDATE users SET bio = '{%~ $.escape(user.bio) %}' WHERE id = 1;
 -- Input: It's great  →  Output: It''s great
 ```
 
+### Quoting in pipelines
+
+In a SQL pipeline, `$.escape` throws in every render; use `$.quote`. A pipeline `$.quote` emits a literal that does not depend on session modes:
+
+| Dialect | Output for a string |
+|---------|---------------------|
+| PostgreSQL | `U&'\0061'` escapes; rejected when `standard_conforming_strings` is off; safe inside `$$` |
+| MySQL | `_utf8mb4 X'61'` hex |
+| SQL Server | `N'a'`, with a backslash before a line break doubled |
+| SQLite | `'a'`, unchanged |
+
 ### $.uuid()
 
 Generates a UUID v4:

@@ -50,6 +50,18 @@ You write SQL. noorm executes it, tracks what ran, and keeps multiple environmen
 
 Every command runs non-interactively by default and emits structured output suitable for CI/CD — see the [headless reference](https://noorm.dev/headless).
 
+## SQL pipelines
+
+For a workflow defined in `db/pipelines/close-period/pipeline.yml` with a declared `period` input:
+
+```bash
+noorm pipeline run close-period --period 2026-10
+noorm pipeline history close-period --limit 20
+```
+
+Each invocation runs the workflow fresh with its own history. See the [SQL pipelines guide](https://noorm.dev/guide/sql-pipelines) for the manifest, SQL steps, and transaction options.
+
+
 
 ## Programmatic access
 

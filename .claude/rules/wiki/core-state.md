@@ -10,12 +10,15 @@ paths:
   - "src/core/project-init.ts"
   - "src/core/environment.ts"
   - "src/core/observer.ts"
+  - "src/core/shared/**"
   - "tests/core/state/**"
   - "tests/core/settings/**"
   - "tests/core/config/**"
   - "tests/core/lifecycle/**"
   - "tests/core/version/**"
+  - "tests/core/project-init.test.ts"
   - "tests/integration/version/**"
+  - "tests/core/shared/**"
 ---
 
 Domain: core-state. Encrypted state, settings.yml, config resolution, lifecycle, version migration, and observer events.
@@ -24,6 +27,9 @@ Map:
   - docs/wiki/core-state.md
 Contracts:
   - docs/spec/config-access-roles.md
+Guides:
+  - docs/guide/environments/configs.md
+  - docs/guide/environments/stages.md
 Designs:
   - docs/design/config-access-roles.md
 Related:

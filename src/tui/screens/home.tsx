@@ -268,6 +268,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Navigation shortcuts (main options)
         if (input === 'r') navigate('run');
+        else if (input === 'p') navigate('pipeline');
         else if (input === 'c') navigate('config');
         else if (input === 'g') navigate('change');
         else if (input === 'd') navigate('db');
@@ -631,6 +632,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             {/* Navigation Hints */}
             <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[r] Run</Text>
+                <Text dimColor>[p] Pipelines</Text>
                 <Text dimColor>[c] Config</Text>
                 <Text dimColor>[g] Change</Text>
                 <Text dimColor>[d] DB</Text>

@@ -21,6 +21,7 @@ import type { VaultStatus } from '../../../src/core/vault/index.js';
 const actualCore = await import('../../../src/core/index.js');
 const actualIdentity = await import('../../../src/core/identity/index.js');
 const actualUseConnection = await import('../../../src/tui/hooks/useConnection.js');
+const realUseConnection = actualUseConnection.useConnection;
 const actualVault = await import('../../../src/core/vault/index.js');
 const actualStorage = await import('../../../src/core/identity/storage.js');
 
@@ -66,10 +67,12 @@ mock.module('../../../src/core/identity/index.js', () => ({
     loadExistingIdentity: vi.fn().mockResolvedValue({ identityHash: 'hash123' }),
 }));
 
+const useConnectionMock = vi.fn();
+
 // Spread the real modules so only the exports under test are replaced
 mock.module('../../../src/tui/hooks/useConnection.js', () => ({
     ...actualUseConnection,
-    useConnection: vi.fn(),
+    useConnection: useConnectionMock,
 }));
 
 mock.module('../../../src/core/vault/index.js', () => ({
@@ -161,6 +164,9 @@ describe('cli: useVaultSecretKeys', () => {
     // Restore mocked modules to prevent pollution of subsequent test files
     afterAll(() => {
 
+        // The mock outlives this file; `realUseConnection` is a by-value copy because the namespace
+        // is rewritten to the mock.
+        useConnectionMock.mockImplementation(realUseConnection);
         mock.module('../../../src/core/index.js', () => actualCore);
         mock.module('../../../src/core/identity/index.js', () => actualIdentity);
         mock.module('../../../src/tui/hooks/useConnection.js', () => actualUseConnection);

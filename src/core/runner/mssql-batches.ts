@@ -20,7 +20,7 @@ import { splitSqliteStatements } from './sqlite-statements.js';
 import type { RunContext } from './types.js';
 
 /** The two fields body execution reads; a change context supplies them too. */
-type SqlBodyContext = Pick<RunContext, 'db' | 'dialect'>;
+type SqlBodyContext = Pick<RunContext, 'db' | 'dialect'> & { onError?: (error: unknown) => void };
 
 
 /**
@@ -141,6 +141,9 @@ export async function executeSqlBody(
 
     if (execErr) {
 
+        context.onError?.(execErr);
+
+
         return getSqlErrorMessage(execErr);
 
     }
@@ -167,6 +170,9 @@ async function executeFragments(
         const [, execErr] = await attempt(() => sql.raw(fragments[i]!).execute(context.db));
 
         if (execErr) {
+
+            context.onError?.(execErr);
+
 
             const message = getSqlErrorMessage(execErr);
 

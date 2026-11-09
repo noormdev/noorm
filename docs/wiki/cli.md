@@ -41,7 +41,7 @@ flowchart TD
     H -->|no| J["runMain(main)"]
 ```
 
-The root lazily imports `change`, `ci`, `config`, `db`, `dev`, `identity`, `info`, `init`, `lock`, `mcp`, `run`, `secret`, `settings`, `sql`, `ui`, `update`, `vault`, and `version`. The `complete` stub avoids resolving the command tree during ordinary startup. `resolveCommand()` builds the help breadcrumb, and commands attach an [`examples`](../../examples) property for the appended [`EXAMPLES`](../../EXAMPLES) block. Bare SQL matching `SQL_VERBS` becomes a `sql query` invocation; named SQL subcommands remain unchanged.
+The root lazily imports `change`, `ci`, `config`, `db`, `dev`, `identity`, `info`, `init`, `lock`, `mcp`, `pipeline`, `run`, `secret`, `settings`, `sql`, `ui`, `update`, `vault`, and `version`. The `complete` stub avoids resolving the command tree during ordinary startup. `resolveCommand()` builds the help breadcrumb, and commands attach an [`examples`](../../examples) property for the appended [`EXAMPLES`](../../EXAMPLES) block. Bare SQL matching `SQL_VERBS` becomes a `sql query` invocation; named SQL subcommands remain unchanged.
 
 Commands attach `examples: string[]` to the `defineCommand()` result; this is the help interceptor's property, not a Citty-native field. Environment identity startup installs `setKeyOverride()` and `setIdentityOverride()` so downstream key and metadata reads can use `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_IDENTITY_EMAIL` without identity files. Unset overrides leave disk lookup available.
 
@@ -51,6 +51,7 @@ CLI-owned command surfaces include:
 - `ci`: `identity`, `init`, `secrets`.
 - `settings`: `init`, `build`, `edit`, `secret`.
 - `lock`: `acquire`, `force`, `release`, `status`.
+- `pipeline`: `run`, `history`, `show`.
 - `dev`: `test-helpers`, `test-workers`.
 
 | Entrypoint | Operational behavior |
@@ -191,6 +192,49 @@ Both context helpers return `[result, null]` or `[null, Error]`. They pass `isYe
 
 JSON results remain objects with a boolean `success`, including list results under named keys such as `configs`, `changes`, or `tables`. The exit-code and JSON-envelope subprocess tests pin agreement between `success` and the process status; arrays passed to the shared helper receive the `data` wrapper rather than remaining bare top-level arrays.
 
+### Pipeline commands
+
+`noorm pipeline run <slug>` runs a SQL pipeline, `history <slug>` lists its runs, and `show <id>` prints one run with its steps. Each command is a thin shell over `ctx.noorm.pipelines`; the SDK surface and error codes are in [`docs/wiki/sdk.md`](sdk.md), and execution semantics belong to core-runner.
+
+`entry()` routes `pipeline` argv through its own branch before the general dispatch. The branch wraps help and `runCommand` in `attempt()`. A throw (for example from loading a manifest to generate input flags) prints `definitionFailureMessage()` and sets `EXIT.USAGE`.
+
+```mermaid
+flowchart TD
+    %% source: src/cli/pipeline/run.ts, src/cli/pipeline/_common.ts
+    A["pipelines.run()"] --> B{"threw?"}
+    B -->|no| S["exitCodeForStatus(result.status)<br/>partial or transactionOutcome partial: 3<br/>transactionOutcome unknown: 1"]
+    B -->|yes| C{"ProtectedConfigError?"}
+    C -->|yes| F1["exit 1: blocked by policy,<br/>or pass --yes"]
+    C -->|no| D{"PipelineCodedError?"}
+    D -->|no| F2["exit 1: Pipeline execution failed"]
+    D -->|yes| E{"code"}
+    E -->|"INVALID_DEFINITION, INVALID_INPUT, NOT_FOUND"| U["exit 2"]
+    E -->|"POLICY_BLOCKED, CONFIRMATION_REQUIRED, BUSY"| F3["exit 1"]
+```
+
+`pipelineFailure()` in `src/cli/pipeline/_common.ts` derives the exit code and message from the error's `code`. The CLI no longer matches message text, so a reworded error cannot change an exit code. Messages are fixed strings; a definition failure appends the rule name, for example `Invalid pipeline definition (yaml)`. Stored errors, step file paths, skip reasons, and the `active_key` can carry SQL, input, or absolute paths. `history` and `show` strip them with `safeRun()` and `safeStep()`; `pipeline run` strips its result inline in `src/cli/pipeline/run.ts`.
+
+Interrupts: the first `SIGINT` aborts the run through the `AbortController` passed as `signal`; a second one exits `130` without waiting. `interruptHandler()` implements this.
+
+#### Input parsing
+
+`src/cli/pipeline/input.ts` builds one `--<flag>` per declared input from the definition, plus `--input '<json object>'`. Generated flags are strings; `parsePipelineInputText` converts them to the declared type. `resolvePipelineCliInput()` resolves in a fixed order so invalid values never prompt:
+
+1. Parse `--input` as JSON. It must be a plain object whose keys are all declared inputs.
+2. Overlay per-input flags, which win over `--input` keys, then validate each supplied value.
+3. Compute missing required inputs that have no default.
+4. If any are missing, prompt only when stdin and stdout are TTYs, `CI` is unset, `--json` and yes mode are off, and the channel is `user`. Otherwise throw `PipelineMissingInputError`.
+
+| Failure | Class | Exit and message |
+|---|---|---|
+| Bad JSON, undeclared key, invalid value, wrong flag | `Error` | `2`, `Invalid or cancelled pipeline input or invocation` |
+| Missing required inputs, no prompt possible | `PipelineMissingInputError` | `2`, `Missing required pipeline inputs: <names>`; names only, never values |
+| Prompt cancelled | `PipelineInputCancelledError` | `2`, generic message; no SQL has run |
+
+`history` validates `--limit` with `parseHistoryLimit` (1 to 100); `show` validates its run-ID positional with `parseRunId`. Both parsers are shared with the SDK and TUI. Invalid values exit `2`; an unknown run exits `1` with `Pipeline run not found`.
+
+Input values reach SQL only through `$.quote`, which is dialect-specific in pipelines, and `$.escape` is rejected with a definition failure (exit `2`); see Input quoting in [`docs/wiki/sdk.md`](sdk.md).
+
 ### Binary installation
 
 Postinstall promotes a downloaded binary only after checksum verification succeeds or the caller explicitly permits an unavailable checksum.
@@ -225,6 +269,7 @@ Source-checkout detection reads the root package two directories above [`package
 | [`src/cli/config/sync.ts`](../../src/cli/config/sync.ts), [`src/cli/config/validate.ts`](../../src/cli/config/validate.ts) | Preview/apply stage defaults and probe effective configs. |
 | [`src/cli/ci`](../../src/cli/ci) | CI identity provisioning, ephemeral bootstrap, and batch-loading config-scoped secrets from dotenv files. |
 | [`src/cli/settings`](../../src/cli/settings), [`src/cli/lock`](../../src/cli/lock), [`src/cli/dev`](../../src/cli/dev) | Settings commands, distributed lock commands, and internal diagnostics. |
+| [`src/cli/pipeline`](../../src/cli/pipeline) | `pipeline run`, `history`, `show`; `_common.ts` maps error codes to exit codes and `input.ts` resolves flags, JSON, and prompts. |
 | [`src/cli/init.ts`](../../src/cli/init.ts), [`src/cli/ui.ts`](../../src/cli/ui.ts) | Project bootstrap and lazy interactive application startup. |
 | [`src/cli/info.ts`](../../src/cli/info.ts), [`src/cli/version.ts`](../../src/cli/version.ts), [`src/cli/update.ts`](../../src/cli/update.ts) | Project/database status, installation diagnostics without a DB connection, and binary updates. |
 | [`packages/cli/package.json`](../../packages/cli/package.json), [`packages/cli/noorm.js`](../../packages/cli/noorm.js), [`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js) | Published launcher metadata, process forwarding, and verified binary installation. |
@@ -273,7 +318,7 @@ The logger-settings test must run in its own process. Init-screen tests mock `Se
 - `sql repl`, `settings edit`, and `settings secret` still require a TTY when `--yes` or `NOORM_YES` is set. Their refusal then includes a redirect hint rather than entering an interactive prompt. `sql repl` also dynamically loads Ink and React.
 - `isYesMode()` and `isInsecureMode()` treat a nonempty environment value as true except `0` and case-insensitive `false`. An explicit true flag wins over a false environment value. Postinstall mirrors this parsing because it runs before TypeScript sources are built.
 - [`src/cli/ui.ts`](../../src/cli/ui.ts) dynamically imports Ink, React, and the TUI app and suppresses logger streams during rendering. Static UI imports into the headless startup graph would violate the boundary covered by [`tests/cli/lazy-startup.test.ts`](../../tests/cli/lazy-startup.test.ts).
-- Exit status `0` means success, `1` failure, `2` usage failure, and `3` partial completion. A partial result can leave mixed state; blindly retrying it is not equivalent to retrying a rejected invocation. Unknown operation statuses map to failure.
+- Exit status `0` means success, `1` failure, `2` usage failure, and `3` partial completion. A partial result can leave mixed state; blindly retrying it is not equivalent to retrying a rejected invocation. Unknown operation statuses map to failure. `pipeline run` exits `3` only for confirmed partial work; an unknown transaction outcome exits `1`.
 - A confirmed binary checksum mismatch is fatal. `NOORM_INSECURE` permits unavailable checksums or missing asset entries, not a known bad hash; bypassing that distinction would install a binary verification rejected.
 - Compiled workers must use `resolveWorker()` from [`src/core/worker-bridge/paths.ts`](../../src/core/worker-bridge/paths.ts). Bun strips [`src/`](../../src) and rewrites `.ts` to `.js` in embedded entry paths; hardcoded development paths do not address those workers.
 

@@ -198,6 +198,7 @@ export { NoormOps } from './noorm-ops.js';
 export {
     ChangesNamespace,
     RunNamespace,
+    PipelinesNamespace,
     DbNamespace,
     LockNamespace,
     VaultNamespace,
@@ -286,6 +287,26 @@ export type {
 } from '../core/explore/index.js';
 export type { TruncateResult, TeardownResult, TeardownPreview, TruncateOptions } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
+export type {
+    PipelineRunOptions,
+    PipelineDryRunResult,
+    PipelineRunResult,
+    PipelineError,
+    PipelineStepMetadata,
+    PipelineStepResult,
+    PipelineMode,
+    PipelineTransaction,
+} from '../core/pipeline/types.js';
+export type {
+    NoormPipelineRun,
+    NoormPipelineStep,
+    PipelineRunStatus,
+    PipelineStepStatus,
+    PipelineTransactionOutcome,
+} from '../core/shared/tables.js';
+export type { PipelineHistoryOptions } from './namespaces/pipelines.js';
+export type { PipelineHistoryRecord } from '../core/pipeline/history.js';
+export { PipelineBusyError } from '../core/pipeline/admission.js';
 export type {
     ChangeResult,
     BatchChangeResult,

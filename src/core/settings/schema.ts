@@ -136,6 +136,7 @@ const BuildConfigSchema = z.object({
 const PathConfigSchema = z.object({
     sql: z.string().optional(),
     changes: z.string().optional(),
+    pipelines: z.string().optional(),
 });
 
 /**

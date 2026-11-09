@@ -279,6 +279,17 @@ export type {
     Direction,
     ExecutionStatus,
     FileType,
+    NoormPipelineRunTable,
+    NoormPipelineRun,
+    NewNoormPipelineRun,
+    NoormPipelineRunUpdate,
+    NoormPipelineStepTable,
+    NoormPipelineStep,
+    NewNoormPipelineStep,
+    NoormPipelineStepUpdate,
+    PipelineRunStatus,
+    PipelineStepStatus,
+    PipelineTransactionOutcome,
 } from '../shared/index.js';
 
 // State

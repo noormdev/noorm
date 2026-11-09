@@ -152,12 +152,13 @@ const build = settings.getBuild()
 
 ## Path Configuration
 
-Override default locations for schema and change files.
+Override default locations for schema, change, and pipeline files.
 
 ```yaml
 paths:
     sql: ./db/sql
     changes: ./db/changes
+    pipelines: ./db/pipelines
 ```
 
 Defaults:
@@ -166,13 +167,16 @@ Defaults:
 |------|---------|
 | `sql` | `./db/sql` |
 | `changes` | `./db/changes` |
+| `pipelines` | `./db/pipelines` |
 
 These apply when `settings.yml` has no `paths` key. `noorm init` writes them into the file
 explicitly. A project laid out elsewhere, such as `./sql`, sets `paths` to say so.
 
+`setPaths` merges into the stored `paths` instead of replacing it, so a caller that sets `sql` and `changes` leaves `pipelines` as it was. See [Mutations](#mutations).
+
 ```typescript
 const paths = settings.getPaths()
-// { sql: './db/sql', changes: './db/changes' }
+// { sql: './db/sql', changes: './db/changes', pipelines: './db/pipelines' }
 ```
 
 
@@ -182,6 +186,7 @@ Every accessor returns the **resolved view**: the parsed `settings.yml` document
 plus an overlay of `NOORM_*` environment variables, recomputed after each load
 and each mutation. `NOORM_PATHS_SQL=./ci/sql` therefore changes what
 `getPaths()` returns without touching the file.
+`NOORM_PATHS_PIPELINES` overrides the pipeline directory in the same way. See [SQL pipelines](/guide/sql-pipelines).
 
 The overlay is deliberately kept out of the persisted document — `settings.yml`
 is version controlled, so merging ambient env vars into it would commit whatever
@@ -646,7 +651,7 @@ await settings.setBuild({
     exclude: ['sql/archive']
 })
 
-// Update paths config
+// Update paths config; keys left out keep their stored value
 await settings.setPaths({
     sql: './db/sql',
     changes: './db/changes'
@@ -808,7 +813,8 @@ observer.on('settings:build-updated', ({ build }) => {
 })
 
 observer.on('settings:paths-updated', ({ paths }) => {
-    console.log('Updated paths config')
+    // The merged paths: stored keys plus the ones just set
+    console.log('Updated paths config', paths)
 })
 
 observer.on('settings:strict-updated', ({ strict }) => {

@@ -1,7 +1,7 @@
 /**
  * Connection manager with tracking and auto-cleanup.
  *
- * Tracks ALL active database connections and ensures they're closed on shutdown.
+ * Tracks ALL active connections for managed releasing-phase cleanup.
  * Connections can be cached by config name for reuse, or tracked ephemerally.
  */
 import { attempt, runWithTimeout } from '@logosdx/utils';
@@ -10,7 +10,6 @@ import type { ConnectionResult } from './types.js';
 import type { WorkerBridge } from '../worker-bridge/bridge.js';
 import type { ConnectionEvents } from '../worker-bridge/types.js';
 import { observer } from '../observer.js';
-import { isDebug } from '../environment.js';
 
 /**
  * Internal connection entry with metadata.
@@ -28,7 +27,7 @@ interface TrackedConnection {
  * 1. Cached: `getConnection(config)` - reuses existing connection for a config
  * 2. Tracked: `track(conn, name)` - tracks ephemeral connections for cleanup
  *
- * All tracked connections are automatically closed on `app:shutdown` event.
+ * Managed lifecycle shutdown closes tracked connections in its releasing phase.
  *
  * @example
  * ```typescript
@@ -41,7 +40,7 @@ interface TrackedConnection {
  * const conn = await createConnection(config.connection, 'temp')
  * manager.track(conn, 'temp')
  *
- * // All connections closed on app:shutdown
+ * // Managed releasing cleanup closes remaining connections.
  * ```
  */
 class ConnectionManager {
@@ -55,25 +54,9 @@ class ConnectionManager {
 
     constructor() {
 
-        // Listen for shutdown event
-        this.#unsubscribe = observer.on('app:shutdown', async () => {
-
-            if (isDebug()) {
-
-                console.error(
-                    `[ConnectionManager] app:shutdown received, closing ${this.size} connections`,
-                );
-
-            }
+        this.#unsubscribe = observer.on('app:shutdown', () => {
 
             this.#shuttingDown = true;
-            await this.closeAll();
-
-            if (isDebug()) {
-
-                console.error('[ConnectionManager] all connections closed');
-
-            }
 
         });
 
@@ -194,7 +177,7 @@ class ConnectionManager {
     /**
      * Close all connections (cached and tracked).
      *
-     * Called automatically on app:shutdown event.
+     * Called by the lifecycle manager's releasing phase.
      * Uses a timeout to prevent hanging on stubborn connections.
      */
     async closeAll(): Promise<void> {
@@ -244,7 +227,8 @@ class ConnectionManager {
     /**
      * Track a WorkerBridge connection for a config.
      *
-     * The bridge is shut down alongside regular connections on app:shutdown.
+     * The bridge is closed with the regular connections when the lifecycle
+     * reaches its `releasing` phase.
      */
     trackBridge(configName: string, bridge: WorkerBridge<ConnectionEvents>): void {
 
@@ -316,7 +300,7 @@ let instance: ConnectionManager | null = null;
 /**
  * Get the global ConnectionManager instance.
  *
- * The manager automatically listens for app:shutdown and closes all connections.
+ * Managed lifecycle releasing cleanup closes the remaining tracked connections.
  */
 export function getConnectionManager(): ConnectionManager {
 

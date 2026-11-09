@@ -50,6 +50,10 @@ export const NOORM_TABLES = Object.freeze({
 
     /** Vault secrets table */
     vault: '__noorm_vault__' as const,
+
+    /** Independent pipeline invocation history */
+    pipelineRun: '__noorm_pipeline_run__' as const,
+    pipelineStep: '__noorm_pipeline_step__' as const,
 });
 
 /**
@@ -63,6 +67,8 @@ export type NoormTableNames = {
     lock: string;
     identities: string;
     vault: string;
+    pipelineRun: string;
+    pipelineStep: string;
 
 };
 
@@ -78,6 +84,8 @@ const SCHEMA_TABLES = Object.freeze({
     lock: 'lock' as const,
     identities: 'identities' as const,
     vault: 'vault' as const,
+    pipelineRun: 'pipeline_run' as const,
+    pipelineStep: 'pipeline_step' as const,
 });
 
 /**
@@ -434,6 +442,52 @@ export type NoormVault = Selectable<NoormVaultTable>;
 export type NewNoormVault = Insertable<NoormVaultTable>;
 export type NoormVaultUpdate = Updateable<NoormVaultTable>;
 
+export type PipelineRunStatus = 'pending' | 'running' | 'success' | 'failed' | 'partial' | 'interrupted' | 'unknown';
+export type PipelineStepStatus = 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'interrupted' | 'unknown';
+export type PipelineTransactionOutcome = 'pending' | 'committed' | 'rolled_back' | 'partial' | 'no_effects' | 'unknown';
+
+export interface NoormPipelineRunTable {
+    id: Generated<number>;
+    slug: string;
+    config_name: string;
+    executed_by: string;
+    cli_version: string;
+    created_at: Generated<Date>;
+    manifest_checksum: string;
+    transaction_policy: 'pipeline' | 'step' | 'none';
+    single_run: Generated<boolean>;
+    status: PipelineRunStatus;
+    transaction_outcome: PipelineTransactionOutcome;
+    started_at: Generated<Date | null>;
+    finished_at: Generated<Date | null>;
+    error_message: Generated<string>;
+    duration_ms: Generated<number>;
+    active_key: Generated<string | null>;
+}
+
+export interface NoormPipelineStepTable {
+    pipeline_run_id: number;
+    step_no: number;
+    name: string;
+    filepath: string;
+    checksum: string;
+    needs: string;
+    status: PipelineStepStatus;
+    transaction_outcome: PipelineTransactionOutcome | 'not_started';
+    started_at: Generated<Date | null>;
+    finished_at: Generated<Date | null>;
+    error_message: Generated<string>;
+    skip_reason: Generated<string>;
+    duration_ms: Generated<number>;
+}
+
+export type NoormPipelineRun = Selectable<NoormPipelineRunTable>;
+export type NewNoormPipelineRun = Insertable<NoormPipelineRunTable>;
+export type NoormPipelineRunUpdate = Updateable<NoormPipelineRunTable>;
+export type NoormPipelineStep = Selectable<NoormPipelineStepTable>;
+export type NewNoormPipelineStep = Insertable<NoormPipelineStepTable>;
+export type NoormPipelineStepUpdate = Updateable<NoormPipelineStepTable>;
+
 // ─────────────────────────────────────────────────────────────
 // Combined Database Interface
 // ─────────────────────────────────────────────────────────────
@@ -451,6 +505,8 @@ export interface NoormSchemaDb {
     lock: NoormLockTable;
     identities: NoormIdentitiesTable;
     vault: NoormVaultTable;
+    pipeline_run: NoormPipelineRunTable;
+    pipeline_step: NoormPipelineStepTable;
 
 }
 
@@ -467,6 +523,8 @@ export interface NoormPrefixDb {
     __noorm_lock__: NoormLockTable;
     __noorm_identities__: NoormIdentitiesTable;
     __noorm_vault__: NoormVaultTable;
+    __noorm_pipeline_run__: NoormPipelineRunTable;
+    __noorm_pipeline_step__: NoormPipelineStepTable;
 
 }
 

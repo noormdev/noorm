@@ -56,10 +56,12 @@ const uiCommand = defineCommand({
         );
 
         let unmounted = false;
-        observer.on('app:exit', () => {
+        let exitCode = 0;
+        const unsubscribeExit = observer.on('app:exit', (event) => {
 
             if (unmounted) return;
             unmounted = true;
+            exitCode = event.code;
 
             clear();
             unmount();
@@ -67,7 +69,8 @@ const uiCommand = defineCommand({
         });
 
         await waitUntilExit();
-        process.exit(0);
+        unsubscribeExit();
+        process.exit(exitCode);
 
     },
 });

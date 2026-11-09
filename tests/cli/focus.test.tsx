@@ -3,13 +3,27 @@
  *
  * Tests FocusProvider and focus management hooks.
  */
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React, { act, useEffect, useState } from 'react';
 import { Text } from 'ink';
 
-// React 19 requires this flag for act() to flush effects in non-browser environments
-(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+let previousActEnvironment: unknown;
+
+// React 19 requires this flag for act() to flush effects in non-browser environments.
+// The global outlives this file under --serial, so restore it for the files after.
+beforeAll(() => {
+
+    previousActEnvironment = Reflect.get(globalThis, 'IS_REACT_ACT_ENVIRONMENT');
+    Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
+
+});
+
+afterAll(() => {
+
+    Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousActEnvironment);
+
+});
 
 /** Flush all pending React effects and state updates */
 async function flushEffects(ms = 0) {

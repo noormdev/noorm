@@ -24,7 +24,7 @@ Each layer has its own version number in `CURRENT_VERSIONS`:
 import { CURRENT_VERSIONS } from './core/version'
 
 console.log(CURRENT_VERSIONS)
-// { schema: 2, state: 3, settings: 1 }
+// { schema: 3, state: 3, settings: 1 }
 ```
 
 These are independent of the package version, and of each other. State has moved three times while settings has not moved at all.
@@ -116,7 +116,7 @@ Create a new migration in `src/core/version/schema/migrations/`:
 `up` and `down` both receive the dialect, and they need it: since v2 the tracking tables live in a `noorm` schema on PostgreSQL and SQL Server, so neither the table name nor the schema is the same everywhere.
 
 ```typescript
-// src/core/version/schema/migrations/v3.ts
+// src/core/version/schema/migrations/v4.ts
 import type { Kysely } from 'kysely'
 
 import type { SchemaMigration } from '../../types.js'
@@ -133,8 +133,8 @@ function noormSchema(db: Kysely<unknown>, dialect: Dialect) {
         : db.schema;
 }
 
-export const v3: SchemaMigration = {
-    version: 3,
+export const v4: SchemaMigration = {
+    version: 4,
     description: 'Add tags column to change table',
 
     async up(db: Kysely<unknown>, dialect: Dialect): Promise<void> {
@@ -163,13 +163,13 @@ Then register it and bump the version:
 
 ```typescript
 // src/core/version/schema/index.ts
-import { v3 } from './migrations/v3.js'
+import { v4 } from './migrations/v4.js'
 
-const MIGRATIONS: SchemaMigration[] = [v1, v2, v3]
+const MIGRATIONS: SchemaMigration[] = [v1, v2, v3, v4]
 
 // src/core/version/types.ts
 export const CURRENT_VERSIONS = Object.freeze({
-    schema: 3,  // Bumped from 2
+    schema: 4,  // Bumped from 3
     state: 3,
     settings: 1,
 })
@@ -667,4 +667,8 @@ if (schemaError) {
 }
 ```
 
-`ensureSchemaVersion` covers the fresh-install case too: `migrateSchema` sees version 0, finds no tables, and bootstraps from scratch. If tables exist but the version record is missing—an interrupted migration—it assumes v1 and runs v2 onward, which is safe because v2 is idempotent.
+`ensureSchemaVersion` covers the fresh-install case too: `migrateSchema` sees version 0, finds no tables, and bootstraps from scratch. If tables exist but the version record is missing (an interrupted migration), it assumes v1 and runs v2 onward, which is safe because v2 and v3 are idempotent. v3 checks for each pipeline table, the `name_key` column, and each index before creating it, so a run that failed halfway through retries cleanly.
+
+Schema v3 adds the pipeline history tables, and the move is one way. An older CLI or TUI that connects to a v3 database throws `VersionMismatchError`; upgrade the client instead of rolling the database back. An older SDK (such as `@noormdev/sdk@1.7.0`) checks the schema only when `vault.copy` writes to a v3 destination, which throws `VersionMismatchError`. Every other call keeps working and ignores the pipeline tables.
+
+The CLI and TUI migrate a v1 or v2 database to v3 on connect. The SDK migrates when `pipelines.run`, `pipelines.history` or `pipelines.getRun` runs (`buildPipelineContext` and `PipelinesNamespace#historyContext`), and when `vault.copy` writes to its destination (`withDualConnection`).

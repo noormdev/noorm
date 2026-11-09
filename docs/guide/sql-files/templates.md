@@ -143,11 +143,26 @@ Secrets: 1 resolved, 0 global
 | Call | Returns |
 |---|---|
 | `$.quote(v)` | `v` as a SQL string literal: single quotes around it, quotes inside doubled. `null` gives `NULL`, `undefined` throws, and a number is quoted too (`'49'`) |
-| `$.escape(s)` | `s` with single quotes doubled, and no surrounding quotes |
+| `$.escape(s)` | `s` with single quotes doubled, and no surrounding quotes. Throws in a pipeline |
 | `$.json(v)` | `JSON.stringify(v)` |
 | `$.uuid()` | a UUID v4 |
 | `$.now()` | the current time as an ISO 8601 string |
 | `await $.include(path)` | the file at `path`, relative to the template. A `.sql` file is inserted as is. A `.sql.tmpl` file is rendered with the same context first. The path cannot leave the project root |
+
+
+## How does quoting differ in pipelines?
+
+
+A [pipeline](/guide/sql-pipelines) runs its steps under session settings the template cannot see, so its `$.quote` emits a literal that does not depend on them, and `$.escape` is removed.
+
+| Dialect | `$.quote('ab')` in a pipeline | Why |
+|---|---|---|
+| PostgreSQL | `U&'\0061\0062'` | Every code point, `$` included, is a Unicode escape (`\XXXX` or `\+XXXXXX`), so the value cannot end a `$$` body. With `standard_conforming_strings` off the server rejects it (error `0A000`) instead of misreading it |
+| MySQL | `_utf8mb4 X'6162'` | A hex literal reads the same under every backslash mode |
+| SQL Server | `N'ab'` | Keeps Unicode. A backslash before a line break is doubled, because T-SQL otherwise reads it as a line continuation |
+| SQLite | `'ab'` | Unchanged |
+
+`null`, numbers, and booleans quote as they do outside pipelines. `$.escape` in a pipeline rejects the whole run before it starts, dry run included: the CLI exits 2 with `Invalid pipeline definition (escape-unavailable)`, and no run row or failed step exists. Replace `'{%~ $.escape(x) %}'` with `{%~ $.quote(x) %}`.
 
 
 ## How do secrets and config reach a template?

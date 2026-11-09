@@ -14,7 +14,7 @@
  * Skipped when dist does not exist (e.g. CI runs `tsc` only).
  */
 import { describe, it, expect } from 'bun:test';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 // ─────────────────────────────────────────────────────────────
 // Bundle Import
@@ -131,6 +131,28 @@ describe.skipIf(!bundleExists)('sdk bundle: error classes', () => {
     it('should export ProtectedConfigError', () => {
 
         expect(typeof bundle.ProtectedConfigError).toBe('function');
+
+    });
+
+    it('should export PipelineBusyError and keep the coded base internal', () => {
+
+        const err = new bundle.PipelineBusyError();
+
+        expect(err).toBeInstanceOf(Error);
+        expect(err.name).toBe('PipelineBusyError');
+        expect(bundle.PipelineCodedError).toBeUndefined();
+
+    });
+
+    it.each(['index.d.cts', 'index.d.ts'])('should keep the coded pipeline errors out of the exports of %s', (file) => {
+
+        const declarations = readFileSync(new URL(`../../packages/sdk/dist/${file}`, import.meta.url), 'utf8');
+
+        expect(declarations).not.toMatch(
+            /export (?:declare )?(?:abstract )?(?:class|type|interface) (?:PipelineErrorCode|PipelineCodedError|PipelineDefinitionError)\b/,
+        );
+        expect(declarations).not.toMatch(/export \{[^}]*\b(?:PipelineErrorCode|PipelineCodedError|PipelineDefinitionError)\b/);
+        expect(declarations).not.toMatch(/export type \w+ =[^;]*PIPELINE_INVALID_DEFINITION/);
 
     });
 

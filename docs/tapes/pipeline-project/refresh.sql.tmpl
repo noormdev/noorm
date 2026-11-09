@@ -1,0 +1,9 @@
+INSERT INTO recording.period_cache (period, invoice_count, total, unpaid_count)
+SELECT period, count(*)::integer, sum(amount), count(*) FILTER (WHERE NOT paid)::integer
+FROM recording.invoice
+WHERE period = {%~ $.quote($.input.period) %}
+GROUP BY period
+ON CONFLICT (period) DO UPDATE SET
+    invoice_count = EXCLUDED.invoice_count,
+    total = EXCLUDED.total,
+    unpaid_count = EXCLUDED.unpaid_count;

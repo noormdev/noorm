@@ -129,6 +129,76 @@ PostgreSQL and MySQL support server-side statement cancellation; MSSQL and SQLit
 
 Change-apply screens display statement progress without the build/exec double-press path or a running-phase Escape cancellation binding.
 
+### Pipelines
+
+The home screen opens pipelines with `p`. `PipelineListScreen` (`pipeline`) lists every folder under `settings.paths.pipelines` (default `DEFAULT_PIPELINES_PATH`) through `discoverPipelineDefinitions`. A folder whose definition fails to load stays in the list with its failed `rule` and cannot be opened. `PipelineRunScreen` (`pipeline/run`) reviews inputs and steps, confirms, and runs. `PipelineHistoryScreen` (`pipeline/history`) lists recorded runs for a slug; `PipelineHistoryDetailScreen` (`pipeline/history/detail`) shows one run by ID. Route params carry only `pipelineSlug` and `pipelineRunId`; input values never enter navigation state.
+
+```mermaid
+flowchart TD
+    %% source: src/tui/screens/pipeline/PipelineListScreen.tsx, src/tui/screens/pipeline/PipelineRunScreen.tsx, src/tui/screens/pipeline/PipelineHistoryScreen.tsx, src/tui/screens/pipeline/PipelineHistoryDetailScreen.tsx
+    List["PipelineListScreen<br/>pipeline"] -->|"Enter, valid definition"| Run["PipelineRunScreen<br/>pipeline/run"]
+    List -->|"h"| History["PipelineHistoryScreen<br/>pipeline/history"]
+    List -->|"i"| Detail["PipelineHistoryDetailScreen<br/>pipeline/history/detail"]
+    Run -->|"h"| History
+    History -->|"Enter on a run, i"| Detail
+```
+
+History and detail both accept a slug or run ID with no local definition, so recorded runs stay reachable after a pipeline folder is renamed or deleted. When no slug or ID is supplied, or the supplied ID is unsafe, the screen opens a lookup `Form` validated by `isPipelineSlug`/`parseHistoryLimit` (limit 1 to 100) or `parseRunId`. Both screens read through the active config only and show "Run not found in this configuration" rather than another config's run.
+
+### Pipeline input editing
+
+Selecting an input on the run screen opens `PipelineInputEditor`, a one-field `Form`: `select` when the declaration has `choices`, `checkbox` for `boolean`, `text` otherwise. `decode` runs `parsePipelineInputText` or `validatePipelineInputValue` in the field validator and again on submit, so `onSave` only receives a value that passes the declaration's type and choices. Choice values are stored as indexes in the form and decoded back to the declared value.
+
+Saved values live in the run screen's `overrides`; the input list labels each as `Supplied`, `Default`, `Unset`, or `Omitted` through `inputPresence` and never prints the value, which can be sensitive. `x` removes the override for the highlighted input. The run screen drops the main `useFocusScope` (`skip: editing !== null`) while an editor is open so the editor's form owns focus.
+
+### Pipeline run, stop, and result
+
+`requestRun` checks, in order: no run in flight, `checkConfigPolicy('user', activeConfig, 'run:dir')` allows it, a ready `target` exists, and `resolvePipelineInput` accepts the overrides. It then stores a `Confirmation` that captures target, slug, dry-run mode, config name, and a copy of the inputs, and shows `SmartConfirm`. A change to the target or to the review identity (config, project root, pipelines path, slug) clears the confirmation and the review step selection. Execution uses the captured values, never the live `D` toggle; Force has no pipeline effect.
+
+`usePipelineOperations` owns the operation, not the screen. Its `target` is a frozen in-memory brand rebuilt whenever the active config, settings, identity, or connection state changes; `run` rejects a target that no longer matches, and a snapshot change aborts any active operation.
+
+```mermaid
+sequenceDiagram
+    %% source: src/tui/hooks/usePipelineOperations.ts, src/tui/providers/ConnectionProvider.tsx
+    participant Screen as PipelineRunScreen
+    participant Ops as usePipelineOperations
+    participant Conn as ConnectionProvider
+    participant Life as LifecycleManager
+    Screen->>Ops: run(slug, options with target)
+    Ops->>Conn: retainConnection(db, sourceConfig)
+    Conn-->>Ops: RetainedConnection lease
+    Ops->>Life: registerResource stop (stopping), complete (completing)
+    Ops->>Ops: buildPipelineContext, runPipeline with AbortSignal
+    Ops->>Conn: lease.release()
+    Ops->>Life: unregisterResource
+    Ops-->>Screen: PipelineDryRunResult or PipelineRunResult
+```
+
+Each run registers two lifecycle resources: a `stopping`-phase cleanup that aborts the controller, and a `completing`-phase cleanup that waits for the operation promise. App shutdown therefore aborts the run, then waits for SQL and transaction cleanup to settle before connections are released. `capture` refuses to start when the lifecycle is shutting down, stopped, or failed. History reads (`history`, `getRun`) use the same lease and register a `completing` resource, run `ensureSchemaVersion` first, and reject when the target changed while they ran.
+
+While `busy`, the run screen shows elapsed seconds and a single Escape binding: `operations.stop()` aborts the signal and the screen displays "Stop requested. Waiting for running SQL and transaction cleanup to finish." Escape does not navigate back until the run settles, and the stop request does not make the running SQL stop by itself. If `lease.release()` fails, the hook sets the lifecycle exit code to 1 (when it was 0) and `cleanupFailed`; the result screen shows a cleanup warning and downgrades the status color.
+
+After settling, `PipelineEvidence` renders the result and is shared with the history detail screen. It shows run ID (`none (dry run)` for dry runs), execution status, transaction outcome, steps, dependencies, and error phase, never stored error text. `pipelineResultIsClean` is the only green test: status `success` with outcome `committed` or `no_effects`; anything else prints "Not a confirmed clean success." A coded failure (`PipelineCodedError`) shows its message or `Invalid definition (<rule>)`; any other failure points the operator to scoped history. Keys on the result: Enter step details, `d` evidence, `r` back to review, `h` history, Escape back.
+
+### Connection ownership
+
+`ConnectionProvider` holds one connection record keyed by the active config object and name. `requestConnection` (called by `useConnection`) creates it lazily, and a stale async connect that finishes after a config change is closed rather than published. A config change, `destroyConnection`, provider unmount, and the `app:shutdown` observer event all retire the record.
+
+A retired record with outstanding leases stays open until the last `release()`, so a long operation keeps its connection through a config switch. `retainConnection(db, config)` returns a `RetainedConnection` (`db`, `dialect`, `configName`, `release`, `invalidate`) only for the exact published pair, and throws "The database target changed" when the record is retired, the config changed, or shutdown has begun. `invalidate()` closes the record immediately and clears published state; pipeline contexts receive it as `disposeMemoryConnection`.
+
+Every close registers a `releasing`-phase lifecycle resource, so shutdown waits for destroy to finish, and a failed destroy sets exit code 1.
+
+```mermaid
+stateDiagram-v2
+    %% source: src/tui/providers/ConnectionProvider.tsx
+    [*] --> Active: createConnection resolves
+    Active --> Retired: config change, destroyConnection, unmount, app:shutdown
+    Active --> Closed: invalidate()
+    Retired --> Closed: no leases outstanding
+    Retired --> Closed: last release()
+    Closed --> [*]
+```
+
 ### Update download progress
 
 `useUpdateChecker` owns checking and installing updates; `useUpdateProgress` independently subscribes to download events. `UpdateScreen` resets progress before an install. During installation it keeps the spinner, displays received megabytes, and adds a percentage and progress bar when the total is known. A retry displays the latest error and the next attempt number.
@@ -152,7 +222,7 @@ sequenceDiagram
 
 `App` nests `ShutdownProvider`, `NoormObserver`, `AppContextProvider`, the settings-driven mouse provider, `ConnectionProvider`, `ToastProvider`, `FocusProvider`, and `RouterProvider` around `AppShell`. `ConnectionProvider` manages the shared connection; the mouse transport restores terminal tracking on exit.
 
-`gracefulExit` replaces the application with `ShutdownScreen` before releasing resources and emitting `app:exit`.
+`gracefulExit` replaces the application with `ShutdownScreen` before releasing resources, then emits `app:exit` with a code. The code is 1 when the lifecycle was not ready, `shutdown('user')` returned an error, or any phase reported `timeout`; otherwise it is the lifecycle's `exitCode` (so a failed connection or pipeline cleanup surfaces as nonzero).
 
 ```mermaid
 sequenceDiagram
@@ -166,10 +236,10 @@ sequenceDiagram
     Shutdown->>Lifecycle: shutdown('user')
     Lifecycle-->>Observer: app:shutdown:phase
     Observer-->>Shutdown: update phase display
-    Shutdown->>Observer: app:exit
+    Shutdown->>Observer: app:exit with code
 ```
 
-A repeated exit request while shutting down calls Ink's `exit()` directly. Unmount also requests programmatic lifecycle shutdown when graceful shutdown has not already started.
+A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen`) emits `app:exit` with code 1 immediately, because forcing does not establish that SQL or transaction cleanup settled. `app:exit` is emitted at most once. Unmount also requests programmatic lifecycle shutdown when graceful shutdown has not already started.
 
 ## Where it lives
 
@@ -183,18 +253,19 @@ A repeated exit request while shutting down calls Ink's `exit()` directly. Unmou
 | [`src/tui/types.ts`](../../src/tui/types.ts), [`src/tui/screens.tsx`](../../src/tui/screens.tsx) | `Route` string union, `RouteParams`, `RouterContextValue`, `FocusContextValue`, `ScreenProps`/`ScreenEntry`; `SCREENS`, `ScreenRenderer`, `getRouteLabel`, `getRegisteredRoutes`, `isRouteRegistered`, `registerScreen`. |
 | [`src/tui/shutdown.tsx`](../../src/tui/shutdown.tsx), [`src/tui/mouse.tsx`](../../src/tui/mouse.tsx) | `ShutdownProvider`/`useShutdown`, phased `ShutdownScreen`; mouse tracking escape sequences, SGR parsing, `measureElement` hit tests, and terminal restoration. |
 | [`src/tui/observer-context.ts`](../../src/tui/observer-context.ts), [`src/tui/hooks/useObserver.ts`](../../src/tui/hooks/useObserver.ts) | `NoormObserver`/`useNoormObserver` wrap the shared observer through `@logosdx/react`'s `createObserverContext`; `useOnEvent`, `useOnceEvent`, `useEmit`, `useOnScreenPopped`. |
-| [`src/tui/providers/ConnectionProvider.tsx`](../../src/tui/providers/ConnectionProvider.tsx) | `ConnectionProvider`/`useConnectionContext`; shared lazily created Kysely connection keyed by `activeConfigName`, destroyed on config changes or unmount. |
+| [`src/tui/providers/ConnectionProvider.tsx`](../../src/tui/providers/ConnectionProvider.tsx) | `ConnectionProvider`/`useConnectionContext`; shared lazily created Kysely connection keyed by the active config; `retainConnection` leases keep a retired connection open until released. See Connection ownership. |
 | [`src/tui/components/`](../../src/tui/components) | Shared `layout/`, `lists/`, `forms/`, `dialogs/`, `feedback/`, `terminal/`, `status/` (`ConnectionStatus`, `LockStatus`, `StatementProgress`), `secrets/`, and `overlays/`; `components/index.ts` is the main export surface. |
 | [`src/tui/components/status/StatementProgress.tsx`](../../src/tui/components/status/StatementProgress.tsx) | Current statement timing, `describeProgress` for server progress, and blockers. |
 | [`src/tui/hooks/useRunProgress.ts`](../../src/tui/hooks/useRunProgress.ts), [`src/tui/hooks/useChangeProgress.ts`](../../src/tui/hooks/useChangeProgress.ts) | Run events: `build:start`, `file:before`, `file:progress`, `file:after`, `file:skip`, `file:dry-run`, `build:complete`. Change events: `change:start`, `change:file`, `change:complete`, `file:progress`; both expose the statement report and reset it at operation boundaries. |
-| [`src/tui/hooks/useDoublePress.ts`](../../src/tui/hooks/useDoublePress.ts), [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) | First press returns `false`, a second within `DOUBLE_PRESS_WINDOW_MS` returns `true`, and an expired press re-arms. `buildRunContext` assembles screen state into `RunContext`; `runCancelMessage` uses dialect cancellation capability. |
+| [`src/tui/hooks/useDoublePress.ts`](../../src/tui/hooks/useDoublePress.ts), [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) | First press returns `false`, a second within `DOUBLE_PRESS_WINDOW_MS` returns `true`, and an expired press re-arms. `runCancelMessage` uses dialect cancellation capability; `buildRunContext` now lives in core-runner and screens import it from `src/core/runner`. |
 | [`src/tui/hooks/`](../../src/tui/hooks) | `useConnection`, `useVaultConnection`, `useVaultSecretKeys`, `useLockStatus`, `useLoadGuard`, `useTransferProgress`, `useSettingsOperation`, `useSecretSource`, and `useAsyncEffect`; exported through `hooks/index.ts`. |
 | [`src/tui/hooks/useAbortableTask.ts`](../../src/tui/hooks/useAbortableTask.ts) | Cancellable per-screen database tasks and suppression of stale results after cancellation. |
 | [`src/tui/hooks/useViewportRows.ts`](../../src/tui/hooks/useViewportRows.ts) | Terminal-size-derived capacity for windowed lists. |
 | [`src/tui/utils/`](../../src/tui/utils) | `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts`, `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `progress.ts`, `run-context.ts`, `settings-validation.ts`, and `string.ts`; `utils/index.ts` exports these helpers except `date.ts`. |
 | [`src/tui/utils/progress.ts`](../../src/tui/utils/progress.ts) | `progressPercentage(completed, total)` returns the 0–100 value expected by Ink's `ProgressBar`, clamping over-counted event streams. |
 | [`src/tui/hooks/useUpdateChecker.ts`](../../src/tui/hooks/useUpdateChecker.ts), [`src/tui/hooks/useUpdateProgress.ts`](../../src/tui/hooks/useUpdateProgress.ts), [`src/tui/screens/UpdateScreen.tsx`](../../src/tui/screens/UpdateScreen.tsx) | Update commands and event-driven download display. |
-| [`src/tui/screens/`](../../src/tui/screens) | `change/`, `config/`, `db/` (including `db/explore/`), `debug/`, `identity/`, `init/`, `lock/`, `run/`, `secret/`, `settings/`, `vault/`; top-level `home.tsx`, `MoreScreen.tsx`, `not-found.tsx`, and `UpdateScreen.tsx`. |
+| [`src/tui/screens/pipeline/`](../../src/tui/screens/pipeline), [`src/tui/hooks/usePipelineOperations.ts`](../../src/tui/hooks/usePipelineOperations.ts) | `PipelineListScreen`, `PipelineRunScreen`, `PipelineHistoryScreen`, `PipelineHistoryDetailScreen`, `PipelineInputEditor`, and `helpers.tsx` (`discoverPipelineDefinitions`, `inputPresence`, `pipelineResultIsClean`, `PipelineEvidence`, `PipelineHeading`); the hook owns operation lifetime, target snapshots, and leases. |
+| [`src/tui/screens/`](../../src/tui/screens) | `change/`, `config/`, `db/` (including `db/explore/`), `debug/`, `identity/`, `init/`, `lock/`, `pipeline/`, `run/`, `secret/`, `settings/`, `vault/`; top-level `home.tsx`, `MoreScreen.tsx`, `not-found.tsx`, and `UpdateScreen.tsx`. |
 | [`src/tui/screens/run/RunBuildScreen.tsx`](../../src/tui/screens/run/RunBuildScreen.tsx), [`src/tui/screens/run/RunExecScreen.tsx`](../../src/tui/screens/run/RunExecScreen.tsx) | Run progress and double-Escape abort; display `[Esc Esc] Cancel` until cancellation is confirmed. |
 | [`src/tui/screens/run/RunDirScreen.tsx`](../../src/tui/screens/run/RunDirScreen.tsx), [`src/tui/screens/run/RunFileScreen.tsx`](../../src/tui/screens/run/RunFileScreen.tsx) | Run progress and single-Escape/`c` connection destruction through `KeyHandler.onCancel`. |
 | [`src/tui/screens/change/ChangeRunScreen.tsx`](../../src/tui/screens/change/ChangeRunScreen.tsx), `src/tui/screens/change/Change{FF,Next,Revert,Rewind}Screen.tsx` | Change statement progress without a running-phase Escape cancellation path. |
@@ -216,17 +287,21 @@ A repeated exit request while shutting down calls Ink's `exit()` directly. Unmou
 - Auto-seeding does not update an existing config. Changing a stage default does not by itself rewrite a saved same-name config.
 - Progress consumers must clear reports at operation boundaries; retaining them shows server activity for a file that has already finished.
 - Cancellation warning duration and confirmation timing share `DOUBLE_PRESS_WINDOW_MS`; diverging them makes the visible warning disagree with the accepted confirmation window.
+- Pipeline execution must use the confirmed `target`, mode, and input copy, never live screen state. Executing from live state lets a config or `D` toggle after review change what runs.
+- Pipeline input values stay out of route params, overlays, and list labels; show presence only.
+- Long-running operations must hold a `retainConnection` lease and register lifecycle resources. Using the shared `db` directly lets a config change or shutdown destroy the connection under a running statement.
+- A forced exit during shutdown reports code 1; do not emit a success code before lifecycle cleanup has settled.
 - Terminal dimensions must come from `useWindowSize()` for resize-driven renders; reading mutable stdout dimensions alone does not subscribe a component to size changes.
-- Keyboard tests wrap focusable components in `FocusProvider` and observer consumers in `NoormObserver`, adding `RouterProvider`/`AppContextProvider` for screens. Poll a rendered predicate with `waitFor` before sending input rather than relying on a fixed sleep; call `unmount()` to release stdin handlers.
+- Keyboard tests wrap focusable components in `FocusProvider` and observer consumers in `NoormObserver`, adding `RouterProvider`/`AppContextProvider` for screens. Poll a rendered predicate with `waitFor` before sending input rather than relying on a fixed sleep; call `unmount()` to release stdin handlers. A test file that sets `IS_REACT_ACT_ENVIRONMENT` does so in `beforeAll` and restores the prior value in `afterAll`, because the global outlives the file under `--serial` (see `tests/cli/focus.test.tsx`).
 
 ## Coupling
 
 - **core-state** owns settings, stored configs, stage materialization, and observer contracts. `AppContextProvider` orchestrates those managers; [`docs/wiki/core-state.md`](core-state.md) owns their implementation details.
 - [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) subscribes to core observer events directly. Screens use domain hooks (`useRunProgress`, `useChangeProgress`, `useLockStatus`, `useConnection`, `useTransferProgress`, `useVaultConnection`, `useVaultSecretKeys`, `useLoadGuard`, `useUpdateChecker`) rather than duplicating those subscriptions. Config screens' `SettingsProvider` comes from core-state's [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts).
 - **cli** owns launching the interactive application and its terminal teardown. Its stage-creation password contract differs from TUI auto-seeding; see [`docs/wiki/cli.md`](cli.md).
-- **core-runner** owns SQL execution and statement-progress production. Run/change screens and [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) consume `discoverFiles`, `runBuild`, and `RunContext` from [`src/core/runner/`](../../src/core/runner); [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) emits the status events. See [`docs/wiki/core-runner.md`](core-runner.md).
+- **core-runner** owns SQL execution and statement-progress production. Run/change screens consume `buildRunContext`, `discoverFiles`, `runBuild`, and `RunContext` from [`src/core/runner/`](../../src/core/runner), and [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) holds only `runCancelMessage`; [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) emits the status events. See [`docs/wiki/core-runner.md`](core-runner.md).
 - **core-change**: [`src/tui/screens/change/`](../../src/tui/screens/change) imports `ChangeHistory`, `discoverChanges`, and change types; [`src/tui/screens/home.tsx`](../../src/tui/screens/home.tsx) also uses `ChangeHistory` for recent activity. See [`docs/wiki/core-change.md`](core-change.md).
-- **core-db**: `ConnectionProvider` calls `createConnection`; [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) uses connection `hasServerSideCancel` to choose cancellation copy. Database screens import exploration `fetchOverview` and transfer/teardown types. See [`docs/wiki/core-db.md`](core-db.md).
+- **core-db**: `ConnectionProvider` calls `createConnection`; pipeline operations also consume `src/core/pipeline` (`buildPipelineContext`, `runPipeline`, `loadPipelineDefinition`, history reads) and core-policy's `checkConfigPolicy`, with execution semantics owned by their domains; [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) uses connection `hasServerSideCancel` to choose cancellation copy. Database screens import exploration `fetchOverview` and transfer/teardown types. See [`docs/wiki/core-db.md`](core-db.md).
 - **sdk** owns DT serialization types consumed by transfer screens; see [`docs/wiki/sdk.md`](sdk.md).
 - **core-identity** and **core-policy** own identity, vault access, and policy decisions that mutation screens use to choose confirmation behavior. See [`docs/wiki/core-identity.md`](core-identity.md) and [`docs/wiki/core-policy.md`](core-policy.md).
 - Mutation screens consume `checkConfigPolicy` and `confirmationPhraseFor`; `SmartConfirm` chooses plain `Confirm` or typed-phrase `ProtectedConfirm`. The SQL REPL entrypoint under [`src/cli/sql/`](../../src/cli/sql) belongs to core-identity; mounting the TUI does not transfer ownership of SQL execution to this domain.

@@ -76,6 +76,8 @@ async function cleanupMssql(db: Kysely<unknown>, procNames: string[]): Promise<v
 
     // Drop legacy prefixed tables (v1)
     for (const table of [
+        '__noorm_pipeline_step__',
+        '__noorm_pipeline_run__',
         '__noorm_vault__',
         '__noorm_identities__',
         '__noorm_lock__',
@@ -92,6 +94,8 @@ async function cleanupMssql(db: Kysely<unknown>, procNames: string[]): Promise<v
 
     // Drop schema-qualified tables (v2+)
     for (const table of [
+        'pipeline_step',
+        'pipeline_run',
         'vault',
         'identities',
         'lock',
@@ -156,7 +160,7 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await cleanupMssql(db, [procA, procB]);
 
-        // Re-create the noorm tracking schema (runs all migrations: v1 + v2 rename)
+        // Re-create the noorm tracking schema (runs all migrations).
         await migrateSchema(db as Kysely<NoormDatabase>, 'mssql');
 
     });

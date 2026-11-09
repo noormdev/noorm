@@ -97,6 +97,12 @@ export type Route =
     | 'lock/release'
     | 'lock/status'
 
+    // Operational SQL pipelines
+    | 'pipeline'
+    | 'pipeline/run'
+    | 'pipeline/history'
+    | 'pipeline/history/detail'
+
     // Run operations
     | 'run'
     | 'run/build'
@@ -198,6 +204,10 @@ export interface RouteParams {
 
     /** Operation ID (for history detail view) */
     operationId?: number;
+
+    /** Pipeline identity only; invocation values never enter navigation state. */
+    pipelineSlug?: string;
+    pipelineRunId?: number;
 
     /** Raw SQL query (for headless sql command) */
     query?: string;
@@ -423,6 +433,7 @@ export type Section =
     | 'settings'
     | 'change'
     | 'run'
+    | 'pipeline'
     | 'db'
     | 'lock'
     | 'identity'
