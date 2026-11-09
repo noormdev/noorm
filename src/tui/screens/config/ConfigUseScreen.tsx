@@ -21,6 +21,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -38,7 +39,7 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ConfigUse');
-    const { stateManager, activeConfigName, refresh } = useAppContext();
+    const { stateManager, settingsManager, activeConfigName, refresh } = useAppContext();
 
     const configName = params.name;
 
@@ -81,6 +82,10 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
 
             const [_, err] = await attempt(async () => {
 
+                if (!settingsManager) throw new Error('Settings are not available');
+                withConfigPolicy(config, new SettingsProvider(settingsManager));
+
+
                 await stateManager.setActiveConfig(configName);
 
                 // Sync identity with the database (non-blocking)
@@ -111,7 +116,7 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
 
         switchConfig();
 
-    }, [stateManager, configName, config, isAlreadyActive, refresh]);
+    }, [stateManager, settingsManager, configName, config, isAlreadyActive, refresh]);
 
     // Keyboard handling
     useInput((_input, _key) => {

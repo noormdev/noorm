@@ -1,0 +1,19 @@
+description: Refresh invoice totals, reject unpaid invoices, and publish the monthly close
+transaction: step
+concurrency: 4
+singleRun: true
+inputs:
+  period:
+    type: string
+    description: Reporting month (YYYY-MM); October is paid, November has an unpaid invoice
+    required: true
+steps:
+  - id: refresh-cache
+    sql: refresh.sql.tmpl
+    needs: []
+  - id: validate-paid
+    sql: validate.sql.tmpl
+    needs: [refresh-cache]
+  - id: publish-close
+    sql: publish.sql.tmpl
+    needs: [validate-paid]

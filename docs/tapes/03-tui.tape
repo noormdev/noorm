@@ -2,31 +2,12 @@
 # create a config, create the database, build the schema, fast-forward the
 # changes, read the history, then browse the result in the explorer.
 #
-# Three things this tape has to respect that the CLI tapes do not:
+# Screen waits gate navigation and outcomes; sleeps keep each action readable
+# at 2× playback. Form fields use Enter to edit/commit, then Down to move.
+# Submission lives on the action row, not on the last field.
 #
-#   1. Size is the whole frame, not a crop. The TUI renders into the alternate
-#      screen and draws to the full terminal height, so the canvas below is the
-#      shell: breadcrumb pinned to the top, status bar pinned to the bottom, and
-#      whatever the screen needs in between. A taller canvas is not more room
-#      for content, it is more empty room.
-#   2. Keys are not text. Single-key hotkeys need a Sleep after each one; Ink
-#      repaints on its own schedule and a key sent mid-repaint is dropped.
-#   3. The form has two modes, and Enter is the switch between them. In browse
-#      mode ↑/↓ move between fields — every field type, selects included — and
-#      Enter opens the active field. In edit mode the field owns the keyboard,
-#      and Enter commits back to browse. Typing without opening the field first
-#      does not error: the characters land on the browse handler, which ignores
-#      them, and the recording shows an empty form being submitted.
-#
-#      Submit is not a key any more. Past the last field the cursor lands on the
-#      [ Create Config ] / [ Cancel ] action row, and Enter there is what saves.
-#
-# Screen keys, from src/tui:
-#   home    [r] Run  [c] Config  [g] Change  [d] DB  [q] Quit
-#   config  [a] Add
-#   run     [b] Build
-#   change  [f] FF  [h] History
-#   db      [c] Create  [x] Explore
+# Home: [r] Run  [p] Pipelines  [c] Config  [g] Change  [d] DB
+# Actions return to their list with Escape, then Home with a second Escape.
 
 Source theme.tape
 
@@ -36,6 +17,8 @@ Set Width 1200    # 111 cols
 Set Height 700    # 32 lines — measured with `tput lines`, not derived
 Set FontSize 15
 Set TypingSpeed 90ms
+Env CI "false"
+Env FORCE_COLOR "1"
 
 Hide
 # Strip coding-agent env vars so the recording shows a plain terminal and
@@ -44,7 +27,7 @@ Type "source ./env-scrub.sh" Enter
 # `project` leaves a real project with an identity but no config and no
 # database — everything below is created on camera.
 Type "./sandbox.sh project" Enter
-Wait+Screen@180s /sandbox ready/
+Wait+Screen@180s /sandbox ready at .*noorm-demo \(project\)/
 Type "export HOME=/tmp/noorm-demo/home" Enter
 Type "cd /tmp/noorm-demo/project" Enter
 Type "export PATH=/tmp/noorm-demo/bin:$PATH" Enter
@@ -54,30 +37,39 @@ Show
 
 Sleep 1s
 Type "noorm ui" Sleep 500ms Enter
-Sleep 4s
+Wait+Screen@30s /No database configurations found\./
+Sleep 3s
 
 # ── Config ────────────────────────────────────────────────────────────────
 Type "c"
-Sleep 2s
+Wait+Screen@10s /No configurations found\./
+Sleep 1500ms
 Type "a"
-Sleep 2500ms
+Wait+Screen@10s /Add Configuration/
+Wait+Screen@10s /› Config Name/
+Wait+Screen@10s /User Role\s+Admin/
+Wait+Screen@10s /Agent Role\s+Viewer/
+Sleep 2s
 
 # Config Name. Enter opens the field, Enter commits it, ↓ moves on. That is
 # the loop for every field below; only the select and the checkbox differ.
 Enter
-Sleep 800ms
+Wait+Screen@10s /commit.*esc revert/
+Sleep 500ms
 Type "dev"
 Sleep 800ms
 Enter
 Sleep 800ms
 Down
-Sleep 800ms
+Wait+Screen@10s /› Database Type/
+Sleep 500ms
 
 # Database Type. A select collapses to its current value until it is opened,
 # so Enter expands the four dialects and a second Enter takes the highlighted
 # one. PostgreSQL is already the value, so this is a confirmation, not a pick.
 Enter
-Sleep 1500ms
+Wait+Screen@10s /SQL Server/
+Sleep 1s
 Enter
 Sleep 1000ms
 
@@ -89,6 +81,7 @@ Sleep 700ms
 
 # Port. The 5432 shown is the placeholder, not a value; the test container is
 # on 15432 and leaving this blank yields a config that cannot connect.
+Wait+Screen@10s /› Port/
 Enter
 Sleep 500ms
 Type "15432"
@@ -98,6 +91,7 @@ Sleep 700ms
 Down
 Sleep 600ms
 
+Wait+Screen@10s /› Database\*\s/
 Enter
 Sleep 500ms
 Type "noorm_demo"
@@ -107,6 +101,7 @@ Sleep 700ms
 Down
 Sleep 600ms
 
+Wait+Screen@10s /› Username/
 Enter
 Sleep 500ms
 Type "noorm_test"
@@ -116,6 +111,7 @@ Sleep 700ms
 Down
 Sleep 600ms
 
+Wait+Screen@10s /› Password/
 Enter
 Sleep 500ms
 Type "noorm_test"
@@ -123,106 +119,127 @@ Sleep 800ms
 Enter
 Sleep 900ms
 
-# User Role, then Agent Role. Both already hold their defaults —
-# DEFAULT_ACCESS is { user: 'admin', agent: 'viewer' }, so an agent gets
-# read-only against this config out of the box. That access split is the
-# point, so ↓ past them rather than opening either.
-#
-# Do not "helpfully" open the Agent Role select and arrow to Viewer. An
-# earlier tape pressed Up twice to reach it from Admin, which was correct
-# until the default changed; the same two presses then wrapped round to Admin
-# and handed an agent full access while the recording still claimed
-# read-only. Selects follow the default, not a position.
+# Preserve the actual user Admin / agent Viewer defaults; don't select roles
+# by option position, which can silently grant the wrong access after a change.
 Down
+Wait+Screen@10s /› User Role\s+Admin/
 Sleep 700ms
 Down
+Wait+Screen@10s /› Agent Role\s+Viewer/
 Sleep 700ms
 Down
+Wait+Screen@10s /› Test Database/
 Sleep 900ms
 
 # Test Database. A checkbox has nothing to type into, so Space (or Enter)
 # toggles it in place.
 Space
+Wait+Screen@10s /Test Database\s+☑ Yes/
 Sleep 1200ms
 
 # Past the last field is the action row. This is where the form is submitted.
 Down
+Wait+Screen@10s /❯ \[ Create Config \]/
 Sleep 1500ms
 Enter
-Sleep 5s
+Wait+Screen@30s /Configurations/
+Wait+Screen@10s /dev.*postgres.*\(active\).*\[test\]/
+Sleep 3s
 
 Escape
+Wait+Screen@10s /\[p\] Pipelines/
 Sleep 2s
-
-# Navigation is two levels deep everywhere below: Home -> list -> action. One
-# Escape backs out of the action to the list, a second returns to Home. Getting
-# this count wrong does not error, it just lands on the list screen and the next
-# hotkey means something else there — a single missing Escape sends "r" to the
-# DB list, where it opens Data Transfer instead of Run.
 
 # ── Create the database ───────────────────────────────────────────────────
 Type "d"
-Sleep 2500ms
+Wait+Screen@30s /Database Operations/
+Wait+Screen@10s /\[c\] Create/
+Sleep 2s
 Type "c"
-Sleep 2500ms
+Wait+Screen@30s /Create database "noorm_demo" and initialize tracking tables\?/
+Sleep 2s
 Type "y"
-Sleep 5s
+Wait+Screen@60s /Database noorm_demo is ready\./
+Sleep 3s
 Escape
+Wait+Screen@30s /Tracking Tables:\s+Initialized/
 Sleep 1500ms
 Escape
+Wait+Screen@10s /\[p\] Pipelines/
 Sleep 2s
 
 # ── Build the schema ──────────────────────────────────────────────────────
-# Build and fast-forward both gate on a confirm ("Run 4 SQL files on dev?").
-# Skipping the "y" does not error — Escape just cancels, and the recording
-# looks like it worked while the database stays empty.
+# Both actions require their own confirmation before any SQL runs.
 Type "r"
-Sleep 2s
+Wait+Screen@10s /Run SQL Files/
+Wait+Screen@10s /\[b\] Build/
+Sleep 1500ms
 Type "b"
-Sleep 2500ms
+Wait+Screen@30s /Run 4 SQL files on dev\?/
+Sleep 2s
 Type "y"
-Sleep 6s
+Wait+Screen@90s /Build Complete/
+Wait+Screen@10s /Status:\s+SUCCESS/
+Wait+Screen@10s /4 run\s+0 skipped\s+0 failed/
+Sleep 4s
 Escape
+Wait+Screen@10s /Run SQL Files/
 Sleep 1500ms
 Escape
+Wait+Screen@10s /\[p\] Pipelines/
 Sleep 2s
 
 # ── Apply the changes ─────────────────────────────────────────────────────
 Type "g"
-Sleep 3s
+Wait+Screen@30s /Total:\s+2\s+Applied:\s+0\s+Pending:\s+2/
+Sleep 2s
 Type "f"
-Sleep 2500ms
+Wait+Screen@30s /Apply 2 pending change\(s\):/
+Wait+Screen@10s /Apply all pending changes\?/
+Sleep 2s
 Type "y"
-Sleep 6s
+Wait+Screen@90s /Applied 2 change\(s\) successfully!/
+Sleep 4s
 Escape
+Wait+Screen@30s /Total:\s+2\s+Applied:\s+2\s+Pending:\s+0/
 Sleep 2s
 
 # History of what ran — [h] from the change list, so only one Escape back.
 Type "h"
+Wait+Screen@30s /Execution History/
+Wait+Screen@10s /Total:\s+3\s+Changes:\s+2\s+Builds:\s+1\s+Runs:\s+0\s+Success:\s+3/
 Sleep 5s
 Escape
+Wait+Screen@30s /Total:\s+2\s+Applied:\s+2\s+Pending:\s+0/
 Sleep 1500ms
 Escape
+Wait+Screen@10s /\[p\] Pipelines/
 Sleep 2s
 
 # ── Explore the result ────────────────────────────────────────────────────
 Type "d"
-Sleep 2500ms
+Wait+Screen@30s /Tracking Tables:\s+Initialized/
+Sleep 2s
 Type "x"
-Sleep 5s
-
-# [1] Tables, then down to `task` — the payoff table. Its detail shows both the
-# inherited compound key (user_id + created_at + task_index, no surrogate id)
-# and the `priority` column the fast-forward just added, which is the whole
-# walkthrough in one screen. Its footer advertises [r] Rows; that is
-# 05-rows.tape.
-Type "1"
+Wait+Screen@30s /DB Explore/
+Wait+Screen@10s /Total Objects:/
 Sleep 3s
+
+# The schema is already current; changes reconcile that same desired state.
+# Finish on task's inherited compound key and constrained priority column.
+Type "1"
+Wait+Screen@30s /Tables \(3\)/
+Sleep 2s
 Down
+Wait+Screen@10s /❯.*public\.project/
 Sleep 700ms
 Down
+Wait+Screen@10s /❯.*public\.task/
 Sleep 1200ms
 Enter
+Wait+Screen@30s /Columns \(6\)/
+Wait+Screen@10s /priority\s+integer/
+Wait+Screen@10s /task_pkey/
 Sleep 3s
 
 # Hold the final screen. PlaybackSpeed 2 halves playback, so this 12s of

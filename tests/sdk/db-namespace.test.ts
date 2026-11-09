@@ -18,8 +18,10 @@ import {
 } from 'kysely';
 
 import { DbNamespace } from '../../src/sdk/namespaces/db.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
+import { getStateManager } from '../../src/core/state/index.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
 import type { Identity } from '../../src/core/identity/types.js';
@@ -100,9 +102,16 @@ function createState(
     tableRows: Record<string, unknown>[] = [],
 ): ContextState {
 
+    const config = createMockConfig();
+
+    attachPolicyContext(config.access, {
+        roles: settings.access?.roles,
+        protectedStage: settings.stages?.[config.name]?.defaults?.protected === true,
+    });
+
     return {
         connection: { db: createMockKysely(tableRows), dialect: 'postgres' },
-        config: createMockConfig(),
+        config,
         settings,
         identity: mockIdentity,
         // Pre-confirmed: these cases are about preserve-list plumbing, and
@@ -110,6 +119,7 @@ function createState(
         // without `yes` every one of them would stop at the access gate.
         options: { yes: true },
         projectRoot: '/tmp/test-project',
+        stateManager: getStateManager('/tmp/test-project'),
         changeManager: null,
     };
 

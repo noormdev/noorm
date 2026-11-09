@@ -30,6 +30,7 @@ import {
     saveIdentityMetadata,
     loadIdentityMetadata,
     loadPublicKey,
+    getIdentityOverride,
 } from './storage.js';
 import { computeIdentityHash } from './hash.js';
 import { observer } from '../observer.js';
@@ -329,6 +330,9 @@ export async function createIdentityForExistingKeys(
  * ```
  */
 export async function loadExistingIdentity(): Promise<CryptoIdentity | null> {
+
+    const override = getIdentityOverride();
+    if (override) return { ...override };
 
     // Load metadata
     const metadata = await loadIdentityMetadata();

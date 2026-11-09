@@ -16,12 +16,14 @@ import { dirname, join, relative } from 'node:path';
 import { defineCommand } from 'citty';
 import { attempt, attemptSync } from '@logosdx/utils';
 
-import { outputError, outputResult, sharedArgs } from '../_utils.js';
+import { outputError, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 import { buildContext } from '../../core/template/context.js';
 import { loadHelpers } from '../../core/template/helpers.js';
-import { assertPolicy, resolveChannel } from '../../core/policy/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import { getStateManager } from '../../core/state/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 import { resolveRenderSecrets, RENDER_SECRETS_NOTICE } from './_render-secrets.js';
 
 // Built-in helper names (always present in context)
@@ -73,6 +75,7 @@ const inspectCommand = defineCommand({
         },
         config: sharedArgs.config,
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
@@ -112,11 +115,29 @@ const inspectCommand = defineCommand({
         // so it needs the same gate as preview.
         if (activeConfig) {
 
-            const [, policyErr] = attemptSync(() => assertPolicy(resolveChannel(), activeConfig, 'run:file'));
+            const settingsManager = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settingsManager.load());
+            if (settingsErr) {
+
+                outputError(args, `Failed to load settings: ${settingsErr.message}`);
+                process.exit(1);
+
+            }
+
+            const [check, policyErr] = attemptSync(() =>
+                checkConfigPolicy(resolveChannel(), withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)), 'run:file'),
+            );
 
             if (policyErr) {
 
                 outputError(args, policyErr.message);
+                process.exit(1);
+
+            }
+
+            if (!check.allowed || (check.requiresConfirmation && !isYesMode(args))) {
+
+                outputError(args, check.blockedReason ?? `Inspecting requires confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`);
                 process.exit(1);
 
             }

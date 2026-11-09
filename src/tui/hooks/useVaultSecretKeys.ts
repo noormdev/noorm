@@ -10,7 +10,7 @@
  * const { vaultSecretKeys, requiredSecrets, vaultError } = useVaultSecretKeys();
  * ```
  */
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
@@ -20,6 +20,7 @@ import { useAppContext } from '../app-context.js';
 import { useConnection } from './useConnection.js';
 import { getVaultStatus, getVaultKey, getAllVaultSecrets } from '../../core/vault/index.js';
 import { loadPrivateKey } from '../../core/identity/storage.js';
+import { checkConfigPolicy, getPolicyFingerprint, withPolicyConfirmation } from '../../core/policy/index.js';
 
 
 /**
@@ -34,13 +35,19 @@ export interface VaultSecretKeysResult {
     requiredSecrets: { key: string; type: string; description?: string }[];
 
     /**
-     * Message describing a failed vault read, or null.
-     *
-     * Only set when a vault call actually threw. Absent-vault states — no
-     * access, no private key on disk, no vault key row — resolve to null so
-     * projects that never adopted the vault stay silent.
+     * Message describing a failed, denied, or cancelled vault read, or null.
+     * Absent-vault states — no access, no private key on disk, no vault key
+     * row — resolve to null.
      */
     vaultError: string | null;
+
+    /** Confirmation required before loading vault keys, if any. */
+    vaultConfirmation: {
+        confirmationPhrase?: string;
+        configName: string;
+        onConfirm: () => void;
+        onCancel: () => void;
+    } | null;
 
 }
 
@@ -54,22 +61,44 @@ export interface VaultSecretKeysResult {
  * permissions failure cannot masquerade as an empty vault — callers render
  * `vaultError` to explain why vault-backed secrets are missing.
  */
-export function useVaultSecretKeys(): VaultSecretKeysResult {
+export function useVaultSecretKeys(enabled = true): VaultSecretKeysResult {
 
     const { activeConfig, activeConfigName, settingsManager, identity } = useAppContext();
-    const [vaultSecretKeys, setVaultSecretKeys] = useState<string[]>([]);
+    const [loadedVault, setLoadedVault] = useState<{
+        config: typeof activeConfig;
+        configName: typeof activeConfigName;
+        identity: typeof identity;
+        db: unknown;
+        fingerprint: string;
+        keys: string[];
+    } | null>(null);
     const [vaultError, setVaultError] = useState<string | null>(null);
+    const [confirmed, setConfirmed] = useState<{ config: typeof activeConfig; identity: typeof identity; fingerprint: string } | null>(null);
+    const [dismissedFingerprint, setDismissedFingerprint] = useState<string | null>(null);
+    const [pendingFingerprint, setPendingFingerprint] = useState<string | null>(null);
 
-    // Shared connection with schema ensured (vault needs __noorm_* tables)
-    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
+    const fingerprint = activeConfig ? getPolicyFingerprint(activeConfig) : null;
+    const policy = activeConfig ? checkConfigPolicy('user', activeConfig, 'vault:read') : null;
+    const currentRequest = useRef({ activeConfig, activeConfigName, identity, fingerprint, enabled });
+    currentRequest.current = { activeConfig, activeConfigName, identity, fingerprint, enabled };
+    const approved = confirmed?.config === activeConfig
+        && confirmed.identity === identity
+        && confirmed.fingerprint === fingerprint;
+    const canRead = enabled && !!policy?.allowed && (!policy.requiresConfirmation || approved);
+    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true, enabled: canRead });
 
     // Load vault secrets when connection is ready
     useEffect(() => {
 
-        if (!activeConfig || !activeConfigName || !identity) return;
-        if (!db || !dialect || connLoading || connError) return;
+        if (!enabled || !activeConfig || !activeConfigName || !identity || !fingerprint || !policy) return;
 
         let cancelled = false;
+        const isCurrent = () => !cancelled
+            && currentRequest.current.enabled
+            && currentRequest.current.activeConfig === activeConfig
+            && currentRequest.current.activeConfigName === activeConfigName
+            && currentRequest.current.identity === identity
+            && currentRequest.current.fingerprint === fingerprint;
 
         const loadVaultSecrets = async (): Promise<void> => {
 
@@ -77,11 +106,13 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
             setVaultError(null);
 
+            if (!db || !dialect || connLoading || connError) return;
+
             const [vaultStatus, statusErr] = await attempt(() =>
                 getVaultStatus(typedDb, identity.identityHash, dialect),
             );
 
-            if (cancelled) return;
+            if (!isCurrent()) return;
 
             if (statusErr) {
 
@@ -95,7 +126,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
             const [privateKey, pkErr] = await attempt(() => loadPrivateKey());
 
-            if (cancelled) return;
+            if (!isCurrent()) return;
 
             if (pkErr) {
 
@@ -111,7 +142,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
                 getVaultKey(typedDb, identity.identityHash, privateKey, dialect),
             );
 
-            if (cancelled) return;
+            if (!isCurrent()) return;
 
             if (vkErr) {
 
@@ -127,7 +158,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
                 getAllVaultSecrets(typedDb, vaultKey, dialect),
             );
 
-            if (cancelled) return;
+            if (!isCurrent()) return;
 
             if (secretsErr) {
 
@@ -137,11 +168,39 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
             }
 
-            setVaultSecretKeys(Object.keys(allSecrets ?? {}));
+            setLoadedVault({ config: activeConfig, configName: activeConfigName, identity, db, fingerprint, keys: Object.keys(allSecrets ?? {}) });
 
         };
 
-        loadVaultSecrets();
+
+        if (!policy.allowed) {
+
+            setPendingFingerprint(null);
+            setVaultError(policy.blockedReason ?? 'Vault read is not allowed.');
+
+        }
+        else if (policy.requiresConfirmation && !canRead) {
+
+            if (dismissedFingerprint !== fingerprint) {
+
+                setVaultError(null);
+                setPendingFingerprint(fingerprint);
+
+            }
+
+        }
+        else if (policy.requiresConfirmation) {
+
+            setPendingFingerprint(null);
+            void withPolicyConfirmation(activeConfig, ['vault:read'], loadVaultSecrets);
+
+        }
+        else {
+
+            setPendingFingerprint(null);
+            void loadVaultSecrets();
+
+        }
 
         return () => {
 
@@ -149,7 +208,7 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
         };
 
-    }, [activeConfig, activeConfigName, identity, db, dialect, connLoading, connError]);
+    }, [enabled, activeConfig, activeConfigName, identity, db, dialect, connLoading, connError, fingerprint, canRead, dismissedFingerprint]);
 
     // Get required secrets (universal + stage-specific merged)
     const requiredSecrets = useMemo(() => {
@@ -160,6 +219,47 @@ export function useVaultSecretKeys(): VaultSecretKeysResult {
 
     }, [activeConfigName, settingsManager]);
 
-    return { vaultSecretKeys, requiredSecrets, vaultError };
+    const vaultSecretKeys = canRead && loadedVault?.config === activeConfig
+        && loadedVault.configName === activeConfigName
+        && loadedVault.identity === identity
+        && loadedVault.db === db
+        && activeConfig !== null
+        && loadedVault.fingerprint === fingerprint
+        ? loadedVault.keys
+        : [];
+
+    const pendingPolicy = enabled && activeConfig && pendingFingerprint === fingerprint
+        ? checkConfigPolicy('user', activeConfig, 'vault:read')
+        : null;
+    const vaultConfirmation = activeConfig && pendingPolicy?.allowed && pendingPolicy.requiresConfirmation
+        ? {
+            confirmationPhrase: pendingPolicy.confirmationPhrase,
+            configName: activeConfig.name,
+            onConfirm: () => {
+
+                if (!currentRequest.current.enabled
+                    || currentRequest.current.activeConfig !== activeConfig
+                    || currentRequest.current.identity !== identity
+                    || currentRequest.current.fingerprint !== pendingFingerprint
+                    || !pendingFingerprint) return;
+                setPendingFingerprint(null);
+                setConfirmed({ config: activeConfig, identity, fingerprint: pendingFingerprint });
+
+            },
+            onCancel: () => {
+
+                if (currentRequest.current.activeConfig !== activeConfig
+                    || currentRequest.current.identity !== identity
+                    || currentRequest.current.fingerprint !== pendingFingerprint) return;
+
+                setPendingFingerprint(null);
+                setDismissedFingerprint(pendingFingerprint);
+                setVaultError('Vault read cancelled.');
+
+            },
+        }
+        : null;
+
+    return { vaultSecretKeys, requiredSecrets, vaultError, vaultConfirmation };
 
 }

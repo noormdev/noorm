@@ -21,7 +21,7 @@ import type {
     TeardownTableRef,
 } from './types.js';
 import type { NoormDatabase } from '../shared/tables.js';
-import { fetchList } from '../explore/operations.js';
+import { GATED_BY_CALLER, fetchList } from '../explore/operations.js';
 import { getTeardownOperations } from './dialects/index.js';
 import { observer } from '../observer.js';
 import { assertDbPolicy } from '../db/policy.js';
@@ -199,7 +199,7 @@ export async function truncateData(
     observer.emit('teardown:start', { type: 'truncate' });
 
     // Fetch all tables (including noorm tables so we can preserve them)
-    const [tables, err] = await attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true }));
+    const [tables, err] = await attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true, gate: GATED_BY_CALLER }));
 
     if (err) {
 
@@ -220,7 +220,7 @@ export async function truncateData(
         const label = displayName(tableName, table.schema, dialect);
 
         // Always preserve noorm tables
-        if (isNoormTable(tableName)) {
+        if (isNoormTable(tableName) || table.schema === 'noorm') {
 
             preserved.push(label);
             continue;
@@ -358,7 +358,7 @@ export async function teardownSchema(
     observer.emit('teardown:start', { type: 'schema' });
 
     const preserveSet = new Set(options.preserveTables ?? []);
-    const preserveSchemaSet = new Set(options.preserveSchemas ?? []);
+    const preserveSchemaSet = new Set(['noorm', ...(options.preserveSchemas ?? [])]);
 
     /** Whether an object belongs to a schema the caller asked to leave alone. */
     const inPreservedSchema = (schema?: string): boolean => Boolean(schema && preserveSchemaSet.has(schema));
@@ -372,12 +372,12 @@ export async function teardownSchema(
         [types, typesErr],
         [foreignKeys, fksErr],
     ] = await Promise.all([
-        attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true })),
-        attempt(() => fetchList(db, dialect, 'views')),
-        attempt(() => fetchList(db, dialect, 'functions')),
-        attempt(() => fetchList(db, dialect, 'procedures')),
-        attempt(() => fetchList(db, dialect, 'types')),
-        attempt(() => fetchList(db, dialect, 'foreignKeys')),
+        attempt(() => fetchList(db, dialect, 'tables', { includeNoormTables: true, gate: GATED_BY_CALLER })),
+        attempt(() => fetchList(db, dialect, 'views', { gate: GATED_BY_CALLER })),
+        attempt(() => fetchList(db, dialect, 'functions', { gate: GATED_BY_CALLER })),
+        attempt(() => fetchList(db, dialect, 'procedures', { gate: GATED_BY_CALLER })),
+        attempt(() => fetchList(db, dialect, 'types', { gate: GATED_BY_CALLER })),
+        attempt(() => fetchList(db, dialect, 'foreignKeys', { gate: GATED_BY_CALLER })),
     ]);
 
     if (tablesErr) throw tablesErr;

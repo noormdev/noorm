@@ -19,7 +19,9 @@ import { Kysely, SqliteDialect } from 'kysely';
 import { BunSqliteDatabase } from '../../src/core/connection/dialects/sqlite-bun.js';
 import { VaultNamespace } from '../../src/sdk/namespaces/vault.js';
 import { VaultAccessError } from '../../src/sdk/namespaces/vault.js';
-import { initializeVault, setVaultSecret } from '../../src/core/vault/index.js';
+import { initializeVault, setVaultSecret, getVaultKey, getVaultSecret } from '../../src/core/vault/index.js';
+import { copyVaultSecrets } from '../../src/core/vault/copy.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 import type { VaultCopyResult } from '../../src/core/vault/index.js';
 import {
     NOORM_TABLES,
@@ -33,9 +35,12 @@ import {
 import {
     setIdentityOverride,
     clearIdentityOverride,
+    setKeyOverride,
+    clearKeyOverride,
 } from '../../src/core/identity/storage.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
+import { loadedStateManager } from '../utils/state-manager.js';
 import type { Config } from '../../src/core/config/types.js';
 
 interface TestIdentity {
@@ -101,7 +106,18 @@ function makeConfig(name: string, connectionOverrides: Record<string, unknown> =
 
 }
 
-function makeState(db: Kysely<NoormDatabase>, config: Config = makeConfig('vault-ns-test')): ContextState {
+const stateManager = await loadedStateManager();
+
+function makeState(
+    db: Kysely<NoormDatabase>,
+    config: Config = makeConfig('vault-ns-test'),
+    settings: ContextState['settings'] = {},
+): ContextState {
+
+    attachPolicyContext(config.access, {
+        roles: settings.access?.roles,
+        protectedStage: settings.stages?.[config.name]?.defaults?.protected === true,
+    });
 
     return {
         connection: {
@@ -110,10 +126,11 @@ function makeState(db: Kysely<NoormDatabase>, config: Config = makeConfig('vault
             destroy: () => db.destroy(),
         },
         config,
-        settings: {},
+        settings,
         identity: { name: 'tester', source: 'system' },
         options: {},
         projectRoot: '/tmp',
+        stateManager,
         changeManager: null,
     };
 
@@ -121,6 +138,7 @@ function makeState(db: Kysely<NoormDatabase>, config: Config = makeConfig('vault
 
 function overrideIdentity(identity: TestIdentity, email = 'alice@example.com', name = 'Alice'): void {
 
+    setKeyOverride(identity.privateKey);
     setIdentityOverride({
         identityHash: identity.identityHash,
         name,
@@ -150,6 +168,7 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
     afterEach(async () => {
 
         clearIdentityOverride();
+        clearKeyOverride();
         await db.destroy();
 
     });
@@ -165,6 +184,20 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
             expect(Array.isArray(result)).toBe(false);
             expect(result).toBeInstanceOf(Buffer);
             expect(result?.length).toBe(32);
+
+        });
+
+        it('initializes a decryptable vault when the local identity is not registered yet', async () => {
+
+            await db.deleteFrom(NOORM_TABLES.identities)
+                .where('identity_hash', '=', alice.identityHash)
+                .execute();
+            const vault = new VaultNamespace(makeState(db));
+
+            const key = await vault.init();
+
+            expect(key).toBeInstanceOf(Buffer);
+            expect(await getVaultKey(db, alice.identityHash, alice.privateKey, 'sqlite')).toEqual(key);
 
         });
 
@@ -297,6 +330,14 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
     describe('copy()', () => {
 
         const tempFiles: string[] = [];
+        let previousYes: string | undefined;
+
+        beforeEach(() => {
+
+            previousYes = process.env['NOORM_YES'];
+            delete process.env['NOORM_YES'];
+
+        });
 
         afterEach(async () => {
 
@@ -306,7 +347,192 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
 
             }
 
+            if (previousYes === undefined) delete process.env['NOORM_YES'];
+            else process.env['NOORM_YES'] = previousYes;
+
         });
+
+        async function copyFixture(initialized: boolean) {
+
+            const files = ['source', 'destination'].map((name) =>
+                join(tmpdir(), `noorm-vault-${name}-${crypto.randomUUID()}.sqlite`));
+            tempFiles.push(...files);
+            for (const [index, file] of files.entries()) {
+
+                const setup = new Kysely<NoormDatabase>({
+                    dialect: new SqliteDialect({ database: new BunSqliteDatabase(file) as never }),
+                });
+                await v1.up(setup as Kysely<unknown>, 'sqlite');
+                if (index === 0 || initialized) {
+
+                    await setup.insertInto(NOORM_TABLES.identities).values({
+                        identity_hash: alice.identityHash, email: 'alice@example.com', name: 'Alice',
+                        machine: 'test-machine', os: 'test-os', public_key: alice.publicKey,
+                        encrypted_vault_key: null,
+                    } as never).execute();
+                    const [key, err] = await initializeVault(setup, alice.identityHash, alice.publicKey, 'sqlite');
+                    if (err || !key) throw err ?? new Error('Vault initialization failed');
+                    const [, setErr] = await setVaultSecret(setup, key, 'API_KEY', index === 0 ? 'source' : 'destination', 'test', 'sqlite');
+                    if (setErr) throw setErr;
+
+                }
+                await setup.destroy();
+
+            }
+
+            return {
+                source: makeConfig('source', { database: files[0] }),
+                destination: makeConfig('destination', { database: files[1] }),
+                destinationFile: files[1]!,
+            };
+
+        }
+
+        it('gates initialized destination reads, including dry runs and agent confirmation', async () => {
+
+            const { source, destination, destinationFile } = await copyFixture(true);
+            destination.access = { user: 'reviewer', agent: 'reviewer' };
+            const settings: ContextState['settings'] = {
+                access: { roles: { reviewer: { permissions: { 'vault:read': 'deny', 'vault:write': 'allow' } } } },
+            };
+            const state = makeState(db, source, settings);
+            const vault = new VaultNamespace(state);
+            // An invalid sealed key makes an attempted destination unseal fail differently.
+            const destinationDb = new Kysely<NoormDatabase>({
+                dialect: new SqliteDialect({ database: new BunSqliteDatabase(destinationFile) as never }),
+            });
+            await destinationDb.updateTable(NOORM_TABLES.identities)
+                .set({ encrypted_vault_key: 'invalid' }).where('identity_hash', '=', alice.identityHash).execute();
+            await destinationDb.destroy();
+
+            for (const dryRun of [false, true]) {
+
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey, { dryRun }))
+                    .rejects.toThrow(/vault:read/);
+
+            }
+            settings.access!.roles!['reviewer']!.permissions!['vault:read'] = 'confirm';
+            for (const dryRun of [false, true]) {
+
+                state.options = {};
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey, { dryRun }))
+                    .rejects.toThrow(/confirmation/);
+                state.options = { channel: 'agent', yes: true };
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey, { dryRun }))
+                    .rejects.toThrow(/confirmation/);
+                state.options = { yes: true };
+
+            }
+            // A confirmed dry run needs collision metadata, but not the sealed key.
+            expect((await vault.copy(destination, ['API_KEY'], alice.privateKey, { dryRun: true })).skipped)
+                .toEqual(['API_KEY']);
+
+        });
+
+        it('enforces destination read in core and permits confirmed real copies', async () => {
+
+            const { source, destination } = await copyFixture(true);
+            attachPolicyContext(source.access, {});
+            destination.access = { user: 'reviewer', agent: 'reviewer' };
+            const roles = { reviewer: { permissions: { 'vault:read': 'confirm' as const, 'vault:write': 'allow' as const } } };
+            attachPolicyContext(destination.access, { roles });
+            for (const dryRun of [false, true]) {
+
+                const [result, err] = await copyVaultSecrets(
+                    source, destination, ['API_KEY'], alice.identityHash, alice.privateKey, alice.publicKey, { dryRun },
+                );
+                expect(result).toBeNull();
+                expect(err?.message).toContain('confirmation');
+
+            }
+            const state = makeState(db, source, { access: { roles } });
+            state.options = { yes: true };
+            const result = await new VaultNamespace(state).copy(destination, ['API_KEY'], alice.privateKey, { force: true });
+            expect(result.copied).toEqual(['API_KEY']);
+            expect(result.errors).toEqual([]);
+
+        });
+
+        it('initializes a fresh destination with write permission and no read permission', async () => {
+
+            const { source, destination, destinationFile } = await copyFixture(false);
+            destination.access = { user: 'writer', agent: 'writer' };
+            const state = makeState(db, source, {
+                access: { roles: { writer: { permissions: { 'vault:read': 'deny', 'vault:write': 'allow' } } } },
+            });
+            const result = await new VaultNamespace(state).copy(destination, ['API_KEY'], alice.privateKey);
+            expect(result.copied).toEqual(['API_KEY']);
+            expect(result.errors).toEqual([]);
+            const destinationDb = new Kysely<NoormDatabase>({
+                dialect: new SqliteDialect({ database: new BunSqliteDatabase(destinationFile) as never }),
+            });
+            const identity = await destinationDb.selectFrom(NOORM_TABLES.identities)
+                .select(['name', 'email', 'machine', 'os', 'public_key'])
+                .where('identity_hash', '=', alice.identityHash).executeTakeFirstOrThrow();
+            expect(identity).toEqual({
+                name: 'Alice', email: 'alice@example.com', machine: 'test-machine',
+                os: 'test-os', public_key: alice.publicKey,
+            });
+            const key = await getVaultKey(destinationDb, alice.identityHash, alice.privateKey, 'sqlite');
+            expect(key).not.toBeNull();
+            expect(await getVaultSecret(destinationDb, key!, 'API_KEY', 'sqlite')).toBe('source');
+            await destinationDb.destroy();
+
+        });
+        it('requires destination write confirmation and does not let agent yes bypass it', async () => {
+
+            const previous = process.env['NOORM_YES'];
+            delete process.env['NOORM_YES'];
+            try {
+
+                const state = makeState(db, undefined, {
+                    access: { roles: { reviewer: { permissions: { 'vault:write': 'confirm' } } } },
+                });
+                const destination = makeConfig('vault-copy-dest');
+                destination.access = { user: 'reviewer', agent: 'reviewer' };
+                const vault = new VaultNamespace(state);
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey)).rejects.toThrow(/confirmation/);
+                state.options = { channel: 'agent', yes: true };
+                await expect(vault.copy(destination, ['API_KEY'], alice.privateKey)).rejects.toThrow(/confirmation/);
+
+            }
+            finally {
+
+                if (previous === undefined) delete process.env['NOORM_YES'];
+                else process.env['NOORM_YES'] = previous;
+
+            }
+
+        });
+
+        it('requires source read confirmation before attempting a copy', async () => {
+
+            const previous = process.env['NOORM_YES'];
+            delete process.env['NOORM_YES'];
+            try {
+
+                const config = makeConfig('vault-ns-test');
+
+                config.access = { user: 'reviewer', agent: 'reviewer' };
+
+                const state = makeState(db, config, {
+                    access: { roles: { reviewer: { permissions: { 'vault:read': 'confirm' } } } },
+                });
+
+                const vault = new VaultNamespace(state);
+                await expect(vault.copy(makeConfig('vault-copy-dest'), ['API_KEY'], alice.privateKey))
+                    .rejects.toThrow(/confirmation/);
+
+            }
+            finally {
+
+                if (previous === undefined) delete process.env['NOORM_YES'];
+                else process.env['NOORM_YES'] = previous;
+
+            }
+
+        });
+
 
         it('should resolve to a VaultCopyResult (not a tuple) on success', async () => {
 

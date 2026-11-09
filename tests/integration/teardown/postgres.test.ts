@@ -13,7 +13,7 @@ import {
     teardownSchema,
     previewTeardown,
 } from '../../../src/core/teardown/operations.js';
-import { fetchList, fetchOverview } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchList, fetchOverview } from '../../../src/core/explore/index.js';
 import {
     createTestConnection,
     deployTestSchema,
@@ -73,7 +73,7 @@ describe('integration: postgres teardown', () => {
             expect(Number((afterUsers.rows[0] as { count: string }).count)).toBe(0);
 
             // Verify schema still exists
-            const tables = await fetchList(db, 'postgres', 'tables');
+            const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER });
             expect(tables.length).toBe(3);
 
             // Check result structure
@@ -191,7 +191,7 @@ describe('integration: postgres teardown', () => {
         it('should drop all user-created objects', async () => {
 
             // Verify objects exist before teardown
-            const beforeOverview = await fetchOverview(db, 'postgres');
+            const beforeOverview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
             expect(beforeOverview.tables).toBe(3);
             expect(beforeOverview.views).toBe(3);
             expect(beforeOverview.functions).toBeGreaterThanOrEqual(15);
@@ -200,7 +200,7 @@ describe('integration: postgres teardown', () => {
             const result = await teardownSchema(db, 'postgres');
 
             // Verify objects are gone
-            const afterOverview = await fetchOverview(db, 'postgres');
+            const afterOverview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
             expect(afterOverview.tables).toBe(0);
             expect(afterOverview.views).toBe(0);
 
@@ -272,7 +272,7 @@ describe('integration: postgres teardown', () => {
 
             // Views still exist (though they may be invalid without their base tables)
             // Note: Views may fail after tables are dropped, but they weren't dropped
-            await fetchOverview(db, 'postgres');
+            await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
 
         });
 
@@ -292,7 +292,7 @@ describe('integration: postgres teardown', () => {
             const result = await teardownSchema(db, 'postgres', { dryRun: true });
 
             // Objects should still exist
-            const afterOverview = await fetchOverview(db, 'postgres');
+            const afterOverview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
             expect(afterOverview.tables).toBe(3);
 
             // Statements should be generated
@@ -365,7 +365,7 @@ describe('integration: postgres teardown', () => {
 
             expect(result.dropped.tables).toContain('ev_thing');
 
-            const functions = await fetchList(db, 'postgres', 'functions');
+            const functions = await fetchList(db, 'postgres', 'functions', { gate: GATED_BY_CALLER });
             expect(functions.map((f) => f.name)).not.toContain('ev_is_positive');
 
         });
@@ -379,7 +379,7 @@ describe('integration: postgres teardown', () => {
             const preview = await previewTeardown(db, 'postgres');
 
             // Objects should still exist after preview
-            const afterOverview = await fetchOverview(db, 'postgres');
+            const afterOverview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
             expect(afterOverview.tables).toBe(3);
             expect(afterOverview.views).toBe(3);
 

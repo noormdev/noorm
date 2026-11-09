@@ -305,7 +305,7 @@ Both steps need `NOORM_IDENTITY_PRIVATE_KEY`, `NOORM_IDENTITY_NAME`, and `NOORM_
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `RequireTestError: Config "test" does not have isTest: true` | The config is not marked as a test database. `ci init` leaves it unmarked | Check Test Database in `noorm ui`, or run `ci init --test` |
+| `RequireTestError: Config "test" does not have isTest: true` | The config is not marked as a test database. `ci init` leaves it unmarked | Check Test Database in `noorm ui`, or run `ci init --test` (refused on the agent channel) |
 | PostgreSQL: `db.truncate()` fails with `permission denied to set parameter "session_replication_role"` | Truncate turns off foreign-key triggers with a setting only superusers, or roles granted `SET` on it, may change | Use a superuser login for the test database, or [grant the setting](/guide/database/teardown#what-bites) |
 | `ProtectedConfigError` from `truncate()` | `db:truncate` asks for confirmation even on an `admin` config, and the SDK cannot ask | Pass `yes: true` to `createContext`, or set `NOORM_YES=1` |
 | `Config "dev" not found` | Stored configs resolve against `projectRoot`, which defaults to the process's cwd | Run from the directory that holds `.noorm/`, or pass `projectRoot` |

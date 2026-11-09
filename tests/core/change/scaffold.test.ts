@@ -4,6 +4,7 @@
  * These tests create/delete files since they test scaffolding operations.
  * Uses tmp/ directory for dynamic test files.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import path from 'node:path';
 import { mkdir, rm, readdir, readFile, stat } from 'node:fs/promises';
@@ -27,6 +28,9 @@ import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 
 const TMP_DIR = path.join(process.cwd(), 'tmp/change-scaffold-test');
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(adminAccess, {});
 
 describe('change: scaffold', () => {
 
@@ -191,7 +195,7 @@ describe('change: scaffold', () => {
                 projectRoot: runDir,
                 changesDir: runDir,
                 sqlDir: runDir,
-                access: { user: 'admin', agent: 'admin' },
+                access: adminAccess,
                 channel: 'user',
                 dialect: 'sqlite',
             };

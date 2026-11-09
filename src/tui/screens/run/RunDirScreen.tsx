@@ -21,9 +21,9 @@ import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SelectList, FilePicker, KeyHandler, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
-import { discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
+import { buildRunContext, discoverFiles, runFiles, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
-import { getErrorMessage, resolveScreenIdentity, buildRunContext, withScreenConnection, progressPercentage } from '../../utils/index.js';
+import { getErrorMessage, resolveScreenIdentity, withScreenConnection, progressPercentage } from '../../utils/index.js';
 import { useConnection } from '../../hooks/index.js';
 import { attempt } from '@logosdx/utils';
 
@@ -213,13 +213,17 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         const identity = resolveScreenIdentity(cryptoIdentity);
 
-        const context = await buildRunContext({
-            db: sharedDb, configName: activeConfigName, identity,
-            projectRoot, activeConfig,
-            stateManager, dialect: sharedDialect ?? undefined,
-        });
+        const [status, statusErr] = await attempt(async () => {
 
-        const [status, statusErr] = await attempt(() => checkFilesStatus(context, selectedDirFiles));
+            const context = await buildRunContext({
+                db: sharedDb, configName: activeConfigName, identity,
+                projectRoot, activeConfig,
+                stateManager, dialect: sharedDialect ?? undefined,
+            });
+
+            return checkFilesStatus(context, selectedDirFiles);
+
+        });
 
         if (statusErr || !status) {
 
@@ -245,7 +249,10 @@ export function RunDirScreen({ params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes.force, cryptoIdentity, projectRoot, sharedDb, connError]);
+    }, [
+        activeConfig, activeConfigName, stateManager, selectedDirFiles, globalModes.force,
+        cryptoIdentity, projectRoot, sharedDb, sharedDialect, connError,
+    ]);
 
     // Execute selected files (actual execution)
     const executeDir = useCallback(async (force: boolean = false) => {

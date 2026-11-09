@@ -7,12 +7,14 @@
  */
 import { chmod, writeFile } from 'node:fs/promises';
 
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputError, outputResult, sharedArgs } from '../_utils.js';
+import { outputError, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
 const exportCommand = defineCommand({
@@ -24,6 +26,7 @@ const exportCommand = defineCommand({
         name: { type: 'positional', description: 'Config name to export', required: true },
         output: { type: 'string', alias: 'o', description: 'Write output to file instead of stdout' },
         json: sharedArgs.json,
+        yes: sharedArgs.yes,
     },
     async run({ args }) {
 
@@ -48,14 +51,42 @@ const exportCommand = defineCommand({
 
         }
 
+        const settingsManager = getSettingsManager(projectRoot);
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(EXIT.FAILURE);
+
+        }
+
+        const [policyConfig, policyErr] = attemptSync(() =>
+            withConfigPolicy(config, new SettingsProvider(settingsManager)),
+        );
+
+        if (policyErr) {
+
+            outputError(args, policyErr.message);
+            process.exit(EXIT.USAGE);
+
+        }
+
         // The export carries the connection password in plaintext, so it is
         // a secret read — a viewer role that is denied `config:rm` must not
         // be able to walk away with the credential instead.
-        const check = checkConfigPolicy(resolveChannel(), config, 'secret:read');
+        const check = checkConfigPolicy(resolveChannel(), policyConfig, 'secret:read');
 
         if (!check.allowed) {
 
             outputError(args, check.blockedReason ?? `Config "${args.name}" cannot be exported.`);
+            process.exit(EXIT.FAILURE);
+
+        }
+
+        if (check.requiresConfirmation && !isYesMode(args)) {
+
+            outputError(args, `Exporting config "${args.name}" requires confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`);
             process.exit(EXIT.FAILURE);
 
         }

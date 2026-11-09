@@ -11,6 +11,8 @@ so re-recording after a CLI change is one command instead of a fresh take.
 | `03-tui.tape` | `tui.gif` | `noorm ui` — create a config, create the database, build, fast-forward changes, history, explorer |
 | `04-screenshots.tape` | `../public/image/tui/*.png` | Stills of every TUI screen, for `tui.md`. Run via `./shots.sh` |
 | `05-rows.tape` | `tui-rows.gif` | Peek at both ends of a table, then open one row as a document |
+| `06-pipeline-run.tape` | `pipeline-run.gif` | Supply a period, inspect steps, verify dry-run nonexecution, and commit a monthly close |
+| `07-pipeline-history.tape` | `pipeline-history.gif` | Contrast whole-pipeline rollback with an earlier committed step; inspect history and run-ID lookup |
 
 
 ## Prerequisites
@@ -33,10 +35,16 @@ vhs 02-build-and-change.tape
 vhs 03-tui.tape
 ./shots.sh              # 04-screenshots.tape + per-image trimming
 vhs 05-rows.tape
+vhs 06-pipeline-run.tape
+bash pipeline-verify.sh run
+vhs 07-pipeline-history.tape
+bash pipeline-verify.sh history
 ```
 
 Each tape builds its own sandbox first, so they can run in any order and none
 of them depends on a previous one.
+
+Run the two pipeline tapes sequentially: each recreates its own fixture. They use a different project and database from the main TUI tape, so those captures can run independently.
 
 `shots.sh` is a wrapper, not an alternative: it renders `04-screenshots.tape`,
 then trims each PNG to its own widest line and re-pads it in the brand
@@ -59,7 +67,7 @@ three TUI tapes are set to.
 /tmp/noorm-demo/
 ├── home/       → HOME during the recording; identity lands in home/.noorm
 ├── bin/noorm   → shim onto dist/cli/index.js
-└── project/    → schema copied from demo-project/
+└── project/    → db/sql/ and db/changes/ copied from demo-project/
 ```
 
 Three things this buys:
@@ -79,7 +87,9 @@ config and no database — the TUI walkthrough creates both on camera),
 `bootstrapped` (identity + config), `built` (also applies the schema), `seeded`
 (also loads `demo-project/seed.sql`, which is what `05-rows.tape` peeks at).
 
-Every mode except `fresh` and `project` runs `noorm run build`, which is
+Scripted configs are marked as test databases. `NOORM_DEMO_DATABASE` defaults to `noorm_demo`; an override must match `noorm_demo_<suffix>`. The root and database are both reset, so use only disposable recording fixtures.
+
+`built` and `seeded` run `noorm run build`, which is
 refused outright when a coding-agent environment variable is set: the CLI reads
 that as the `agent` channel, whose default role is `viewer`. Source
 `env-scrub.sh` first, as every tape does, or run `sandbox.sh` from a plain
@@ -119,6 +129,26 @@ Be aware this does not currently produce a usable recording. `run build` logs
 one line per file carrying the absolute path twice (~250 characters), so 60
 files is thousands of wrapped lines; VHS renders every frame and the build does
 not finish inside a 5-minute wait. The 4-file schema exists for that reason.
+
+## Pipeline recordings
+
+`pipeline-sandbox.sh` reuses the shared `seeded` bootstrap with `/tmp/noorm-demo-pipelines` and `noorm_demo_pipelines`. Its throwaway identity lives under that root's `home/`; it does not use your normal `~/.noorm` or an existing test project.
+
+The fixture adds `recording.invoice`, `recording.period_cache` and `recording.period_close`. The two code-owned definitions share three SQL templates: refresh totals, reject unpaid invoices, and publish the close. Both declare the required string input `period`; only their transaction policies differ.
+
+| Capture stage | Period | Recorded outcome | Business effects |
+|---|---|---|---|
+| Run tape: dry run | `2026-10` | No run ID or history | No cache or close |
+| Run tape: execution | `2026-10` | `success` / `committed` | Cache and close both total `200` |
+| History tape: off-camera setup | `2026-11` | `partial` / `partial` under `transaction: step` | Cache total `200` survives; no close |
+| History tape: on-camera execution | `2026-12` | `failed` / `rolled_back` under `transaction: pipeline` | No December cache or close |
+
+The November history row comes from a real CLI invocation, not a database insert. Bootstrap requires its expected partial-work exit code `3`. The December failure runs on camera. Step details distinguish executed-and-rolled-back work, a committed earlier step, and a skipped successor.
+
+`pipeline-verify.sh dry|run|history` executes `pipeline-project/verify.sql` against the recording database. It checks business totals, unchanged source invoices, exact run and step outcomes, declaration dependencies, finished history and released single-run guards. Success prints one compact confirmation; failure preserves the SQL error and diagnostic report. The run tape checks dry-run nonexecution before starting the real run.
+
+Each tape resets its fixture, so verify `run` before starting the history tape. Both recordings return from a non-first step without reselecting it; the history tape also refreshes and cancels lookup before reopening the same step.
+
 
 
 ## Font
@@ -211,11 +241,12 @@ rather than against the GIF:
 - **Navigation is two levels deep**: Home → list → action. One Escape returns
   to the list, a second to Home. One missing Escape sends the next hotkey to
   the wrong screen — `r` on the DB list opens Data Transfer, not Run.
+- **Environment directives start the VHS terminal.** Keep `Env` after the tape's final size/font/theme settings, or VHS ignores subsequent geometry and style changes. The three walkthrough tapes disable inherited CI and force ANSI only after their settings. `env-scrub.sh` clears inherited `NO_COLOR` to avoid conflicting color flags.
 
 
 ## Known rough edges
 
-All three are in the app, not the tapes:
+These are app issues rather than recording artifacts:
 
 - **The `?` help screen and the Shift+L log overlay overflow the alternate
   screen.** `AppShell` claims `height={terminalHeight}` and both overlays render
@@ -224,6 +255,7 @@ All three are in the app, not the tapes:
   re-shot with that visible, because it is what the app draws today. Re-run
   `./shots.sh` once the overlays take over the frame again, as their own
   comments say they mean to.
+- **Composite foreign-key details can repeat column pairs.** PostgreSQL's constraint remains correct; the explorer can duplicate the displayed column mapping. The refreshed main walkthrough shows the current UI rather than changing the database to match the display.
 - `run build` at the default log level prints one `file:after` line per file
   with the absolute path repeated in a `filepath=` field. It is too verbose to
   record on a real schema.

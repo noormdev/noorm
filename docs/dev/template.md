@@ -225,6 +225,12 @@ secret, a bad lookup), never an intentional value. `null` is unaffected and stil
 | `$.now()` | Current ISO timestamp |
 | `$.uuid()` | Generate UUID v4 |
 
+A pipeline render swaps two of these. `prepare.ts` passes a `pipelineDialect` option to `processFile`, and `src/core/template/context.ts` then binds `$.escape` and `$.quote` to the pipeline versions in `src/core/pipeline/sql-literal.ts`.
+
+The per-dialect output is in the [guide](/guide/sql-files/templates#how-does-quoting-differ-in-pipelines). Every character of a PostgreSQL value, `$` included, is escaped as `\XXXX` or `\+XXXXXX` (`postgresPipelineQuote`), so the value cannot end a `$$` body.
+
+`$.escape` throws `PipelineEscapeError` in every pipeline render. The reason is the value `\`: inside an author-written `'...'`, no encoding is correct under both MySQL backslash modes, and a step can change the mode. Non-string values go through `sqlQuote` in every dialect.
+
 
 ## Common Patterns
 
@@ -500,7 +506,7 @@ const loader = getLoader('.json5')
 
 ## Security Considerations
 
-1. **SQL Injection** - Always use `$.quote()` or `$.escape()` for dynamic values from untrusted sources
+1. **SQL Injection** - Always use `$.quote()` or `$.escape()` for dynamic values from untrusted sources (`$.quote()` only, in pipelines)
 
 2. **Secret Exposure** - Secrets are available in templates. The rendered SQL may contain sensitive values - don't log it
 

@@ -53,7 +53,7 @@ function addIdColumn<TB extends string, C extends string>(
  * equally to `change.executed_at`, `executions`, `identities` and `vault`,
  * which share these columns.
  */
-function timestampType(dialect: Dialect) {
+export function timestampType(dialect: Dialect) {
 
     return dialect === 'mssql' ? sql`datetime2` : 'timestamp';
 

@@ -1,7 +1,7 @@
 # Terminal UI
 
 
-Run builds, apply changes, and explore the database from the keyboard.
+Run builds, apply changes, operate SQL pipelines, and explore the database from the keyboard.
 
 ```bash
 noorm ui
@@ -15,7 +15,7 @@ noorm ui
 ## How do I get around?
 
 
-Home opens four working screens with one key. Secrets hang off a config, and the schema explorer off the database menu:
+Home opens five working screens with one key. Config, changes, run, and database navigation are below; the [pipeline screens](#pipelines) have their own review and history path:
 
 ```mermaid
 flowchart TD
@@ -35,6 +35,7 @@ flowchart TD
 | `c` | Config list |
 | `g` | Changes list |
 | `d` | Database menu |
+| `p` | Pipeline list |
 | `+` | More: Settings, Vault, Identity, Lock |
 | `s`, `v`, `i`, `l` | Settings, Vault, Identity, Lock, without going through More |
 | `u` | Update |
@@ -48,6 +49,7 @@ flowchart TD
 | Switch config | `c`, `↓` to the config, `Enter` |
 | Fast-forward all changes | `g`, `f` |
 | Run the build | `r`, `b` |
+| Review and run a pipeline | `p`, `↓` to the pipeline, `Enter`; see [Pipelines in the terminal](/guide/pipeline-terminal) |
 | Validate a config | `c`, `+`, `v` |
 
 
@@ -64,7 +66,7 @@ flowchart TD
 | `D` | Toggle dry-run mode. The status bar shows `DRY` |
 | `F` | Toggle force mode. The status bar shows `FORCE` |
 
-`D` applies to the run screens, `change ff`, and the database wipe, teardown, and transfer screens. `F` applies to the run screens and `change ff`.
+`D` applies to the run screens, pipeline review, `change ff`, and the database wipe, teardown, and transfer screens. In pipeline review it selects the next invocation's dry-run mode; a started invocation keeps its captured mode. `F` applies to the file run screens and `change ff`, but has no pipeline effect and cannot bypass pipeline policy or single-run protection.
 
 While a text field takes input (a form field in edit mode, a search box, the SQL editor), every key above except `Ctrl+C` types its character instead. `?`, `D`, and `F` also stand down inside dialogs.
 
@@ -109,7 +111,7 @@ stateDiagram-v2
 | Edit | `Tab`, `Shift+Tab` | Commit and move to the next or previous field |
 | Actions | `←` `→`, `Enter` | Pick a button and activate it |
 
-A checkbox toggles in place on `Enter` or `Space`. A select expands on `Enter`, moves with `↑` `↓`, and takes the highlighted option on a second `Enter`. A red `*` marks a required field. Submitting with one empty puts the cursor on it, with the error beside the value.
+A checkbox toggles in place on `Enter` or `Space`. A select expands on `Enter`, moves with `↑` `↓`, and takes the highlighted option on a second `Enter`. A red `*` marks a required field. Most forms reject an empty required field and put the cursor on it with an error. Pipeline input forms instead require presence: explicitly saving an empty string is valid.
 
 
 ### Mouse
@@ -154,6 +156,8 @@ That covers testing a config (add and edit), the force-release lock check, and t
 | SQL Server, SQLite | Nothing. The statement finishes. The message reads `Stopped waiting. The query may still be running on the server.` |
 
 A connect that answers after you cancelled is closed, not adopted. A connection attempt also ends on its own after 15 seconds. Raise `connection.connectTimeoutMs` for a link that is slow but working. [The SQL terminal guide](/guide/database/terminal) has the full table.
+
+Pipeline stop uses a different contract: `Esc` requests that no more steps start, then waits for running SQL, transaction cleanup, and bookkeeping. It does not send the server-cancel requests in the table above. See [pipeline stop and shutdown](/guide/pipeline-terminal#stop-and-quit-without-assuming-rollback).
 
 
 ### Long-Running Files
@@ -247,6 +251,27 @@ History lists what ran, when, and under which identity. `Enter` shows the files,
 A file that already ran with the same content opens **File Previously Run** and asks `Run this file again?`. A directory with such files opens **Files Previously Run**.
 
 
+### Pipelines
+
+Pipeline review and history are separate screens; recorded runs remain reachable without opening a definition:
+
+```mermaid
+flowchart TD
+    Home["Home"] -->|p| Pipelines["Pipeline list"]
+    Pipelines -->|Enter| Review["Pipeline review"]
+    Pipelines -->|h| History["Pipeline history"]
+    Review -->|h| History
+    History -->|Enter| Detail["Run detail"]
+```
+
+
+`p` from Home opens code-owned pipeline definitions. `Enter` reviews a definition, `s` switches inputs and steps, and `r` opens native run or dry-run confirmation against the captured active config. Each input uses a separate form with explicit **Save** and **Cancel**; `x` in review removes its override.
+
+`h` opens config-scoped history by slug, and `i` on the pipeline list opens run-ID lookup, even without a local definition. Results distinguish execution status from transaction outcome and show cleanup warnings separately. The screens show elapsed time rather than live SQL or step progress.
+
+See [Pipelines in the terminal](/guide/pipeline-terminal) for typed input presence, review and result keys, protected confirmation, bounded history, and stop/shutdown behavior.
+
+
 ### Database Menu
 
 
@@ -322,7 +347,6 @@ The peek reads both ends of the table, so the last rows by primary key are as re
 
 | Condition | Result |
 |-----------|--------|
-| The role lacks `sql:read` | Refused. Reading rows needs `sql:read`, not the `explore` permission the other explorer screens use |
 | The table has no primary key | Only the first rows appear: `No primary key, so there is no last set — rows are in storage order.` |
 | Both ends meet | One table, headed `All N rows` |
 
@@ -391,7 +415,7 @@ The history list takes `↑` `↓`, `Enter` to view a result, `r` to re-run a qu
 
 ![The settings screen](/image/tui/settings.png)
 
-Seven groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets. `Enter` or a number opens one, and edits write to `.noorm/settings.yml`. `i` creates that file when the project has none. See [SQL file organization](/guide/sql-files/organization) and [Configs](/guide/environments/configs).
+Eight groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets, and Access Roles. `Enter` or a number opens one, and edits write to `.noorm/settings.yml`. `i` creates that file when the project has none. See [SQL file organization](/guide/sql-files/organization) and [Configs](/guide/environments/configs).
 
 
 ### Identity
@@ -440,4 +464,5 @@ A binary install reports its download as `42.0 / 73.0 MB (57%)` with a progress 
 - [CLI reference](/headless): the non-interactive surface
 - [The SQL terminal guide](/guide/database/terminal): history, result browsing, per-dialect cancel
 - [Execution](/guide/sql-files/execution): what the run screens do with each file
+- [Pipelines in the terminal](/guide/pipeline-terminal): review, typed inputs, results, and scoped history
 - [Configs](/guide/environments/configs): access roles

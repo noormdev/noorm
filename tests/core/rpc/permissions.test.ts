@@ -23,9 +23,6 @@ const EXPECTED_PERMISSIONS: Record<string, Permission | 'open'> = {
     overview: 'explore',
     change_history: 'explore',
     list_configs: 'open',
-    connect: 'open',
-    disconnect: 'open',
-    status: 'open',
 };
 
 describe('rpc: command permissions', () => {

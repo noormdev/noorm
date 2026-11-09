@@ -110,7 +110,7 @@ export interface RunContext {
     dialect?: 'postgres' | 'mysql' | 'sqlite' | 'mssql';
 
     /** Config object for template context */
-    config?: Record<string, unknown>;
+    config?: object;
 
     /** Secrets for template context */
     secrets?: Record<string, string>;

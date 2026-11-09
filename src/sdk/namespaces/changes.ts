@@ -35,12 +35,11 @@ import {
     ChangeManager,
     isPendingChange,
 } from '../../core/change/index.js';
-import { getStateManager } from '../../core/state/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection } from '../state.js';
+import { requireConnection, runGatedExplore } from '../state.js';
 import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -357,7 +356,7 @@ export class ChangesNamespace {
      */
     async history(limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return (await this.#getManager()).getHistory(undefined, limit);
+        return runGatedExplore(this.#state, 'change history', async () => (await this.#getManager()).getHistory(undefined, limit));
 
     }
 
@@ -373,7 +372,7 @@ export class ChangesNamespace {
      */
     async historyForChange(name: string, limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return (await this.#getManager()).getHistory(name, limit);
+        return runGatedExplore(this.#state, 'change history', async () => (await this.#getManager()).getHistory(name, limit));
 
     }
 
@@ -415,7 +414,7 @@ export class ChangesNamespace {
      */
     async getFileHistory(operationId: number): Promise<FileHistoryRecord[]> {
 
-        return (await this.#getManager()).getFileHistory(operationId);
+        return runGatedExplore(this.#state, 'change history', async () => (await this.#getManager()).getFileHistory(operationId));
 
     }
 
@@ -449,7 +448,7 @@ export class ChangesNamespace {
 
     async #createChangeContext(): Promise<ChangeContext> {
 
-        const state = getStateManager(this.#state.projectRoot);
+        const state = this.#state.stateManager;
         const conn = requireConnection(this.#state);
         const db = this.#kysely as unknown as Kysely<NoormDatabase>;
         const vaultKey = await resolveVaultKey(db, conn.dialect);

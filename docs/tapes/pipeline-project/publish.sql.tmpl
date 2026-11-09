@@ -1,0 +1,4 @@
+INSERT INTO recording.period_close (period, total)
+SELECT period, total FROM recording.period_cache
+WHERE period = {%~ $.quote($.input.period) %}
+ON CONFLICT (period) DO UPDATE SET total = EXCLUDED.total;

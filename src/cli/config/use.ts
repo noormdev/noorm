@@ -5,11 +5,13 @@
  * with the database so the current user is registered if not already known.
  * No DB connection is required — operates on local state files only.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -41,6 +43,31 @@ const useCommand = defineCommand({
 
         const stateManager = getStateManager(projectRoot);
 
+        const config = stateManager.getConfig(args.name);
+        if (!config) {
+
+            outputError(args, `Config "${args.name}" not found.`);
+            process.exit(EXIT.USAGE);
+
+        }
+
+        const settingsManager = getSettingsManager(projectRoot);
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(EXIT.FAILURE);
+
+        }
+
+        const [, policyErr] = attemptSync(() => withConfigPolicy(config, new SettingsProvider(settingsManager)));
+        if (policyErr) {
+
+            outputError(args, policyErr.message);
+            process.exit(EXIT.USAGE);
+
+        }
+
         const [, setErr] = await attempt(() => stateManager.setActiveConfig(args.name));
 
         if (setErr) {
@@ -50,18 +77,11 @@ const useCommand = defineCommand({
 
         }
 
-        // Sync identity with the database (non-blocking)
-        const config = stateManager.getConfig(args.name);
+        const syncResult = await syncIdentityWithConfig(config);
 
-        if (config) {
+        if (syncResult.ok && syncResult.knownUsers?.length) {
 
-            const syncResult = await syncIdentityWithConfig(config);
-
-            if (syncResult.ok && syncResult.knownUsers?.length) {
-
-                await stateManager.addKnownUsers(syncResult.knownUsers);
-
-            }
+            await stateManager.addKnownUsers(syncResult.knownUsers);
 
         }
 

@@ -10,21 +10,34 @@ paths:
   - "src/core/project-init.ts"
   - "src/core/environment.ts"
   - "src/core/observer.ts"
+  - "src/core/shared/**"
   - "tests/core/state/**"
   - "tests/core/settings/**"
   - "tests/core/config/**"
   - "tests/core/lifecycle/**"
   - "tests/core/version/**"
+  - "tests/core/project-init.test.ts"
   - "tests/integration/version/**"
+  - "tests/core/shared/**"
 ---
 
-Domain: core-state. Encrypted state, settings.yml, config resolution, lifecycle, version migration, observer events.
+Domain: core-state. Encrypted state, settings, config resolution, lifecycle, version migration, and observer events.
 
 Map:
   - docs/wiki/core-state.md
 Contracts:
   - docs/spec/config-access-roles.md
+Guides:
+  - docs/guide/environments/configs.md
+  - docs/guide/environments/stages.md
 Designs:
   - docs/design/config-access-roles.md
+Related:
+  - docs/dev/config.md
+  - docs/dev/settings.md
+  - docs/dev/state.md
+  - docs/dev/version.md
+  - docs/guide/environments/configs.md
+  - docs/guide/environments/stages.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

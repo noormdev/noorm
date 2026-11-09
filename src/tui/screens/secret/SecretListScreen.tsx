@@ -30,23 +30,31 @@ import {
     Panel,
     SecretValueList,
     SecretValueListHelp,
+    SmartConfirm,
     useToast,
     type SecretValueItem,
 } from '../../components/index.js';
 import { maskValue } from '../../../core/logger/redact.js';
+import { SecretReadGate } from './SecretReadGate.js';
 
 /**
  * SecretListScreen component.
  *
  * Displays all secrets for the active config with quick actions.
  */
-export function SecretListScreen({ params: _params }: ScreenProps): ReactElement {
+export function SecretListScreen(props: ScreenProps): ReactElement {
+
+    return <SecretReadGate><SecretListContent {...props} /></SecretReadGate>;
+
+}
+
+function SecretListContent({ params: _params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('SecretList');
     const { activeConfig, activeConfigName, stateManager, settingsManager } = useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets, vaultError } = useVaultSecretKeys();
+    const { vaultSecretKeys, requiredSecrets, vaultError, vaultConfirmation } = useVaultSecretKeys();
 
     // Get stored secrets for active config
     const storedSecretKeys = useMemo<string[]>(() => {
@@ -228,6 +236,20 @@ export function SecretListScreen({ params: _params }: ScreenProps): ReactElement
         );
 
     }
+    if (vaultConfirmation) {
+
+        return (
+            <SmartConfirm
+                {...vaultConfirmation}
+                requiresConfirmation
+                action="read vault secret keys"
+                message="Read vault secret keys?"
+                isFocused={isFocused}
+            />
+        );
+
+    }
+
 
     return (
         <Box flexDirection="column" gap={1}>

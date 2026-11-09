@@ -1,10 +1,25 @@
-import type { Permission, PolicyCell, Role } from './types.js';
+import type { BuiltinRole, Permission, PolicyCell } from './types.js';
 
-/**
- * The hard-coded permission × role matrix. Not user-extensible — see
- * `docs/spec/config-access-roles.md` for the source of truth this mirrors.
- */
-export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
+/** Roles that resolve even when `settings.yml` defines none. */
+export const BUILTIN_ROLES = ['viewer', 'operator', 'admin'] as const;
+
+export function isBuiltinRole(name: string): name is BuiltinRole {
+
+    return BUILTIN_ROLES.some((builtin) => builtin === name);
+
+}
+
+const CELL_RANK: Record<PolicyCell, number> = { deny: 0, confirm: 1, allow: 2 };
+
+/** Negative when `a` is stricter than `b`, zero when equal, positive when looser. */
+export function compareCells(a: PolicyCell, b: PolicyCell): number {
+
+    return CELL_RANK[a] - CELL_RANK[b];
+
+}
+
+/** Immutable built-in defaults and protected-stage ceilings. */
+export const MATRIX: Record<Permission, Record<BuiltinRole, PolicyCell>> = {
     'explore': { viewer: 'allow', operator: 'allow', admin: 'allow' },
 
     'sql:read': { viewer: 'allow', operator: 'allow', admin: 'allow' },
@@ -19,6 +34,7 @@ export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     'run:build': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'run:file': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'run:dir': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
+    'pipeline:run': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
 
     'db:create': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
     'db:reset': { viewer: 'deny', operator: 'confirm', admin: 'allow' },
@@ -47,3 +63,9 @@ export const MATRIX: Record<Permission, Record<Role, PolicyCell>> = {
     // Deletes arbitrary rows from noorm.vault / noorm.identities.
     'debug:write': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 };
+
+/** Cells an `isTest` config allows for every role, so a test harness can rebuild its own database: `docs/spec/config-access-roles.md`. */
+export const TEST_DB_LIFECYCLE: readonly Permission[] = ['db:create', 'db:reset', 'db:truncate', 'db:teardown', 'db:destroy'];
+
+/** Reads the user channel always holds: the keyboard owner can loosen any role, so gating them adds friction only. */
+export const USER_ALWAYS_ALLOWED: readonly Permission[] = ['explore', 'sql:read'];

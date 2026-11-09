@@ -22,7 +22,8 @@ import { getEnvConfig } from '../../core/config/index.js';
 import { parseConfig } from '../../core/config/schema.js';
 import type { Config } from '../../core/config/types.js';
 import type { ConnectionConfig } from '../../core/connection/types.js';
-import { DEFAULT_ACCESS } from '../../core/policy/index.js';
+import { DEFAULT_ACCESS, resolveChannel } from '../../core/policy/index.js';
+import { getSettingsManager } from '../../core/settings/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
@@ -64,6 +65,8 @@ const initCommand = defineCommand({
             description: 'Mark the config as a test database (satisfies the SDK\'s requireTest guard)',
             default: false,
         },
+        type: { type: 'string', description: 'Config type: local or remote' },
+        stage: { type: 'string', description: 'Inherit config type from this stage' },
         yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
@@ -72,6 +75,48 @@ const initCommand = defineCommand({
         const projectRoot = process.cwd();
         const stateFile = join(projectRoot, '.noorm', 'state', 'state.enc');
         const configName = args.name || process.env['NOORM_CI_CONFIG_NAME'] || 'ci';
+
+        if (args.type && args.type !== 'local' && args.type !== 'remote') {
+
+            outputError(args, '--type must be local or remote');
+            process.exit(EXIT.USAGE);
+
+        }
+
+        // isTest relaxes db lifecycle permissions, so an agent must not mint it at a target it chose.
+        if (args.test && resolveChannel() === 'agent') {
+
+            outputError(args, '--test is not available on the agent channel: isTest configs are created by a human.');
+            process.exit(EXIT.USAGE);
+
+        }
+
+        let stageType: 'local' | 'remote' | undefined;
+
+        if (args.stage) {
+
+            const settings = getSettingsManager(projectRoot);
+            const [, settingsErr] = await attempt(() => settings.load());
+
+            if (settingsErr) {
+
+                outputError(args, `Failed to load settings: ${settingsErr.message}`);
+                process.exit(EXIT.USAGE);
+
+            }
+
+            const stage = settings.getStage(args.stage);
+
+            if (!stage) {
+
+                outputError(args, `Stage '${args.stage}' not found`);
+                process.exit(EXIT.USAGE);
+
+            }
+
+            stageType = stage.defaults?.type;
+
+        }
 
         // 1. Identity precheck (absorbs `noorm identity ci`)
         const envIdentity = loadIdentityFromEnv();
@@ -117,6 +162,35 @@ const initCommand = defineCommand({
         if (!database) {
 
             outputError(args, 'NOORM_CONNECTION_DATABASE is required');
+            process.exit(EXIT.USAGE);
+
+        }
+
+        const connection: ConnectionConfig = {
+            ...envConfig.connection,
+            dialect,
+            database: asString(database)!,
+            host: asString(host),
+            port,
+            user: asString(user),
+            password: asString(password),
+            filename: asString(filename),
+            pool,
+            ssl,
+        };
+
+        // CI also targets production, so test safety must be explicitly enabled.
+        const [config, parseErr] = attemptSync(() => parseConfig({
+            name: configName,
+            type: args.type ?? stageType ?? 'remote',
+            isTest: args.test,
+            access: DEFAULT_ACCESS,
+            connection,
+        }) as Config);
+
+        if (parseErr || !config) {
+
+            outputError(args, `Invalid CI configuration: ${parseErr?.message ?? 'unknown error'}`);
             process.exit(EXIT.USAGE);
 
         }
@@ -192,43 +266,6 @@ const initCommand = defineCommand({
 
             outputError(args, `Failed to initialize state: ${initErr?.message ?? 'unknown error'}`);
             process.exit(1);
-
-        }
-
-        // 5. Create config and activate
-        const connection: ConnectionConfig = {
-            dialect,
-            database: asString(database)!,
-            host: asString(host),
-            port,
-            user: asString(user),
-            password: asString(password),
-            filename: asString(filename),
-            pool,
-            ssl,
-        };
-
-        // Validated rather than hand-built and trusted: this is the one path
-        // that writes a config nobody reviewed, and it used to persist shapes
-        // the schema forbids for every later consumer to trip over.
-        // Opt-in, not automatic. `isTest` is what the SDK's `requireTest`
-        // guard checks before letting a suite truncate or teardown, so
-        // stamping it on every config this command creates made the guard
-        // pass against a production database bootstrapped by the documented
-        // prod-CI flow. Env-only resolution already defaults it to false
-        // (`core/config/resolver.ts`); this now agrees with it.
-        const [config, parseErr] = attemptSync(() => parseConfig({
-            name: configName,
-            type: 'remote',
-            isTest: args.test,
-            access: DEFAULT_ACCESS,
-            connection,
-        }) as Config);
-
-        if (parseErr || !config) {
-
-            outputError(args, `Invalid CI configuration: ${parseErr?.message ?? 'unknown error'}`);
-            process.exit(EXIT.USAGE);
 
         }
 

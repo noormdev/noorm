@@ -7,6 +7,7 @@ import type { Transaction } from 'kysely';
 
 import type { Channel } from '../core/policy/index.js';
 import type { ConflictStrategy } from '../core/transfer/types.js';
+import type { ConnectionConfig, RuntimeConnectionOptions } from '../core/connection/types.js';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -43,13 +44,24 @@ export interface CreateContextOptions {
      *
      * If omitted:
      * - Uses `NOORM_CONFIG` env var if set
-     * - Falls back to env-only mode if `NOORM_CONNECTION_DIALECT`
-     *   and `NOORM_CONNECTION_DATABASE` are set
+     * - Uses the active stored config only when `connection` is absent
+     * - Otherwise resolves inline or environment-only connection fields
      */
     config?: string;
 
+    /** Non-persisted connection overrides, applied after environment settings. */
+    connection?: Omit<Partial<ConnectionConfig>, 'password' | 'ssl'> & {
+        password?: string | RuntimeConnectionOptions['password'];
+        ssl?: boolean | (Exclude<ConnectionConfig['ssl'], boolean | undefined> & {
+            checkServerIdentity?: RuntimeConnectionOptions['checkServerIdentity'];
+        });
+    };
+
     /** Project root directory. Defaults to process.cwd() */
     projectRoot?: string;
+
+    /** Resolve state and settings from independent disk snapshots for this context. */
+    freshState?: boolean;
 
     /** Refuse if config.isTest !== true. Default: false */
     requireTest?: boolean;

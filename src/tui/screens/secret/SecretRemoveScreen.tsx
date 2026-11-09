@@ -21,7 +21,8 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useVaultSecretKeys } from '../../hooks/index.js';
-import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
+import { Panel, SmartConfirm, Spinner, useToast } from '../../components/index.js';
+import { checkConfigPolicy, getPolicyFingerprint } from '../../../core/policy/index.js';
 
 /**
  * SecretRemoveScreen component.
@@ -33,11 +34,14 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, stateManager, refresh } =
         useAppContext();
     const { showToast } = useToast();
-    const { vaultSecretKeys, requiredSecrets, vaultError } = useVaultSecretKeys();
+    const readCheck = activeConfig ? checkConfigPolicy('user', activeConfig, 'secret:read') : null;
+    const canRead = !!readCheck?.allowed && !readCheck.requiresConfirmation;
+    const { vaultSecretKeys, requiredSecrets, vaultError, vaultConfirmation } = useVaultSecretKeys(canRead);
 
     const secretKey = params.name;
 
     const [deleting, setDeleting] = useState(false);
+    const writeCheck = activeConfig ? checkConfigPolicy('user', activeConfig, 'secret:write') : null;
 
     // Find the secret definition to get description
     const secretDefinition = useMemo(() => {
@@ -71,16 +75,17 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
     // Check if secret exists locally
     const secretExists = useMemo(() => {
 
+        if (!canRead) return true;
         if (!stateManager || !activeConfigName || !secretKey) return false;
 
         return stateManager.getSecret(activeConfigName, secretKey) !== null;
 
-    }, [stateManager, activeConfigName, secretKey]);
+    }, [canRead, stateManager, activeConfigName, secretKey]);
 
     // Handle confirm
     const handleConfirm = useCallback(async () => {
 
-        if (!stateManager || !activeConfigName || !secretKey) {
+        if (!stateManager || !activeConfigName || !activeConfig || !secretKey) {
 
             showToast({ message: 'Secret not found', variant: 'error' });
             back();
@@ -88,6 +93,15 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
             return;
 
         }
+        const check = checkConfigPolicy('user', activeConfig, 'secret:write');
+        if (!check.allowed) {
+
+            showToast({ message: check.blockedReason ?? 'Secret write is not allowed', variant: 'error' });
+
+            return;
+
+        }
+
 
         setDeleting(true);
 
@@ -117,7 +131,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
         });
         back();
 
-    }, [stateManager, activeConfigName, secretKey, refresh, showToast, back]);
+    }, [stateManager, activeConfig, activeConfigName, secretKey, refresh, showToast, back]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -129,10 +143,10 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
     // Keyboard handling for blocked/error states
     useInput((input, key) => {
 
-        if (!isFocused) return;
+        if (!isFocused || vaultConfirmation) return;
 
         // Handle escape for error states
-        if (!activeConfigName || !secretKey || !secretExists || blockDeletion) {
+        if (!activeConfigName || !secretKey || !secretExists || blockDeletion || (writeCheck && !writeCheck.allowed)) {
 
             if (key.escape || key.return) {
 
@@ -163,6 +177,33 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (vaultConfirmation) {
+
+        return (
+            <SmartConfirm
+                {...vaultConfirmation}
+                requiresConfirmation
+                action="read vault secret keys"
+                message="Read vault secret keys?"
+                isFocused={isFocused}
+            />
+        );
+
+    }
+
+    if (writeCheck && !writeCheck.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Delete Secret" paddingX={2} paddingY={1} borderColor="red">
+                    <Text color="red">{writeCheck.blockedReason ?? 'Secret write is not allowed'}</Text>
+                </Panel>
+                <Text dimColor>[Enter/Esc] Back</Text>
+            </Box>
+        );
+
+    }
+
 
     // No secret key provided
     if (!secretKey) {
@@ -263,7 +304,12 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                     </Text>
                 )}
 
-                <Confirm
+                <SmartConfirm
+                    key={`${activeConfigName}:${getPolicyFingerprint(activeConfig)}`}
+                    configName={activeConfigName}
+                    action={`delete secret "${secretKey}"`}
+                    requiresConfirmation={writeCheck?.requiresConfirmation ?? false}
+                    confirmationPhrase={writeCheck?.confirmationPhrase}
                     message={`Are you sure you want to delete secret "${secretKey}"?`}
                     onConfirm={handleConfirm}
                     onCancel={handleCancel}

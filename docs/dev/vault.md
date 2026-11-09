@@ -293,157 +293,94 @@ else {
 
 ### Propagation
 
-Users with vault access can propagate to pending users. `options.targets` restricts the grant to specific identity hashes; omitting it grants to every identity currently without access.
+Users with vault access can propagate to pending users. `options.targets` selects identity hashes at execution time. CLI and TUI confirmation flows instead pass the captured hashes and public keys in `reviewedRecipients`, so the grant cannot include late arrivals or changed keys.
 
-```typescript
-async function propagateVaultKey(
-    db: Kysely<NoormDatabase>,
-    vaultKey: Buffer,
-    dialect: Dialect,
-    options: { targets?: string[] } = {},
-): Promise<VaultPropagationResult> {
+The update grants only the captured public key while its identity row remains pending.
 
-    // Find users without access — tuple-returning, so "nobody is waiting"
-    // and "the query failed" stay distinguishable
-    const [pending, err] = await getUsersWithoutVaultAccess(db, dialect);
-    if (err) throw err;
-
-    const users = options.targets
-        ? pending.filter((u) => options.targets?.includes(u.identityHash))
-        : pending;
-
-    const propagatedTo: string[] = [];
-    const failed: FailedVaultPropagation[] = [];
-
-    for (const user of users) {
-        // Encrypt vault key for this user's public key
-        const encrypted = encryptVaultKey(vaultKey, user.publicKey);
-
-        const [, updateErr] = await attempt(() => db
-            .updateTable('__noorm_identities__')
-            .set({ encrypted_vault_key: JSON.stringify(encrypted) })
-            .where('identity_hash', '=', user.identityHash)
-            .execute());
-
-        if (updateErr) {
-            failed.push({ identityHash: user.identityHash, email: user.email, error: updateErr.message });
-            continue;
-        }
-
-        propagatedTo.push(user.identityHash);
-        observer.emit('vault:propagated', {
-            toIdentityHash: user.identityHash,
-            toEmail: user.email,
-        });
-    }
-
-    return { propagatedTo, alreadyHadAccess: totalWithAccess - propagatedTo.length, failed };
-}
+```mermaid
+sequenceDiagram
+    accTitle: Reviewed vault recipient binding
+    accDescr: The caller captures pending identities and public keys, collects human consent, and grants only matching pending rows. A changed key or zero-row update is reported as a failure.
+    participant Caller
+    participant Review
+    participant Grant
+    participant Database
+    Caller->>Database: Read pending identity and key snapshot
+    Database-->>Caller: Captured recipients
+    Caller->>Review: Display captured recipients
+    Review-->>Caller: Human consent
+    Caller->>Grant: Pass reviewedRecipients unchanged
+    Grant->>Database: Update matching hash, public key and pending row
+    Database-->>Grant: Updated row count
+    alt Exactly one row updated
+        Grant-->>Caller: Granted
+    else Row no longer matches
+        Grant-->>Caller: Failed recipient
+    end
 ```
 
-**A non-empty `failed` is an error, not a warning.** A grant that silently skipped a teammate left both parties believing access had been handed over. Callers must check it:
+Capture the review plan before presenting it:
 
 ```typescript
-const result = await propagateVaultKey(db, vaultKey, 'postgres', { targets: [hash] });
-
-if (result.failed.length > 0) {
-    throw new Error('partial propagation');
-}
+const [reviewedRecipients, readError] = await getUsersWithoutVaultAccess(db, 'postgres');
+if (readError) throw readError;
 ```
+
+After collecting consent for that exact plan, pass it unchanged:
+
+```typescript
+const result = await propagateVaultKey(db, vaultKey, 'postgres', { reviewedRecipients });
+if (result.failed.length > 0) throw new Error('partial propagation');
+```
+
+A non-empty `failed` means some recipients did not receive the key. Callers must report partial grants rather than presenting them as complete success.
 
 `propagateVaultKeyTo(db, vaultKey, targetIdentityHash, dialect)` grants to exactly one user and returns a boolean — `true` also when the user already had access.
 
 
 ### Cross-Config Copy
 
-Copy secrets between database configs:
+`copyVaultSecrets` requires source `vault:read`. Real copies also require destination `vault:write`; an initialized destination requires `vault:read` before key access or collision inspection.
 
 ```typescript
-async function copyVaultSecrets(
-    sourceConfig: Config,
-    destConfig: Config,
-    keys: string[] | 'all',
-    identityHash: string,
-    privateKey: string,
-    publicKey: string,
-    options: VaultCopyOptions = {},
-): Promise<[VaultCopyResult | null, Error | null]> {
-
-    const { force = false, channel = 'user', dryRun = false } = options;
-
-    // Gated here rather than in `vault cp`: this function holds both configs,
-    // so every surface that reaches it inherits the check.
-    assertVaultPolicy({ configName: sourceConfig.name, access: sourceConfig.access, channel }, 'vault:read');
-    if (!dryRun) {
-        assertVaultPolicy({ configName: destConfig.name, access: destConfig.access, channel }, 'vault:write');
-    }
-
-    return withDualConnection({ sourceConfig, destConfig }, async (ctx) => {
-
-        // Get source vault key
-        const sourceVaultKey = await getVaultKey(ctx.source.db, identityHash, privateKey, ctx.source.dialect);
-        if (!sourceVaultKey) throw new Error('No vault access on source');
-
-        // Initialize or access destination vault. A dry run never creates one.
-        const destStatus = await getVaultStatus(ctx.destination.db, identityHash, ctx.destination.dialect);
-        let destVaultKey: Buffer | null;
-
-        if (!destStatus.isInitialized) {
-            destVaultKey = dryRun
-                ? null
-                : (await initializeVault(ctx.destination.db, identityHash, publicKey, ctx.destination.dialect))[0];
-        } else if (!destStatus.hasAccess) {
-            throw new Error('No vault access on destination');
-        } else {
-            destVaultKey = await getVaultKey(ctx.destination.db, identityHash, privateKey, ctx.destination.dialect);
-        }
-
-        // Copy secrets
-        const allSourceSecrets = await getAllVaultSecrets(ctx.source.db, sourceVaultKey, ctx.source.dialect);
-        const result: VaultCopyResult = { copied: [], skipped: [], errors: [] };
-
-        for (const [key, secret] of Object.entries(allSourceSecrets)) {
-            if (keys !== 'all' && !keys.includes(key)) continue;
-
-            const exists = destStatus.isInitialized
-                ? await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect)
-                : false;
-
-            if (exists && !force) {
-                result.skipped.push(key);
-                continue;
-            }
-
-            if (dryRun) {
-                result.copied.push(key);
-                continue;
-            }
-
-            await setVaultSecret(
-                ctx.destination.db,
-                destVaultKey as Buffer,
-                key,
-                secret.value,
-                `copied from ${sourceConfig.name}`,
-                ctx.destination.dialect,
-            );
-            result.copied.push(key);
-        }
-
-        return result;
-    });
-}
+const [result, error] = await copyVaultSecrets(
+    sourceConfig, destConfig, 'all',
+    identity.identityHash, privateKey, identity.publicKey,
+    { dryRun: true, channel: 'user' },
+);
+if (error) throw error;
 ```
+
+Only real copies initialize or write the destination; collision previews still honor its read policy.
+
+```mermaid
+flowchart TD
+    accTitle: Vault copy authorization and execution
+    accDescr: Copy checks source read and real-copy destination write. An existing destination also needs read access. A fresh real destination registers the source identity before initialization. Previews return a plan without destination key decryption or writes.
+    Gate["Authorize source read<br/>and real-copy write"] --> Status{"Destination initialized?"}
+    Status -->|Yes| Read["Authorize destination<br/>read before key access"]
+    Read --> Plan["Read source secrets<br/>and inspect collisions"]
+    Status -->|No| Fresh{"Real copy?"}
+    Fresh -->|Yes| Init["Register source identity<br/>and initialize vault"]
+    Init --> Plan
+    Fresh -->|No| Plan
+    Plan --> Write{"Real copy?"}
+    Write -->|Yes| Copy["Encrypt and store secrets"]
+    Copy --> Result["Return copy results"]
+    Write -->|No| Result
+```
+
+Fresh initialization registers the caller's actual identity metadata from the source and stores a key encrypted to that identity. It needs write access, not read access to an existing destination key. Dry runs neither initialize tracking tables nor decrypt the destination key. Source-read and destination-write denials can throw before connecting; failures inside the dual-connection operation, including destination-read denials, use the error tuple.
 
 `VaultCopyOptions` carries three fields:
 
 | Field | Default | Effect |
 |-------|---------|--------|
 | `force` | `false` | Overwrite secrets that already exist in the destination |
-| `channel` | `'user'` | Who is asking; gates the source read and the destination write |
-| `dryRun` | `false` | Run the full preflight — vault access on both ends, source-key existence, destination collisions — and write nothing |
+| `channel` | `'user'` | Who is asking; gates source read, real-copy destination write, and initialized-destination read |
+| `dryRun` | `false` | Inspect source keys and authorized destination collisions without initializing schema, decrypting the destination key, or writing |
 
-A dry run reports the same `copied` / `skipped` / `errors` the real run would produce. Keys named in `keys` but missing from the source vault land in `result.errors`, not silently dropped.
+A dry run reports source keys and current destination collisions; it cannot predict later changes or write failures. Keys named in `keys` but missing from the source vault appear in `result.errors`.
 
 
 ## Policy Gating
@@ -524,10 +461,10 @@ Grant vault access to pending team members:
 
 ```bash
 noorm vault propagate
-noorm vault propagate --to <hash>,<hash>   # Only these identity hashes
+noorm vault propagate --to <hash>,<hash> --yes   # Approve only these identity hashes
 ```
 
-Encrypts the vault key for each user's public key. Without `--to` it grants to every identity currently awaiting access — a grant that cannot be revoked, so prefer naming targets. Passing a hash that isn't awaiting access is an error, not a silent skip. Under the `operator` role the command requires `--yes`.
+The preview lists pending recipients without granting. A human must pass `--yes` even when the role allows propagation; the agent channel cannot self-confirm recipient review. `--to` narrows the then-current pending list; a hash that is not waiting is an error. A preview from an earlier invocation does not bind the later grant. Within the granting invocation, each selected identity hash and public key must still match its pending row, and late arrivals are excluded. A changed or missing recipient is reported as a failure.
 
 
 ### `vault cp`

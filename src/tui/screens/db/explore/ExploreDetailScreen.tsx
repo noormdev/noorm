@@ -38,7 +38,7 @@ import { useWheelScroll } from '../../../mouse.js';
 import { useAppContext } from '../../../app-context.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
-import { fetchDetail } from '../../../../core/explore/index.js';
+import { fetchDetail, userGate } from '../../../../core/explore/index.js';
 import {
     CELL_GAP,
     MARKER_WIDTH,
@@ -750,7 +750,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
     const { back, route } = useRouter();
     const { isFocused } = useFocusScope('ExploreDetail');
-    const { activeConfig, activeConfigName } = useAppContext();
+    const { activeConfig } = useAppContext();
 
     // useWindowSize, not useStdout: stdout.columns and .rows mutate on resize
     // without telling React, so anything derived from them would freeze at mount
@@ -786,7 +786,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
     // Load detail when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db || !dialect || !category || !name) {
+        if (!db || !dialect || !category || !name || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -799,7 +799,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
         const [result, err] = await attempt(async () => {
 
-            return await fetchDetail(db, dialect, category, name, schema);
+            return await fetchDetail(db, dialect, category, name, { schema, gate: userGate(activeConfig) });
 
         });
 
@@ -941,7 +941,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
         && isTableDetail(detail)
         && db !== null
         && dialect !== null
-        && activeConfigName !== null;
+        && activeConfig !== null;
 
     return (
         <Box flexDirection="column" gap={1}>
@@ -957,15 +957,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                                 db={db}
                                 dialect={dialect}
                                 detail={detail}
-                                // 'user': the TUI is a human at a keyboard, and
-                                // every other policy-checking screen says the
-                                // same. A non-interactive caller resolves its
-                                // own channel and passes it here instead.
-                                gate={{
-                                    configName: activeConfigName,
-                                    access: activeConfig.access,
-                                    channel: 'user',
-                                }}
+                                gate={userGate(activeConfig)}
                                 height={height}
                                 onClose={close}
                             />

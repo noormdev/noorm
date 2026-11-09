@@ -6,23 +6,29 @@ paths:
   - "src/core/explore/**"
   - "src/core/teardown/**"
   - "src/core/transfer/**"
+  - "src/core/debug/**"
   - "src/cli/db/**"
   - "tests/core/connection/**"
   - "tests/core/db/**"
   - "tests/core/explore/**"
   - "tests/core/teardown/**"
   - "tests/core/transfer/**"
+  - "tests/core/debug/**"
   - "tests/integration/connection/**"
   - "tests/integration/error-diagnostics/**"
   - "tests/integration/explore/**"
-  - "tests/integration/impersonate/**"
   - "tests/integration/teardown/**"
   - "tests/integration/transfer/**"
 ---
 
-Domain: core-db. DB lifecycle: create/drop, connections and session helpers, explore schema, teardown, cross-DB transfer.
+Domain: core-db. Database lifecycle, connections, exploration, teardown, and transfer.
 
 Map:
   - docs/wiki/core-db.md
+Guides:
+  - docs/guide/database/create.md
+  - docs/guide/database/explore.md
+  - docs/guide/database/teardown.md
+  - docs/guide/database/transfer.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

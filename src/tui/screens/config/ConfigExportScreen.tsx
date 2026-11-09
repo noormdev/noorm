@@ -14,7 +14,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -28,11 +28,13 @@ import {
     StatusMessage,
     SelectList,
     TextInput,
+    ProtectedConfirm,
     type SelectListItem,
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
-import { guarded } from '../../../core/policy/index.js';
+import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint, guarded } from '../../../core/policy/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -41,6 +43,7 @@ import { getErrorMessage } from '../../utils/index.js';
 type ExportStep =
     | 'recipient-email' // Enter recipient email
     | 'select-identity' // Pick identity if multiple match
+    | 'confirm' // Review export of configuration and secrets
     | 'exporting' // Encrypting and writing file
     | 'complete' // Success
     | 'error'; // Error occurred
@@ -52,7 +55,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate: _navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ConfigExport');
-    const { stateManager, identity } = useAppContext();
+    const { stateManager, settingsManager, identity } = useAppContext();
 
     const configName = params.name;
 
@@ -62,6 +65,11 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
     const [selectedUser, setSelectedUser] = useState<KnownUser | null>(null);
     const [outputFile, setOutputFile] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [pendingExport, setPendingExport] = useState<{
+        recipient: KnownUser;
+        fingerprint: string;
+        phrase: string;
+    } | null>(null);
 
     // Get the config
     const config = useMemo(() => {
@@ -74,7 +82,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
     // Handle export
     const handleExport = useCallback(
-        async (recipient: KnownUser) => {
+        async (recipient: KnownUser, approvedFingerprint?: string) => {
 
             if (!stateManager || !config || !identity || !configName) {
 
@@ -84,10 +92,48 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                 return;
 
             }
+            const [policyConfig, policyError] = attemptSync(() => {
+
+                if (!settingsManager) throw new Error('Settings are not available');
+
+                return withConfigPolicy(config, new SettingsProvider(settingsManager));
+
+            });
+            if (policyError) {
+
+                setError(policyError.message);
+                setStep('error');
+
+                return;
+
+            }
+            const check = checkConfigPolicy('user', policyConfig, 'secret:read');
+            if (!check.allowed) {
+
+                setError(check.blockedReason ?? 'Config cannot be exported');
+                setStep('error');
+
+                return;
+
+            }
+            const fingerprint = getPolicyFingerprint(policyConfig);
+            if (check.requiresConfirmation && approvedFingerprint !== fingerprint) {
+
+                setPendingExport({
+                    recipient,
+                    fingerprint,
+                    phrase: check.confirmationPhrase ?? confirmationPhraseFor(config.name),
+                });
+                setStep('confirm');
+
+                return;
+
+            }
 
             setStep('exporting');
 
             const [_, err] = await attempt(async () => {
+
 
                 // Build export data (omit user/password). `access` is the
                 // source of truth; `protected` rides along so an
@@ -99,7 +145,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                         type: config.type,
                         isTest: config.isTest,
                         access: config.access,
-                        protected: guarded(config),
+                        protected: guarded(policyConfig),
                         connection: {
                             dialect: config.connection.dialect,
                             host: config.connection.host,
@@ -141,7 +187,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             setStep('complete');
 
         },
-        [stateManager, config, identity, configName],
+        [stateManager, settingsManager, config, identity, configName],
     );
 
     // Handle email submission
@@ -260,6 +306,25 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
         );
 
     }
+    if (step === 'confirm' && pendingExport) {
+
+        return (
+            <ProtectedConfirm
+                configName={configName}
+                confirmPhrase={pendingExport.phrase}
+                action={`export configuration and secrets to ${pendingExport.recipient.email}`}
+                onConfirm={() => {
+
+                    void handleExport(pendingExport.recipient, pendingExport.fingerprint);
+
+                }}
+                onCancel={back}
+                isFocused={isFocused}
+            />
+        );
+
+    }
+
 
     // Recipient email input
     if (step === 'recipient-email') {

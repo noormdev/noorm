@@ -54,6 +54,8 @@ Granted vault access to 1 identities
   Ben Ortiz <ben@example.com>  4a5c14af...
 ```
 
+Review is required even if your role allows propagation. A human must pass `--yes`; the agent channel cannot approve the recipient review itself. Use `--to <hash,...>` to narrow the grant. Each granting invocation selects the then-current pending list, not the list from an earlier preview, so check for changes before approving. During that invocation, a recipient whose identity hash or public key no longer matches is not granted access; newly arriving identities are excluded.
+
 In the TUI, `v` from home opens the vault. The header counts waiting teammates, `p` grants after listing them, and `a` adds a secret.
 
 

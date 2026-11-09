@@ -26,6 +26,8 @@ export const DEFAULT_SQL_PATH = `./${DEFAULT_DB_DIR}/sql`;
 
 export const DEFAULT_CHANGES_PATH = `./${DEFAULT_DB_DIR}/changes`;
 
+export const DEFAULT_PIPELINES_PATH = `./${DEFAULT_DB_DIR}/pipelines`;
+
 /**
  * Default path configuration.
  *
@@ -35,6 +37,7 @@ export const DEFAULT_CHANGES_PATH = `./${DEFAULT_DB_DIR}/changes`;
 export const DEFAULT_PATH_CONFIG: PathConfig = {
     sql: DEFAULT_SQL_PATH,
     changes: DEFAULT_CHANGES_PATH,
+    pipelines: DEFAULT_PIPELINES_PATH,
 };
 
 /**

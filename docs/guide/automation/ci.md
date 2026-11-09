@@ -44,7 +44,7 @@ jobs:
 
 A database built from `db/sql/` has no change records, so `change ff` replays every change in `db/changes/`. A change that is not safe to run twice fails here instead of in production.
 
-Tests that open the database through the SDK with `requireTest` need a stored test config. Add the `NOORM_IDENTITY_*` variables and run `noorm ci init --name test --test` before `npm test`, as [Building your SDK](/getting-started/building-your-sdk#where-does-the-connection-come-from) shows.
+This workflow's SDK tests use a stored test config. Add the `NOORM_IDENTITY_*` variables and run `noorm ci init --name test --test` before `npm test`, as [Building your SDK](/getting-started/building-your-sdk#where-does-the-connection-come-from) shows. `requireTest` checks the resolved `isTest`, so [inline SDK contexts](/reference/sdk#createcontext-options) can instead inherit a test-marked stage without storing a config.
 
 
 ## Which shape does my pipeline need?
@@ -66,7 +66,7 @@ flowchart TD
 | | Test CI | Prod CI |
 |---|---|---|
 | Database | Created in the job | Shared, holds data |
-| Identity | None, unless SDK tests need a stored test config | Enrolled once, read from `NOORM_IDENTITY_*` |
+| Identity | None for env-only or inline connections, unless decrypting state or vault secrets | Enrolled once, read from `NOORM_IDENTITY_*` |
 | Vault secrets | Unavailable | Decrypted when templates render |
 
 If a change or template reads `$.secrets.KEY` and the key lives in the team vault, you need prod CI.
@@ -165,7 +165,7 @@ rm ci-secrets.env
 | `ci init` exits 1: `State already exists at … Use --force to overwrite.` | A cached or committed `.noorm/state/state.enc` is in the workspace | `ci init --force` backs it up first. At a terminal it also needs `--yes` |
 | `ci identity enroll` exits 1: `About to grant irrevocable vault access` | `--yes` is missing, and sealing a vault key cannot be undone | Check the fingerprint it prints, then rerun with `--yes` |
 | `change ff` exits 1: `requires confirmation` | A stage named like the config (`prod`) has `protected: true`, which caps `user` at `operator` | Set `NOORM_YES=1` on the deploy step |
-| Tests fail: `Config "ci" does not have isTest: true` | `ci init` leaves `isTest` false, and an environment-only config has it false too | `ci init --test`. `ci identity new` mints a throwaway identity for it |
+| Tests fail: `Config "ci" does not have isTest: true` | `ci init` leaves `isTest` false, and an environment-only config has it false too | `ci init --test`, run by a person: it is refused on the agent channel. `ci identity new` mints a throwaway identity for it |
 | `Secret "STRIPE_KEY" not found (searched: config-local, global-local, vault)` | A template reads a secret this job does not have | Use prod CI for vault secrets, or `ci secrets` for job-scoped ones |
 | `ci secrets` exits 3 | Some keys were stored and some failed | Fix the errors it lists, then rerun. Stored keys are skipped |
 

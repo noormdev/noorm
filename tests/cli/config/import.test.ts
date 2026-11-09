@@ -155,6 +155,86 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
     });
 
+    it('imports configured custom roles and rejects unknown role references', () => {
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    auditor:\n      extends: viewer\n');
+        const valid = writeConfigFile('custom.json', {
+            name: 'custom',
+            access: { user: 'auditor', agent: false },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        expect(runImport(valid).status).toBe(0);
+        expect(readPersistedAccess('custom')).toEqual({ user: 'auditor', agent: false });
+
+        const invalid = writeConfigFile('unknown.json', {
+            name: 'unknown',
+            access: { user: 'missing', agent: false },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        const result = runImport(invalid);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain('Unknown access role');
+
+    });
+    it('denies agent creation even with --yes', () => {
+
+        const path = writeConfigFile('agent.json', {
+            name: 'agent-created',
+            access: { user: 'admin', agent: 'admin' },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        const result = spawnSync('node', [CLI, 'config', 'import', path, '--yes'], {
+            cwd: tmpDir, encoding: 'utf-8', env: { ...identityEnv, NOORM_CHANNEL: 'agent' },
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain('user channel');
+
+    });
+
+    it('checks source permission and preserves protected ceilings on copy', () => {
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'),
+            'stages:\n  prod:\n    defaults:\n      protected: true\n  prod2:\n    defaults:\n      protected: true\n');
+        const path = writeConfigFile('prod.json', {
+            name: 'prod',
+            access: { user: 'admin', agent: 'admin' },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        expect(runImport(path).status).toBe(0);
+        const runCopy = (dest: string, env = identityEnv, args: string[] = ['--yes']) =>
+            spawnSync('node', [CLI, 'config', 'cp', 'prod', dest, ...args], {
+                cwd: tmpDir, encoding: 'utf-8', env,
+            });
+        const refused = runCopy('unprotected');
+        expect(refused.status).not.toBe(0);
+        expect(refused.stdout + refused.stderr).toContain('protected-stage config to an unprotected');
+        expect(spawnSync('node', [CLI, 'config', 'list', '--json'], {
+            cwd: tmpDir, encoding: 'utf-8', env: identityEnv,
+        }).stdout).not.toContain('"unprotected"');
+        expect(runCopy('prod2', { ...identityEnv, NOORM_CHANNEL: 'agent' }).status).not.toBe(0);
+        expect(runCopy('prod2', identityEnv, []).status).not.toBe(0);
+        expect(runCopy('prod2').status).toBe(0);
+
+    });
+
+    it('denies copying a viewer source even for a human', () => {
+
+        const path = writeConfigFile('viewer.json', {
+            name: 'viewer-source',
+            access: { user: 'viewer', agent: 'viewer' },
+            connection: { dialect: 'sqlite', database: ':memory:' },
+        });
+        expect(runImport(path).status).toBe(0);
+        const result = spawnSync('node', [CLI, 'config', 'cp', 'viewer-source', 'copy', '--yes'], {
+            cwd: tmpDir, encoding: 'utf-8', env: identityEnv,
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain('config:write');
+
+    });
+
+
     it('rejects config JSON missing required fields instead of silently importing it', () => {
 
         const path = writeConfigFile('broken.json', { protected: true });

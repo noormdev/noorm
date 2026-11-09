@@ -5,7 +5,8 @@
  * Unlike encrypted configs (credentials), settings are version controlled
  * and shared across the team via .noorm/settings.yml
  */
-import type { ConfigAccess } from '../policy/index.js';
+import type { ConfigAccess, RoleDefinition } from '../policy/types.js';
+export type { RoleDefinition } from '../policy/types.js';
 
 /**
  * Secret type hints for CLI input handling.
@@ -59,6 +60,8 @@ export interface StageDefaults {
     user?: string;
     password?: string;
     ssl?: boolean;
+    type?: 'local' | 'remote';
+    access?: ConfigAccess;
     isTest?: boolean;
     /** Settings-stage vocabulary — distinct from the removed `Config.protected`; see docs/spec/config-access-roles.md. */
     protected?: boolean;
@@ -174,6 +177,9 @@ export interface PathConfig {
 
     /** Path to change files (relative to project root) */
     changes?: string;
+
+    /** Path to pipelines (relative to project root) */
+    pipelines?: string;
 }
 
 /**
@@ -263,6 +269,10 @@ export interface UiConfig {
 
 }
 
+export interface AccessSettings {
+    roles?: Record<string, RoleDefinition>;
+}
+
 /**
  * Complete settings configuration.
  *
@@ -296,6 +306,9 @@ export interface Settings {
 
     /** Terminal UI behaviour */
     ui?: UiConfig;
+
+    /** Project-defined access roles and built-in role overrides */
+    access?: AccessSettings;
 
 }
 

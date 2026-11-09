@@ -18,6 +18,52 @@ describe('settings: schema validation', () => {
             expect(() => validateSettings({})).not.toThrow();
 
         });
+        it('preserves custom roles, inheritance and built-in overrides when parsing', () => {
+
+            const access = {
+                roles: {
+                    viewer: { permissions: { explore: 'deny' } },
+                    analyst: { extends: 'viewer', permissions: { 'sql:read': 'allow' } },
+                    lead: { extends: 'analyst', permissions: { 'sql:write': 'confirm' } },
+                    isolated: { permissions: { 'debug:read': 'deny' } },
+                },
+            } as const;
+
+            expect(parseSettings({ access }).access).toEqual(access);
+
+        });
+
+        it('rejects unknown permissions, invalid cells and unexpected role fields', () => {
+
+            for (const role of [
+                { permissions: { 'sql:reed': 'allow' } },
+                { permissions: { 'sql:read': 'sometimes' } },
+                { permission: { explore: 'allow' } },
+            ]) {
+
+                expect(() => parseSettings({ access: { roles: { analyst: role } } }))
+                    .toThrow(SettingsValidationError);
+
+            }
+
+        });
+
+        it('rejects unknown parents, cycles and built-in inheritance', () => {
+
+            for (const roles of [
+                { analyst: { extends: 'missing' } },
+                { analyst: { extends: 'analyst' } },
+                { analyst: { extends: 'lead' }, lead: { extends: 'analyst' } },
+                { viewer: { extends: 'operator' } },
+            ]) {
+
+                expect(() => validateSettings({ access: { roles } }))
+                    .toThrow(SettingsValidationError);
+
+            }
+
+        });
+
 
         it('should accept valid complete settings', () => {
 
@@ -570,7 +616,7 @@ describe('settings: schema validation', () => {
                     },
                 });
 
-                expect.fail('Should have thrown');
+                throw new Error('Expected settings validation to fail');
 
             }
             catch (err) {

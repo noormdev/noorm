@@ -24,7 +24,11 @@ TAPES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODE="${1:-fresh}"
 
 PG_CONTAINER="noorm-test-postgres"
-PG_DB="noorm_demo"
+PG_DB="${NOORM_DEMO_DATABASE:-noorm_demo}"
+if [[ ! "$PG_DB" =~ ^noorm_demo(_[a-z0-9_]+)?$ ]]; then
+    echo "error: demo database must be noorm_demo or noorm_demo_<suffix>" >&2
+    exit 1
+fi
 PG_PORT=15432
 PG_USER=noorm_test
 PG_PASS=noorm_test
@@ -54,7 +58,7 @@ case "$DEMO_ROOT" in
 esac
 
 rm -rf "$DEMO_ROOT"
-mkdir -p "$DEMO_ROOT/home" "$DEMO_ROOT/project" "$DEMO_ROOT/bin"
+mkdir -p "$DEMO_ROOT/home" "$DEMO_ROOT/project/db" "$DEMO_ROOT/bin"
 
 # A `noorm` on PATH backed by this working tree, so the run/change/TUI tapes
 # record the code you have checked out rather than the last published release.
@@ -83,12 +87,12 @@ SCHEMA="${NOORM_DEMO_SCHEMA:-demo}"
 
 case "$SCHEMA" in
     demo)
-        cp -R "$(dirname "${BASH_SOURCE[0]}")/demo-project/sql" "$DEMO_ROOT/project/"
-        cp -R "$(dirname "${BASH_SOURCE[0]}")/demo-project/changes" "$DEMO_ROOT/project/"
+        cp -R "$(dirname "${BASH_SOURCE[0]}")/demo-project/sql" "$DEMO_ROOT/project/db/"
+        cp -R "$(dirname "${BASH_SOURCE[0]}")/demo-project/changes" "$DEMO_ROOT/project/db/"
         ;;
     todo-db)
-        cp -R "$REPO_ROOT/examples/todo-db/sql" "$DEMO_ROOT/project/"
-        cp -R "$REPO_ROOT/examples/todo-db/changes" "$DEMO_ROOT/project/"
+        cp -R "$REPO_ROOT/examples/todo-db/sql" "$DEMO_ROOT/project/db/"
+        cp -R "$REPO_ROOT/examples/todo-db/changes" "$DEMO_ROOT/project/db/"
         ;;
     *)
         echo "error: unknown NOORM_DEMO_SCHEMA '$SCHEMA' (demo|todo-db)" >&2
@@ -143,7 +147,7 @@ if [ "$MODE" = "bootstrapped" ] || [ "$MODE" = "built" ] || [ "$MODE" = "seeded"
     NOORM_CONNECTION_DATABASE="$PG_DB" \
     NOORM_CONNECTION_USER="$PG_USER" \
     NOORM_CONNECTION_PASSWORD="$PG_PASS" \
-        node "$NOORM_BIN" ci init --name dev --force >/dev/null
+        node "$NOORM_BIN" ci init --name dev --test --force >/dev/null
 fi
 
 # `built` also applies the schema, so the TUI opens on a real database instead
@@ -151,7 +155,7 @@ fi
 # is the state worth showing.
 if [ "$MODE" = "built" ] || [ "$MODE" = "seeded" ]; then
 
-    node "$NOORM_BIN" run build >/dev/null 2>&1
+    node "$NOORM_BIN" run build
 fi
 
 # `seeded` adds rows on top. The schema tapes only ever show structure, so an

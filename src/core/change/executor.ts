@@ -36,6 +36,7 @@ import { computeChecksum, computeCombinedChecksum } from '../runner/checksum.js'
 import { StatementWatcher } from '../runner/statement-watcher.js';
 import { executeSqlBody } from '../runner/mssql-batches.js';
 import { getSqlErrorMessage } from '../shared/index.js';
+import { approvedSql, assertApprovedChange } from '../shared/approved-content.js';
 import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory, decideNeedsRunFile } from './history.js';
@@ -135,6 +136,7 @@ export async function executeChange(
 
     // Get files to execute
     const files = change.changeFiles;
+    assertApprovedChange(change.name, 'change', files);
 
     if (files.length === 0) {
 
@@ -291,6 +293,7 @@ export async function revertChange(
     }
 
     const files = change.revertFiles;
+    assertApprovedChange(change.name, 'revert', files);
 
     // Compute checksum
     const [checksums, checksumErr] = await attempt(() =>
@@ -1131,7 +1134,7 @@ async function validateFilesHaveContent(files: ChangeFile[]): Promise<boolean> {
 
         }
 
-        const [content, err] = await attempt(() => readFile(file.path, 'utf-8'));
+        const [content, err] = await attempt(async () => approvedSql(file.path) ?? readFile(file.path, 'utf-8'));
 
         if (err) {
 
@@ -1332,6 +1335,9 @@ async function writeDryRunOutput(
  * Load and optionally render a SQL file.
  */
 async function loadAndRenderFile(context: ChangeContext, filepath: string): Promise<string> {
+
+    const snapshot = approvedSql(filepath);
+    if (snapshot !== undefined) return snapshot;
 
     if (isTemplate(filepath)) {
 

@@ -10,6 +10,7 @@ import { defineCommand } from 'citty';
 import type { Kysely } from 'kysely';
 
 import { fetchList, fetchDetail } from '../../core/explore/index.js';
+import { gatedExplore } from '../../sdk/namespaces/db.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -39,13 +40,13 @@ const triggersCommand = defineCommand({
                 args,
                 fn: (ctx, logger) => {
 
-                    return fetchDetail(
+                    return ctx.noorm.db[gatedExplore]('triggers', (gate) => fetchDetail(
                         ctx.kysely as Kysely<unknown>,
                         ctx.dialect,
                         'triggers',
                         args.name as string,
-                        args.schema,
-                    ).then((res) => {
+                        { schema: args.schema, gate },
+                    )).then((res) => {
 
                         if (res && !args.json) {
 
@@ -92,7 +93,7 @@ const triggersCommand = defineCommand({
             args,
             fn: (ctx, logger) => {
 
-                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'triggers', { schema: args.schema }).then((res) => {
+                return ctx.noorm.db[gatedExplore]('triggers', (gate) => fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'triggers', { schema: args.schema, gate })).then((res) => {
 
                     if (!args.json) {
 

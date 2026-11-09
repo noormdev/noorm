@@ -4,6 +4,8 @@
  * Defines the context object ($) available in templates, loader interfaces,
  * and configuration options for the template engine.
  */
+import type { PipelineInputSnapshot } from '../pipeline/types.js';
+import type { Dialect } from '../connection/types.js';
 
 /**
  * Built-in helper functions available on the template context.
@@ -22,7 +24,7 @@ export interface BuiltInHelpers {
 
     /**
      * SQL-escape a string value.
-     * Escapes single quotes by doubling them.
+     * Escapes single quotes by doubling them. Throws in pipeline renders; use `$.quote` there.
      *
      * @example
      * ```sql
@@ -33,6 +35,8 @@ export interface BuiltInHelpers {
 
     /**
      * SQL-escape and wrap in single quotes.
+     * In pipelines the literal depends on the dialect: a MySQL hex literal, an MSSQL N'' literal,
+     * and a PostgreSQL U&'' literal that fails instead of injecting when standard_conforming_strings is off.
      *
      * @example
      * ```sql
@@ -46,7 +50,7 @@ export interface BuiltInHelpers {
      *
      * @example
      * ```sql
-     * INSERT INTO config (data) VALUES ('{%~ $.json(configObject) %}');
+     * INSERT INTO config (data) VALUES ({%~ $.quote($.json(configObject)) %});
      * ```
      */
     json: (value: unknown) => string;
@@ -82,7 +86,7 @@ export interface TemplateContext extends BuiltInHelpers {
      * Active configuration object.
      * Only available if no `config.*` file exists in the template directory.
      */
-    config?: Record<string, unknown>;
+    config?: object;
 
     /**
      * Decrypted secrets for the active config.
@@ -98,6 +102,9 @@ export interface TemplateContext extends BuiltInHelpers {
      * Environment variables.
      */
     env: Record<string, string | undefined>;
+
+    /** Reserved invocation inputs when rendering a pipeline. */
+    input?: PipelineInputSnapshot;
 
     /**
      * Auto-loaded data files and inherited helpers.
@@ -143,7 +150,7 @@ export interface RenderOptions {
     /**
      * Active configuration to include in context.
      */
-    config?: Record<string, unknown>;
+    config?: object;
 
     /**
      * Secrets for the active config.
@@ -161,6 +168,12 @@ export interface RenderOptions {
      * Defaults to process.cwd().
      */
     projectRoot?: string;
+
+    /** Validated invocation inputs reserved for pipeline steps and includes. */
+    pipelineInput?: PipelineInputSnapshot;
+
+    /** Resolved target for pipeline SQL literals, including nested includes. */
+    pipelineDialect?: Dialect;
 }
 
 /**

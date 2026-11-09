@@ -23,7 +23,7 @@ This scaffolds a project if there is none, then builds it.
 
 `--yes` (or `-y`) answers a confirmation for one command. `NOORM_YES` answers for every command: any non-empty value counts except `0` and `false`, in any letter case. The flag beats `NOORM_YES=0`.
 
-A run with no terminal stops at the first gate it cannot answer. The role cells come from [Access roles](/guide/environments/configs#access-roles), and on the `agent` channel `confirm` is `deny`:
+A run with no terminal stops at the first gate it cannot answer. The role cells come from [Access roles](/guide/environments/configs#access-roles), and an agent-channel CLI call treats `confirm` as `deny`. MCP can separately mediate human approval through a supporting client.
 
 ```mermaid
 flowchart TD
@@ -48,6 +48,7 @@ flowchart TD
 | `db transfer` with a `.dtzx` file | `--passphrase`, or exit 2 |
 | `sql repl` | `--yes` exits 2. Use `noorm sql query "SELECT 1"` or `--file query.sql` |
 | `settings edit` | `--yes` exits 2. Edit `.noorm/settings.yml`, then `noorm settings build` |
+| `pipeline run <slug>` | Supply required inputs with `--input` or generated flags. Missing values do not prompt in CI, JSON, `--yes`, or agent mode. See [pipeline CLI](/cli/pipeline). |
 | `settings secret` | `--yes` exits 2. Edit `secrets:`, and set values with `noorm secret set <key> --stdin` |
 
 

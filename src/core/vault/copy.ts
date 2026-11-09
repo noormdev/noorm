@@ -7,6 +7,9 @@
 import { withDualConnection } from '../db/dual.js';
 import type { Config } from '../config/types.js';
 import { observer } from '../observer.js';
+import { getNoormTables, noormDb } from '../shared/tables.js';
+import type { NoormDatabase } from '../shared/index.js';
+import { registerIdentity } from '../identity/sync.js';
 
 import type { Channel } from '../policy/index.js';
 
@@ -28,7 +31,7 @@ export interface VaultCopyOptions {
     /** Overwrite existing secrets in destination (default: false) */
     force?: boolean;
 
-    /** Who is asking. Defaults to `user`; gates source read and dest write. */
+    /** Who is asking. Defaults to `user`; gates source and destination access. */
     channel?: Channel;
 
     /**
@@ -88,7 +91,9 @@ export async function copyVaultSecrets(
     identityHash: string,
     privateKey: string,
     publicKey: string,
-    options: VaultCopyOptions = {},
+    options: VaultCopyOptions & {
+        withDestinationRead?: (action: () => Promise<VaultCopyResult>) => Promise<VaultCopyResult>;
+    } = {},
 ): Promise<[VaultCopyResult | null, Error | null]> {
 
     const { force = false, channel = 'user', dryRun = false } = options;
@@ -110,7 +115,7 @@ export async function copyVaultSecrets(
     });
 
     return withDualConnection(
-        { sourceConfig, destConfig },
+        { sourceConfig, destConfig, ensureSchema: !dryRun },
         async (ctx) => {
 
             // Get vault key from source
@@ -129,145 +134,190 @@ export async function copyVaultSecrets(
 
             // Check destination vault status
             const destStatus = await getVaultStatus(ctx.destination.db, identityHash, ctx.destination.dialect);
-            let destVaultKey: Buffer | null;
+            const copy = async (): Promise<VaultCopyResult> => {
 
-            if (!destStatus.isInitialized) {
+                if (destStatus.isInitialized) {
 
-                if (dryRun) {
+                    assertVaultPolicy({ configName: destConfig.name, access: destConfig.access, channel }, 'vault:read');
 
-                    // A dry run must not create a vault. Report the intent and
-                    // carry on with the source-side checks the caller wants.
-                    destVaultKey = null;
+                }
+                let destVaultKey: Buffer | null;
+
+                if (!destStatus.isInitialized) {
+
+                    if (dryRun) {
+
+                        // A dry run must not create a vault. Report the intent and
+                        // carry on with the source-side checks the caller wants.
+                        destVaultKey = null;
+
+                    }
+                    else {
+
+                        // The destination may have tracking tables but no row for
+                        // this identity. Register the source's real metadata before
+                        // sealing a new vault key to that identity.
+                        const sourceIdentity = await noormDb(ctx.source.db, ctx.source.dialect)
+                            .selectFrom(getNoormTables(ctx.source.dialect).identities as keyof NoormDatabase)
+                            .select(['email', 'name', 'machine', 'os', 'public_key', 'registered_at'])
+                            .where('identity_hash', '=', identityHash)
+                            .executeTakeFirst();
+                        if (!sourceIdentity || sourceIdentity.public_key !== publicKey) {
+
+                            throw new Error('Source identity does not match the supplied public key');
+
+                        }
+                        const registration = await registerIdentity(ctx.destination.db, {
+                            identityHash,
+                            email: sourceIdentity.email,
+                            name: sourceIdentity.name,
+                            machine: sourceIdentity.machine,
+                            os: sourceIdentity.os,
+                            publicKey: sourceIdentity.public_key,
+                            createdAt: new Date(sourceIdentity.registered_at).toISOString(),
+                        }, ctx.destination.dialect);
+                        if (!registration.ok) {
+
+                            throw new Error(`Failed to register identity on destination: ${registration.error ?? 'unknown error'}`);
+
+                        }
+
+                        // Initialize vault on destination
+                        const [newKey, initErr] = await initializeVault(
+                            ctx.destination.db,
+                            identityHash,
+                            publicKey,
+                            ctx.destination.dialect,
+                        );
+
+                        if (initErr) {
+
+                            throw new Error(`Failed to initialize vault on destination: ${initErr.message}`);
+
+                        }
+
+                        destVaultKey = newKey;
+
+                    }
+
+                }
+                else if (!destStatus.hasAccess) {
+
+                    throw new Error(`No vault access on destination config "${destConfig.name}"`);
+
+                }
+                else if (!dryRun) {
+
+                    destVaultKey = await getVaultKey(
+                        ctx.destination.db,
+                        identityHash,
+                        privateKey,
+                        ctx.destination.dialect,
+                    );
 
                 }
                 else {
 
-                    // Initialize vault on destination
-                    const [newKey, initErr] = await initializeVault(
+                    destVaultKey = null;
+
+                }
+
+                // Dry runs never encrypt destination values, so they need no destination key.
+                if (!destVaultKey && !dryRun) {
+
+                    throw new Error('Failed to get vault key for destination');
+
+                }
+
+                // Fetch secrets from source
+                const allSourceSecrets = await getAllVaultSecrets(ctx.source.db, sourceVaultKey, ctx.source.dialect);
+                const secretsToCopy = keys === 'all'
+                    ? Object.entries(allSourceSecrets)
+                    : Object.entries(allSourceSecrets).filter(([key]) => keys.includes(key));
+
+                const result: VaultCopyResult = {
+                    copied: [],
+                    skipped: [],
+                    errors: [],
+                };
+
+                // Check for keys that don't exist in source
+                if (keys !== 'all') {
+
+                    for (const key of keys) {
+
+                        if (!allSourceSecrets[key]) {
+
+                            result.errors.push({
+                                key,
+                                error: `Secret "${key}" not found in source vault`,
+                            });
+
+                        }
+
+                    }
+
+                }
+
+                // Copy each secret to destination
+                for (const [key, secret] of secretsToCopy) {
+
+                    const exists = destStatus.isInitialized
+                        ? await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect)
+                        : false;
+
+                    if (exists && !force) {
+
+                        result.skipped.push(key);
+                        continue;
+
+                    }
+
+                    if (dryRun) {
+
+                        result.copied.push(key);
+                        continue;
+
+                    }
+
+                    const setBy = `copied from ${sourceConfig.name}`;
+                    const [, setErr] = await setVaultSecret(
                         ctx.destination.db,
-                        identityHash,
-                        publicKey,
-                        ctx.destination.dialect,
-                    );
-
-                    if (initErr) {
-
-                        throw new Error(`Failed to initialize vault on destination: ${initErr.message}`);
-
-                    }
-
-                    destVaultKey = newKey;
-
-                }
-
-            }
-            else if (!destStatus.hasAccess) {
-
-                throw new Error(`No vault access on destination config "${destConfig.name}"`);
-
-            }
-            else {
-
-                destVaultKey = await getVaultKey(
-                    ctx.destination.db,
-                    identityHash,
-                    privateKey,
-                    ctx.destination.dialect,
-                );
-
-            }
-
-            // A dry run against an uninitialized destination has no key and
-            // needs none — nothing is encrypted. Every other path does.
-            if (!destVaultKey && !(dryRun && !destStatus.isInitialized)) {
-
-                throw new Error('Failed to get vault key for destination');
-
-            }
-
-            // Fetch secrets from source
-            const allSourceSecrets = await getAllVaultSecrets(ctx.source.db, sourceVaultKey, ctx.source.dialect);
-            const secretsToCopy = keys === 'all'
-                ? Object.entries(allSourceSecrets)
-                : Object.entries(allSourceSecrets).filter(([key]) => keys.includes(key));
-
-            const result: VaultCopyResult = {
-                copied: [],
-                skipped: [],
-                errors: [],
-            };
-
-            // Check for keys that don't exist in source
-            if (keys !== 'all') {
-
-                for (const key of keys) {
-
-                    if (!allSourceSecrets[key]) {
-
-                        result.errors.push({
-                            key,
-                            error: `Secret "${key}" not found in source vault`,
-                        });
-
-                    }
-
-                }
-
-            }
-
-            // Copy each secret to destination
-            for (const [key, secret] of secretsToCopy) {
-
-                const exists = destStatus.isInitialized
-                    ? await vaultSecretExists(ctx.destination.db, key, ctx.destination.dialect)
-                    : false;
-
-                if (exists && !force) {
-
-                    result.skipped.push(key);
-                    continue;
-
-                }
-
-                if (dryRun) {
-
-                    result.copied.push(key);
-                    continue;
-
-                }
-
-                const setBy = `copied from ${sourceConfig.name}`;
-                const [, setErr] = await setVaultSecret(
-                    ctx.destination.db,
                     destVaultKey as Buffer,
                     key,
                     secret.value,
                     setBy,
                     ctx.destination.dialect,
-                );
+                    );
 
-                if (setErr) {
+                    if (setErr) {
 
-                    result.errors.push({ key, error: setErr.message });
+                        result.errors.push({ key, error: setErr.message });
+
+                    }
+                    else {
+
+                        result.copied.push(key);
+
+                    }
 
                 }
-                else {
 
-                    result.copied.push(key);
+                observer.emit('vault:copy:completed', {
+                    source: sourceConfig.name,
+                    destination: destConfig.name,
+                    copied: result.copied.length,
+                    skipped: result.skipped.length,
+                    errors: result.errors.length,
+                });
 
-                }
+                return result;
 
-            }
+            };
 
-            observer.emit('vault:copy:completed', {
-                source: sourceConfig.name,
-                destination: destConfig.name,
-                copied: result.copied.length,
-                skipped: result.skipped.length,
-                errors: result.errors.length,
-            });
-
-            return result;
+            return destStatus.isInitialized && options.withDestinationRead
+                ? options.withDestinationRead(copy)
+                : copy();
 
         },
     );

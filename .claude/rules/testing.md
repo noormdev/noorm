@@ -75,7 +75,7 @@ expect(events[0].status).toBe('failed');
 
 ## Module mocking
 
-Bun's `mock.module` registry is process-global and never restores, so a mocking file poisons every file loaded after it. CI works around this by splitting the suite into five separate processes. The mechanics and the reasoning are in the root `CLAUDE.md`; read it before adding `mock.module` to a new file.
+Bun's `mock.module` registry is process-global and never restores, so a mocking file poisons every file loaded after it. CI works around this by splitting the suite into six separate processes. The mechanics and the reasoning are in the root `CLAUDE.md`; read it before adding `mock.module` to a new file.
 
 
 ## Helpers

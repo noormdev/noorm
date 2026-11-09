@@ -31,6 +31,7 @@ import React from 'react';
 
 import type { ColumnDetail, TableDetail } from '../../../../src/core/explore/types.js';
 import type { ConfigAccess } from '../../../../src/core/policy/index.js';
+import { attachPolicyContext } from '../../../../src/core/policy/index.js';
 
 import { FocusProvider } from '../../../../src/tui/focus.js';
 import {
@@ -51,6 +52,7 @@ import {
 import { createRecordingDb } from '../../../core/explore/recording-db.js';
 
 const OPEN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(OPEN, { roles: {} });
 
 const GATE = { configName: 'test', access: OPEN, channel: 'user' } as const;
 

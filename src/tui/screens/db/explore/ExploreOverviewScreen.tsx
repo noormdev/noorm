@@ -25,10 +25,10 @@ import { useFocusScope } from '../../../focus.js';
 import { useAppContext, useExploreFilters, useSettings } from '../../../app-context.js';
 import { useOnScreenPopped, useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { Panel, Spinner } from '../../../components/index.js';
-import { fetchOverview } from '../../../../core/explore/index.js';
+import { fetchOverview, userGate } from '../../../../core/explore/index.js';
 import { CELL_GAP, LABEL_CAP, cellWidth, fitWidths, rowBudget } from './layout.js';
 
-import type { ExploreOverview, ExploreOptions } from '../../../../core/explore/index.js';
+import type { ExploreOverview } from '../../../../core/explore/index.js';
 
 /**
  * Category configuration for navigation.
@@ -156,11 +156,10 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     const [error, setError] = useState<string | null>(null);
 
     // Include noorm tables only in verbose mode
-    const exploreOptions: ExploreOptions = {
+    const exploreOptions = {
         includeNoormTables: settings?.logging?.level === 'verbose',
     };
 
-    // Clear explore filter state when navigating away from the explore section
     useOnScreenPopped('db/explore', () => {
 
         clearFilters();
@@ -173,7 +172,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     // Load overview data when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db || !dialect) {
+        if (!db || !dialect || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -186,7 +185,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
 
         const [result, err] = await attempt(async () => {
 
-            return await fetchOverview(db as Kysely<unknown>, dialect, exploreOptions);
+            return await fetchOverview(db as Kysely<unknown>, dialect, { ...exploreOptions, gate: userGate(activeConfig) });
 
         });
 

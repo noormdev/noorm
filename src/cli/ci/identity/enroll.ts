@@ -21,8 +21,8 @@ import { defineCommand } from 'citty';
 import { generateKeyPair } from '../../../core/identity/crypto.js';
 import { computeIdentityHash } from '../../../core/identity/hash.js';
 import { isValidKeyHex } from '../../../core/identity/storage.js';
-import { resolveChannel } from '../../../core/policy/index.js';
-import { propagateVaultKeyToChecked, checkVaultPolicy } from '../../../core/vault/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../../core/policy/index.js';
+import { propagateVaultKeyChecked, checkVaultPolicy } from '../../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../../core/vault/index.js';
 import { decryptVaultKey } from '../../../core/vault/key.js';
 import { getNoormTables, noormDb } from '../../../core/shared/tables.js';
@@ -93,6 +93,18 @@ const enrollCommand = defineCommand({
                     );
 
                 }
+                const readPolicy = checkVaultPolicy(gate, 'vault:read');
+                if (!readPolicy.allowed) {
+
+                    throw new Error(readPolicy.blockedReason ?? 'Cannot read the vault.');
+
+                }
+                if (readPolicy.requiresConfirmation && !isYesMode(args)) {
+
+                    throw new Error(`Reading the vault requires confirmation (${readPolicy.confirmationPhrase}). Pass --yes to confirm.`);
+
+                }
+
 
                 let newPublicKey: string;
                 let newPrivateKey: string | null = null;
@@ -192,14 +204,8 @@ const enrollCommand = defineCommand({
 
                 if (existing) {
 
-                    // The hash's only secret input is the public key, which the
-                    // air-gapped flow tells you to circulate in the clear. Anyone
-                    // able to INSERT into the identities table — no vault access
-                    // needed — can therefore pre-register this hash carrying their
-                    // own key, and propagation below encrypts the vault key to
-                    // whatever the ROW holds, not to what was presented here.
-                    // Matching on hash alone is what made that a vault-theft
-                    // primitive; the presented key must match the stored one.
+                    // The public key is part of the approved recipient, not
+                    // just an input to the identity hash.
                     if (existing.public_key !== newPublicKey) {
 
                         throw new Error(
@@ -260,13 +266,31 @@ const enrollCommand = defineCommand({
 
                 }
 
-                const propagated = await propagateVaultKeyToChecked(
-                    gate,
-                    ctx.kysely,
-                    vaultKey,
-                    identityHash,
-                    ctx.dialect,
-                );
+                let propagated = alreadyHasVaultAccess;
+                if (!propagated) {
+
+                    const result = await withPolicyConfirmation(enrollConfig, ['vault:propagate'], () =>
+                        propagateVaultKeyChecked(gate, ctx.kysely, vaultKey, ctx.dialect, {
+                            reviewedRecipients: [{ identityHash, publicKey: newPublicKey, name, email }],
+                        }),
+                    );
+                    propagated = result.propagatedTo.includes(identityHash);
+
+                    if (!propagated) {
+
+                        // A concurrent enrollment may have granted this exact
+                        // recipient first. Never accept access on a replacement key.
+                        const [current] = await attempt(() => ndb
+                            .selectFrom(tables.identities as keyof NoormDatabase)
+                            .select('encrypted_vault_key')
+                            .where('identity_hash', '=', identityHash)
+                            .where('public_key', '=', newPublicKey)
+                            .executeTakeFirst());
+                        propagated = !!current?.encrypted_vault_key;
+
+                    }
+
+                }
 
                 if (!propagated) {
 

@@ -406,13 +406,7 @@ describe('version: state', () => {
 
             });
 
-            /**
-             * v2 drops `protected` permanently. Anything it gets wrong here
-             * cannot be reconstructed afterwards, so the binding rule is
-             * that a config must never come out of it less protected than
-             * it went in.
-             */
-            describe('fail-closed repair', () => {
+            describe('legacy access migration', () => {
 
                 function migrateConfig(rawConfig: Record<string, unknown>): Record<string, unknown> {
 
@@ -442,44 +436,22 @@ describe('version: state', () => {
 
                 });
 
-                it('should repair an empty access instead of freezing it in', () => {
+                it('preserves malformed explicit access instead of substituting a role', () => {
 
-                    // `{}` is truthy, so it used to pass straight through
-                    // while `protected` was discarded — leaving a config no
-                    // command could ever use again and no way back.
-                    expect(migrateConfig({ name: 'prod', protected: true, access: {} })['access'])
-                        .toEqual({ user: 'viewer', agent: 'viewer' });
+                    for (const access of [{}, { user: 'admin' }, { agent: 'admin' }, null,
+                        { user: '', agent: 'viewer' }, { user: 'admin', agent: '' }]) {
 
-                });
-
-                it('should fill a half-populated access rather than persisting it', () => {
-
-                    expect(migrateConfig({ name: 'prod', protected: true, access: { user: 'admin' } })['access'])
-                        .toEqual({ user: 'admin', agent: 'viewer' });
-
-                });
-
-                it('should never produce an access zod would reject', () => {
-
-                    const malformed = [
-                        { name: 'prod', protected: true, access: {} },
-                        { name: 'prod', access: { user: 'admin' } },
-                        { name: 'prod', access: { agent: 'admin' } },
-                        { name: 'prod', access: { user: 'superuser', agent: 'admin' } },
-                        { name: 'prod', protected: 'yes' },
-                    ];
-
-                    for (const rawConfig of malformed) {
-
-                        const access = migrateConfig(rawConfig)['access'] as Record<string, unknown>;
-
-                        expect({ input: rawConfig, userValid: ['viewer', 'operator', 'admin'].includes(access['user'] as string) })
-                            .toEqual({ input: rawConfig, userValid: true });
-
-                        expect({ input: rawConfig, agentValid: access['agent'] === false || ['viewer', 'operator', 'admin'].includes(access['agent'] as string) })
-                            .toEqual({ input: rawConfig, agentValid: true });
+                        expect(migrateConfig({ name: 'prod', protected: true, access }))
+                            .toEqual({ name: 'prod', protected: true, access });
 
                     }
+
+                });
+
+                it('preserves custom roles and legacy mcp assignments', () => {
+
+                    expect(migrateConfig({ name: 'prod', access: { user: 'auditor', mcp: false } })['access'])
+                        .toEqual({ user: 'auditor', agent: false });
 
                 });
 
@@ -540,14 +512,25 @@ describe('version: state', () => {
 
             });
 
-            it('should keep failing closed on a shape it cannot read', () => {
+            it('preserves custom names and malformed access', () => {
 
-                // Same one-directional rule v2 established: an unrecognised
-                // stored access may only make a config more restrictive.
                 expect(migrateFromV2({ user: 'admin', mcp: 'superuser' }))
-                    .toEqual({ user: 'admin', agent: 'viewer' });
+                    .toEqual({ user: 'admin', agent: 'superuser' });
+                expect(migrateFromV2({})).toEqual({});
+                expect(migrateFromV2({ user: 'admin', agent: null, mcp: 'viewer' }))
+                    .toEqual({ user: 'admin', agent: null, mcp: 'viewer' });
 
-                expect(migrateFromV2({})).toEqual({ user: 'viewer', agent: 'viewer' });
+            });
+
+            it('leaves absent access for legacy protected backfill', () => {
+
+                const migrated = migrateState({
+                    schemaVersion: 2,
+                    configs: { prod: { name: 'prod', protected: true } },
+                });
+                const config = (migrated['configs'] as Record<string, Record<string, unknown>>)['prod']!;
+                expect(config['protected']).toBe(true);
+                expect(config).not.toHaveProperty('access');
 
             });
 

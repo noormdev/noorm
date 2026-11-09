@@ -7,7 +7,7 @@ paths:
   - "tests/workers/**"
 ---
 
-Domain: worker-bridge. Hub-and-spoke worker threads for DT serialization and DB connection worker.
+Domain: worker-bridge. Hub-and-spoke worker threads for DT serialization and database connections.
 
 Map:
   - docs/wiki/worker-bridge.md

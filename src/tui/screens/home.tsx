@@ -30,7 +30,7 @@ import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../utils/inde
 import { getCurrentVersion } from '../../core/update/checker.js';
 import { CURRENT_VERSIONS } from '../../core/version/types.js';
 import { getFullVersionRecord, type FullVersionRecord } from '../../core/version/schema/index.js';
-import { fetchOverview, type ExploreOverview } from '../../core/explore/index.js';
+import { fetchOverview, userGate, type ExploreOverview } from '../../core/explore/index.js';
 import { ChangeHistory } from '../../core/change/history.js';
 import { failureListItem, scanChanges } from '../../core/change/parser.js';
 import { isPendingChange } from '../../core/change/types.js';
@@ -85,6 +85,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
     const {
         activeConfig,
         activeConfigName,
+        activeConfigAccessError,
         configs,
         loadingStatus,
         hasIdentity,
@@ -159,7 +160,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        if (!db) {
+        if (!db || !activeConfig) {
 
             setIsLoading(false);
 
@@ -213,8 +214,8 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
             // Get metadata (version record + object counts) in parallel
             const [[versionRec], [overview]] = await Promise.all([
-                attempt(() => getFullVersionRecord(db, activeConfig!.connection.dialect)),
-                attempt(() => fetchOverview(db as Kysely<unknown>, activeConfig!.connection.dialect)),
+                attempt(() => getFullVersionRecord(db, activeConfig.connection.dialect)),
+                attempt(() => fetchOverview(db as Kysely<unknown>, activeConfig.connection.dialect, { gate: userGate(activeConfig) })),
             ]);
 
             return { lockStatus, pendingCount, history, versionRec, overview };
@@ -268,6 +269,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
         // Navigation shortcuts (main options)
         if (input === 'r') navigate('run');
+        else if (input === 'p') navigate('pipeline');
         else if (input === 'c') navigate('config');
         else if (input === 'g') navigate('change');
         else if (input === 'd') navigate('db');
@@ -393,6 +395,10 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
     }
 
+    const accessWarning = activeConfigAccessError ? (
+        <Text color="yellow">{activeConfigAccessError}</Text>
+    ) : null;
+
     // No configs prompt
     if (loadingStatus === 'ready' && configs.length === 0) {
 
@@ -406,14 +412,18 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 <Panel title="Welcome" paddingX={2} paddingY={1} borderColor="cyan">
                     <Box flexDirection="column" gap={1}>
                         <Text>Welcome to noorm!</Text>
-                        <Text dimColor>No database configurations found.</Text>
-                        <Box marginTop={1}>
-                            <Text>Press </Text>
-                            <Text color="cyan" bold>
-                                [c]
-                            </Text>
-                            <Text> to create your first configuration.</Text>
-                        </Box>
+                        {accessWarning ?? (
+                            <>
+                                <Text dimColor>No database configurations found.</Text>
+                                <Box marginTop={1}>
+                                    <Text>Press </Text>
+                                    <Text color="cyan" bold>
+                                        [c]
+                                    </Text>
+                                    <Text> to create your first configuration.</Text>
+                                </Box>
+                            </>
+                        )}
                     </Box>
                 </Panel>
 
@@ -441,6 +451,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                             You have <Text color="cyan">{configs.length}</Text> configuration(s),
                             but none is active.
                         </Text>
+                        {accessWarning}
                         <Box marginTop={1}>
                             <Text>Press </Text>
                             <Text color="cyan" bold>
@@ -631,6 +642,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             {/* Navigation Hints */}
             <Box marginTop={1} flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[r] Run</Text>
+                <Text dimColor>[p] Pipelines</Text>
                 <Text dimColor>[c] Config</Text>
                 <Text dimColor>[g] Change</Text>
                 <Text dimColor>[d] DB</Text>

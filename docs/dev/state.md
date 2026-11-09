@@ -98,10 +98,18 @@ const configs = state.listConfigs()
 // [{ name: 'dev', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' },
 //    isActive: true, dialect: 'postgres', database: 'myapp_dev' }]
 
+// Copy, or move with its secrets and active flag in one write
+await state.copyConfig('dev', 'dev-copy', settingsProvider)
+await state.renameConfig('dev-copy', { ...dev, name: 'dev-2' }, settingsProvider)
+
 // Delete a config (also removes its secrets).
 // Pass a SettingsProvider to enforce locked-stage protection.
 await state.deleteConfig('dev', settingsProvider)
 ```
+
+`copyConfig` and `renameConfig` throw `ProtectedStageEscapeError` when the source name is a protected stage and the destination is not, because the new name would drop the stage's permission ceiling. The seam is the state manager, so CLI `config cp` and the TUI copy and rename screens inherit it. `renameConfig` also throws when the source is missing or the destination already exists.
+
+`setConfig` throws `ConfigAccessInvalidError` when the stored entry under that name has malformed access, so a save cannot overwrite a config that still needs `noorm config repair-access`.
 
 
 ## Active Config
@@ -308,10 +316,12 @@ One field is deliberately dropped rather than carried: legacy `identity`. It
 moved to `~/.noorm/`, and pre-move state files hold key material in it, so
 re-persisting would keep a private key inside `state.enc` forever.
 
-`load()` also repairs any config that reached the current schema version without
-a well-formed `access` (a hand-edited file, or one written via `setConfig`
-bypassing the zod path). This is the single place that backfill happens, so no
-downstream consumer needs its own fallback.
+`load()` also backfills `access` on a config that has none (a hand-edited file,
+or one written via `setConfig` bypassing the zod path). This is the single place
+that backfill happens, so no downstream consumer needs its own fallback. Access
+that is present but malformed is kept as stored: `listAccessErrors()` and
+`getConfigAccessError()` report it, accessors refuse to resolve the config, and
+`repairConfigAccess` (`noorm config repair-access <name>`) fixes it.
 
 
 ## Import/Export

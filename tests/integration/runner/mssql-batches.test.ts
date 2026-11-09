@@ -21,6 +21,7 @@ import { attempt } from '@logosdx/utils';
 import { runFile as coreRunFile } from '../../../src/core/runner/index.js';
 import type { RunContext } from '../../../src/core/runner/index.js';
 import { migrateSchema } from '../../../src/core/version/schema/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/tables.js';
 
 import {
@@ -76,6 +77,8 @@ async function cleanupMssql(db: Kysely<unknown>, procNames: string[]): Promise<v
 
     // Drop legacy prefixed tables (v1)
     for (const table of [
+        '__noorm_pipeline_step__',
+        '__noorm_pipeline_run__',
         '__noorm_vault__',
         '__noorm_identities__',
         '__noorm_lock__',
@@ -92,6 +95,8 @@ async function cleanupMssql(db: Kysely<unknown>, procNames: string[]): Promise<v
 
     // Drop schema-qualified tables (v2+)
     for (const table of [
+        'pipeline_step',
+        'pipeline_run',
         'vault',
         'identities',
         'lock',
@@ -156,7 +161,7 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await cleanupMssql(db, [procA, procB]);
 
-        // Re-create the noorm tracking schema (runs all migrations: v1 + v2 rename)
+        // Re-create the noorm tracking schema (runs all migrations).
         await migrateSchema(db as Kysely<NoormDatabase>, 'mssql');
 
     });
@@ -183,12 +188,15 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await writeFile(filepath, sqlContent, 'utf-8');
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         const context: RunContext = {
             db: db as Kysely<NoormDatabase>,
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'mssql',
         };
@@ -236,12 +244,15 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await writeFile(filepath, sqlContent, 'utf-8');
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         const context: RunContext = {
             db: db as Kysely<NoormDatabase>,
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'mssql',
         };

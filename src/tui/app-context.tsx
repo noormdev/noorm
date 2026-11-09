@@ -48,11 +48,12 @@ import {
     type ConfigSummary,
     type Settings,
 } from '../core/index.js';
-import type { StateManager } from '../core/state/manager.js';
+import { ConfigAccessInvalidError, type StateManager } from '../core/state/manager.js';
 import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
 import { loadExistingIdentity } from '../core/identity/index.js';
-import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../core/policy/index.js';
+import { materializeStage } from '../core/config/stage.js';
+import { SettingsProvider, withConfigPolicy } from '../core/config/resolver.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -187,6 +188,21 @@ export interface ExploreFilterEntry {
  */
 export type ExploreFilterState = Record<string, ExploreFilterEntry>;
 
+// A malformed config is reported, not thrown, so the app stays usable and Home can show the fix.
+function readActiveConfig(sm: StateManager, name: string | null) {
+
+    if (!name) return { config: null, name: null, accessError: null };
+
+    const [config, err] = attemptSync(() => sm.getConfig(name));
+
+    if (!err) return { config, name, accessError: null };
+
+    if (!(err instanceof ConfigAccessInvalidError)) throw err;
+
+    return { config: null, name: null, accessError: err.message };
+
+}
+
 /**
  * Context value exposed to consumers.
  */
@@ -206,6 +222,9 @@ export interface AppContextValue {
     // Active config info (derived from state manager)
     activeConfig: Config | null;
     activeConfigName: string | null;
+
+    /** Set when the stored active config has malformed access; the config is then treated as not active. */
+    activeConfigAccessError: string | null;
     configs: ConfigSummary[];
 
     // Identity info
@@ -290,6 +309,7 @@ export function AppContextProvider({
     // Derived state from managers (refreshed via events)
     const [activeConfig, setActiveConfig] = useState<Config | null>(null);
     const [activeConfigName, setActiveConfigName] = useState<string | null>(null);
+    const [activeConfigAccessError, setActiveConfigAccessError] = useState<string | null>(null);
     const [configs, setConfigs] = useState<ConfigSummary[]>([]);
     const [identity, setIdentity] = useState<CryptoIdentity | null>(null);
     const [settings, setSettings] = useState<Settings | null>(null);
@@ -344,6 +364,16 @@ export function AppContextProvider({
 
     }, []);
 
+    const applyActiveConfig = useCallback((sm: StateManager, name: string | null) => {
+
+        const result = readActiveConfig(sm, name);
+
+        setActiveConfig(result.config);
+        setActiveConfigName(result.name);
+        setActiveConfigAccessError(result.accessError);
+
+    }, []);
+
     /**
      * Sync derived state from loaded managers.
      */
@@ -352,8 +382,7 @@ export function AppContextProvider({
 
             if (sm) {
 
-                setActiveConfig(sm.getActiveConfig());
-                setActiveConfigName(sm.getActiveConfigName());
+                applyActiveConfig(sm, sm.getActiveConfigName());
                 setConfigs(sm.listConfigs());
 
             }
@@ -369,7 +398,7 @@ export function AppContextProvider({
             }
 
         },
-        [],
+        [applyActiveConfig],
     );
 
     /**
@@ -403,25 +432,15 @@ export function AppContextProvider({
                 // Skip if no defaults or no dialect specified
                 if (!stage.defaults?.dialect) continue;
 
-                // Create placeholder config from stage defaults
-                const access = stage.defaults.protected ? GUARDED_ACCESS : DEFAULT_ACCESS;
-                const config: Config = {
-                    name: stageName,
-                    type: stage.defaults.host && stage.defaults.host !== 'localhost'
-                        ? 'remote'
-                        : 'local',
-                    isTest: stage.defaults.isTest ?? false,
-                    access,
-                    connection: {
-                        dialect: stage.defaults.dialect,
-                        host: stage.defaults.host ?? 'localhost',
-                        port: stage.defaults.port,
-                        database: stage.defaults.database ?? stageName,
-                        user: stage.defaults.user,
-                        password: stage.defaults.password,
-                        ssl: stage.defaults.ssl,
-                    },
-                };
+                if (sm.getConfigAccessError(stageName)) continue;
+
+                const config = materializeStage(
+                    stageName,
+                    stageName,
+                    stage.defaults,
+                    {},
+                    stage.defaults.password,
+                );
 
                 // Save to state (emits config:created event)
                 await sm.setConfig(stageName, config);
@@ -444,6 +463,13 @@ export function AppContextProvider({
         const sm = getStateManager(projectRoot);
         const settingsM = getSettingsManager(projectRoot);
 
+        const fail = (err: unknown) => {
+
+            setError(err instanceof Error ? err : new Error(String(err)));
+            setLoadingStatus('error');
+
+        };
+
         // Load both
         const [, loadErr] = await attempt(async () => {
 
@@ -452,14 +478,7 @@ export function AppContextProvider({
 
         });
 
-        if (loadErr) {
-
-            setError(loadErr instanceof Error ? loadErr : new Error(String(loadErr)));
-            setLoadingStatus('error');
-
-            return;
-
-        }
+        if (loadErr) return fail(loadErr);
 
         // Sync settings stages to state configs
         await syncSettingsStages(sm, settingsM);
@@ -468,7 +487,9 @@ export function AppContextProvider({
         setSettingsManager(settingsM);
 
         // Sync initial state
-        syncStateFromManagers(sm, settingsM);
+        const [, syncErr] = await attempt(() => syncStateFromManagers(sm, settingsM));
+
+        if (syncErr) return fail(syncErr);
 
         setLoadingStatus('ready');
 
@@ -479,7 +500,7 @@ export function AppContextProvider({
      */
     const refresh = useCallback(async () => {
 
-        syncStateFromManagers(stateManager, settingsManager);
+        await syncStateFromManagers(stateManager, settingsManager);
 
     }, [stateManager, settingsManager, syncStateFromManagers]);
 
@@ -518,10 +539,9 @@ export function AppContextProvider({
         cleanups.push(
             observer.on('state:loaded', (data) => {
 
-                setActiveConfigName(data.activeConfig);
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getActiveConfig());
+                    applyActiveConfig(stateManager, data.activeConfig);
                     setConfigs(stateManager.listConfigs());
 
                 }
@@ -535,10 +555,9 @@ export function AppContextProvider({
         cleanups.push(
             observer.on('config:activated', (data) => {
 
-                setActiveConfigName(data.name);
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getConfig(data.name));
+                    applyActiveConfig(stateManager, data.name);
                     setConfigs(stateManager.listConfigs());
 
                 }
@@ -563,8 +582,7 @@ export function AppContextProvider({
 
                 if (stateManager) {
 
-                    setActiveConfig(stateManager.getActiveConfig());
-                    setActiveConfigName(stateManager.getActiveConfigName());
+                    applyActiveConfig(stateManager, stateManager.getActiveConfigName());
                     setConfigs(stateManager.listConfigs());
 
                 }
@@ -667,7 +685,17 @@ export function AppContextProvider({
 
         };
 
-    }, [stateManager, connectedConfig]);
+    }, [stateManager, connectedConfig, applyActiveConfig]);
+
+    // Keep stored assignments intact while supplying policy to every TUI gate.
+    // Unknown roles remain visible for repair and fail closed in policy checks.
+    const settingsLoaded = settingsManager?.isLoaded === true;
+    const policyActiveConfig = useMemo(
+        () => activeConfig && settingsManager && settingsLoaded
+            ? withConfigPolicy(activeConfig, new SettingsProvider(settingsManager), false)
+            : activeConfig && { ...activeConfig, access: { ...activeConfig.access } },
+        [activeConfig, settingsManager, settingsLoaded, settings],
+    );
 
     // Memoize context value
     const value = useMemo<AppContextValue>(
@@ -678,8 +706,9 @@ export function AppContextProvider({
             projectRoot,
             stateManager,
             settingsManager,
-            activeConfig,
+            activeConfig: policyActiveConfig,
             activeConfigName,
+            activeConfigAccessError,
             configs,
             identity,
             hasIdentity: identity !== null,
@@ -703,8 +732,9 @@ export function AppContextProvider({
             projectRoot,
             stateManager,
             settingsManager,
-            activeConfig,
+            policyActiveConfig,
             activeConfigName,
+            activeConfigAccessError,
             configs,
             identity,
             settings,

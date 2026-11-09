@@ -10,12 +10,14 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import tab from '@bomb.sh/tab/citty';
-import { defineCommand, runMain, renderUsage, type CommandDef } from 'citty';
+import { attempt } from '@logosdx/utils';
+import { defineCommand, runCommand, runMain, renderUsage, type CommandDef } from 'citty';
 
 import { initProjectContext, setOriginalCwd } from '../core/project.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 import { EXIT } from './_exit.js';
+import { outputError } from './_utils.js';
 
 /**
  * Commands opt into examples by attaching a top-level `examples: string[]`
@@ -59,6 +61,7 @@ const main = defineCommand({
         init: () => import('./init.js').then((m) => m.default),
         lock: () => import('./lock/index.js').then((m) => m.default),
         mcp: () => import('./mcp/index.js').then((m) => m.default),
+        pipeline: () => import('./pipeline/index.js').then((m) => m.default),
         run: () => import('./run/index.js').then((m) => m.default),
         secret: () => import('./secret/index.js').then((m) => m.default),
         settings: () => import('./settings/index.js').then((m) => m.default),
@@ -348,7 +351,9 @@ async function entry(): Promise<void> {
     // every downstream loadPrivateKey() / loadIdentityMetadata() call
     // returns the env values without touching ~/.noorm/. Validated by
     // tests/cli/env-bootstrap.test.ts.
-    const envIdentity = loadIdentityFromEnv();
+    const pipelineHelp = process.argv[2] === 'pipeline'
+        && (process.argv.includes('--help') || process.argv.includes('-h'));
+    const envIdentity = pipelineHelp ? null : loadIdentityFromEnv();
 
     if (envIdentity) {
 
@@ -368,6 +373,35 @@ async function entry(): Promise<void> {
     if (rawArgs[0] === 'complete') {
 
         await tab(main);
+
+    }
+
+    if (rawArgs[0] === 'pipeline') {
+
+        const [, failure] = await attempt(async () => {
+
+            if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
+
+                const { cmd, parentNames } = await resolveCommand(main as CommandDef, rawArgs);
+                await printHelpWithExamples(cmd as CommandWithExamples, parentNames);
+
+            }
+            else {
+
+                await runCommand(main, { rawArgs });
+
+            }
+
+        });
+        if (failure) {
+
+            const { definitionFailureMessage } = await import('./pipeline/_common.js');
+            outputError({ json: rawArgs.includes('--json') }, definitionFailureMessage(failure));
+            process.exitCode = EXIT.USAGE;
+
+        }
+
+        return;
 
     }
 

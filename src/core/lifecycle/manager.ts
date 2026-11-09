@@ -240,10 +240,10 @@ export class LifecycleManager {
      * Initiate graceful shutdown.
      *
      * @param reason - Why shutdown was initiated
-     * @param exitCode - Exit code to use (default 0)
+     * @param exitCode - Exit code to use (defaults to the current exit code)
      * @returns Promise that resolves when shutdown is complete
      */
-    async shutdown(reason: ShutdownReason = 'programmatic', exitCode = 0): Promise<void> {
+    async shutdown(reason: ShutdownReason = 'programmatic', exitCode = this.#exitCode): Promise<void> {
 
         // Prevent multiple concurrent shutdowns
         if (this.#shutdownPromise) {
@@ -258,8 +258,11 @@ export class LifecycleManager {
 
         }
 
-        // Emit shutdown event early so connections can start closing
+        if (exitCode === 0) exitCode = this.#exitCode;
+
+        // Notify subsystems before stopping work; releasing owns connection cleanup.
         observer.emit('app:shutdown', { reason, exitCode });
+        if (exitCode === 0) exitCode = this.#exitCode;
 
         this.#shutdownPromise = this.#performShutdown(reason, exitCode);
 
@@ -300,6 +303,8 @@ export class LifecycleManager {
 
             const [, err] = await attempt(() => this.#executePhase(phase));
             if (err) {
+
+                if (this.#exitCode === 0) this.#exitCode = 1;
 
                 observer.emit('app:shutdown:phase', {
                     phase,
@@ -345,6 +350,7 @@ export class LifecycleManager {
 
         const durationMs = Date.now() - start;
         const status: PhaseStatus = err ? 'timeout' : 'completed';
+        if (err && this.#exitCode === 0) this.#exitCode = 1;
 
         observer.emit('app:shutdown:phase', {
             phase,
@@ -364,6 +370,8 @@ export class LifecycleManager {
 
             const [, err] = await attempt(() => resource.cleanup());
             if (err) {
+
+                if (this.#exitCode === 0) this.#exitCode = 1;
 
                 observer.emit('error', {
                     source: 'lifecycle',

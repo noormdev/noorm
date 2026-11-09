@@ -10,6 +10,9 @@
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import type { Permission, PolicyCheck } from '../../core/policy/index.js';
 import type { StateManager } from '../../core/state/index.js';
+import { attempt, attemptSync } from '@logosdx/utils';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
 
 /**
  * Outcome of resolving the target config and checking it against a permission.
@@ -29,11 +32,12 @@ export type SecretPolicyResolution =
  * const resolved = resolveSecretPolicy(stateManager, args.config, 'secret:write');
  * if (!resolved.ok) { outputError(args, resolved.error); process.exit(1); }
  */
-export function resolveSecretPolicy(
+export async function resolveSecretPolicy(
     stateManager: StateManager,
     configName: string | undefined,
     permission: Permission,
-): SecretPolicyResolution {
+    projectRoot: string,
+): Promise<SecretPolicyResolution> {
 
     const name = configName ?? stateManager.getActiveConfigName();
 
@@ -54,7 +58,16 @@ export function resolveSecretPolicy(
 
     }
 
-    const check = checkConfigPolicy(resolveChannel(), config, permission);
+    const settingsManager = getSettingsManager(projectRoot);
+    const [, settingsErr] = await attempt(() => settingsManager.load());
+    if (settingsErr) return { ok: false, error: `Failed to load settings: ${settingsErr.message}` };
+
+    const [policyConfig, policyErr] = attemptSync(() =>
+        withConfigPolicy(config, new SettingsProvider(settingsManager)),
+    );
+    if (policyErr) return { ok: false, error: policyErr.message };
+
+    const check = checkConfigPolicy(resolveChannel(), policyConfig, permission);
 
     if (!check.allowed) {
 

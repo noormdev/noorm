@@ -4,12 +4,14 @@ import { join } from 'node:path';
 
 import {
     SettingsManager,
+    getSettingsManager,
     resetSettingsManager,
     DEFAULT_SETTINGS,
     DEFAULT_PATH_CONFIG,
 } from '../../../src/core/settings/index.js';
 
 import type { Stage, Rule } from '../../../src/core/settings/types.js';
+import { observer } from '../../../src/core/observer.js';
 
 /**
  * Creates a fresh test context for each test.
@@ -41,6 +43,43 @@ function createTestContext() {
 }
 
 describe('settings: SettingsManager', () => {
+
+    it('should not reuse a settings manager for another project', () => {
+
+        resetSettingsManager();
+        try {
+
+            const first = getSettingsManager('/project-a');
+            expect(getSettingsManager('/project-a')).toBe(first);
+            expect(getSettingsManager('/project-b')).not.toBe(first);
+            expect(getSettingsManager('/project-b').projectRoot).toBe('/project-b');
+
+        }
+        finally {
+
+            resetSettingsManager();
+
+        }
+
+    });
+
+    it('should keep the first project\'s manager across A, B, A', () => {
+
+        resetSettingsManager();
+        try {
+
+            const a = getSettingsManager('/project-a');
+            getSettingsManager('/project-b');
+            expect(getSettingsManager('/project-a')).toBe(a);
+
+        }
+        finally {
+
+            resetSettingsManager();
+
+        }
+
+    });
 
     describe('load', () => {
 
@@ -359,7 +398,7 @@ ui:
 
                 await manager.init(true);
 
-                expect(manager.getPaths()).toEqual({ sql: './sql', changes: './changes' });
+                expect(manager.getPaths()).toMatchObject({ sql: './sql', changes: './changes' });
                 expect(readFileSync(manager.settingsFilePath, 'utf-8')).toContain('./sql');
 
             }
@@ -964,6 +1003,44 @@ ui:
 
                 expect(build.include).toEqual(['custom/tables']);
                 expect(build.exclude).toEqual(['custom/archive']);
+
+            }
+            finally {
+
+                cleanup();
+
+            }
+
+        });
+
+        it('should keep paths.pipelines when only sql and changes are set', async () => {
+
+            const { tempDir, manager, cleanup } = createTestContext();
+
+            try {
+
+                await manager.load();
+                await manager.setPaths({ pipelines: './flows' });
+
+                const emitted: unknown[] = [];
+                const unsub = observer.on('settings:paths-updated', (data) => emitted.push(data.paths));
+
+                await manager.setPaths({ sql: './db/sql', changes: './db/migrations' });
+                unsub();
+
+                expect(emitted).toEqual([{ sql: './db/sql', changes: './db/migrations', pipelines: './flows' }]);
+
+                const reloaded = new SettingsManager(tempDir, {
+                    settingsDir: '.test-settings',
+                    settingsFile: 'settings.yml',
+                });
+                await reloaded.load();
+
+                expect(reloaded.getPaths()).toEqual({
+                    sql: './db/sql',
+                    changes: './db/migrations',
+                    pipelines: './flows',
+                });
 
             }
             finally {

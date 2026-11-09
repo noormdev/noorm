@@ -12,7 +12,7 @@ import {
     checkVaultPolicy,
 } from '../../core/vault/index.js';
 import type { PendingVaultUser, VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 /**
  * Shape of a pending identity as reported to the operator.
@@ -36,7 +36,7 @@ function toReport(users: PendingVaultUser[]): PendingReport[] {
 const propagateCommand = defineCommand({
     meta: {
         name: 'propagate',
-        description: 'Propagate vault access to new users',
+        description: 'Review pending recipients; pass --yes to grant vault access',
     },
     args: {
         to: {
@@ -45,7 +45,7 @@ const propagateCommand = defineCommand({
         },
         config: sharedArgs.config,
         json: sharedArgs.json,
-        yes: sharedArgs.yes,
+        yes: { ...sharedArgs.yes, description: 'Human approval of the current recipient list' },
     },
     async run({ args }) {
 
@@ -71,8 +71,25 @@ const propagateCommand = defineCommand({
                     };
 
                 }
+                const readCheck = checkVaultPolicy(gate, 'vault:read');
+                if (!readCheck.allowed) {
 
-                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                    return { success: false, error: readCheck.blockedReason ?? 'Cannot read the vault.' };
+
+                }
+                if (readCheck.requiresConfirmation && !isYesMode(args)) {
+
+                    return {
+                        success: false,
+                        error: `Reading the vault requires confirmation (${readCheck.confirmationPhrase}). Pass --yes to confirm.`,
+                    };
+
+                }
+
+
+                const vaultKey = await withPolicyConfirmation(config, ['vault:read'], () =>
+                    getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect),
+                );
 
                 if (!vaultKey) {
 
@@ -129,10 +146,18 @@ const propagateCommand = defineCommand({
 
                 }
 
-                // Withhold the grant until the operator has seen the list.
-                // `vault:propagate` is a `confirm` cell for every role that
-                // holds it, so this is the policy's own requirement, not an
-                // extra gate invented here.
+                if (gate.channel === 'agent') {
+
+                    return {
+                        success: false,
+                        granted: false,
+                        pending: toReport(targets),
+                        error: 'Recipient review requires a human to run vault propagate with --yes.',
+                    };
+
+                }
+
+                // Recipient review is required independently of the role's policy cell.
                 if (!isYesMode(args)) {
 
                     return {
@@ -140,18 +165,15 @@ const propagateCommand = defineCommand({
                         granted: false,
                         pending: toReport(targets),
                         error: `${targets.length} identit${targets.length === 1 ? 'y is' : 'ies are'} awaiting vault access. `
-                            + 'Review the list above, then re-run with --yes to grant, '
-                            + 'or --to <hash> to grant to specific identities.',
+                            + 'Recipient review is required even when policy allows propagation. '
+                            + 'Re-run with --yes to grant the then-current list, '
+                            + 'or --to <hash> to select identities.',
                     };
 
                 }
 
-                const propagateResult = await propagateVaultKeyChecked(
-                    gate,
-                    db,
-                    vaultKey,
-                    ctx.dialect,
-                    { targets: targets.map((u) => u.identityHash) },
+                const propagateResult = await withPolicyConfirmation(config, ['vault:propagate'], () =>
+                    propagateVaultKeyChecked(gate, db, vaultKey, ctx.dialect, { reviewedRecipients: targets }),
                 );
 
                 // A partial grant is a failure: the teammate whose update did
@@ -160,7 +182,7 @@ const propagateCommand = defineCommand({
 
                     return {
                         success: false,
-                        granted: true,
+                        granted: propagateResult.propagatedTo.length > 0,
                         propagatedTo: propagateResult.propagatedTo,
                         alreadyHadAccess: propagateResult.alreadyHadAccess,
                         failed: propagateResult.failed,

@@ -25,12 +25,13 @@
  * await ctx.disconnect()
  * ```
  */
-import { initState, getStateManager } from '../core/state/index.js';
-import { getSettingsManager, type SettingsManager } from '../core/settings/index.js';
+import { initState, getStateManager, StateManager } from '../core/state/index.js';
+import { getSettingsManager, SettingsManager } from '../core/settings/index.js';
 import { getIdentityForConfig } from '../core/identity/index.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 import { resolveConfig, SettingsProvider } from '../core/config/resolver.js';
+import type { ConfigInput } from '../core/config/types.js';
 
 import { Context } from './context.js';
 import { checkRequireTest } from './guards.js';
@@ -105,14 +106,34 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
 
     }
 
-    // Initialize state (may have no configs in CI)
-    await initState(projectRoot);
-    const state = getStateManager(projectRoot);
+    const state = options.freshState
+        ? new StateManager(projectRoot)
+        : getStateManager(projectRoot);
+    if (options.freshState) await state.load();
+    else await initState(projectRoot);
 
-    // Load settings (for stage defaults)
-    const settingsManager = getSettingsManager(projectRoot);
+    const settingsManager = options.freshState
+        ? new SettingsManager(projectRoot)
+        : getSettingsManager(projectRoot);
     await settingsManager.load();
     const settings = settingsManager.settings;
+
+    const inline = options.connection && { ...options.connection };
+    const password = typeof inline?.password === 'function' ? inline.password : undefined;
+    if (password && inline) delete inline.password;
+    const ssl = inline?.ssl;
+    const verifier = typeof ssl === 'object' && ssl !== null ? ssl.checkServerIdentity : undefined;
+    if (verifier !== undefined && typeof verifier !== 'function') {
+
+        throw new Error('ssl.checkServerIdentity must be a function');
+
+    }
+    if (typeof ssl === 'object' && ssl !== null && inline) {
+
+        const { checkServerIdentity: _verifier, ...serializableSsl } = ssl;
+        inline.ssl = serializableSsl;
+
+    }
 
     // Use resolver - applies full priority chain:
     // defaults <- stage <- stored <- env <- flags
@@ -120,6 +141,7 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
         name: options.config,
         stage: options.stage,
         settings: toSettingsProvider(settingsManager),
+        flags: inline ? { connection: inline } as ConfigInput : undefined,
     });
 
     if (!config) {
@@ -135,6 +157,25 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
 
     }
 
+    if (password) {
+
+        // The callback is the effective credential; do not expose a shadowed
+        // environment or stored password as part of the resolved config.
+        delete config.connection.password;
+
+    }
+
+    if (password && config.connection.dialect === 'sqlite') {
+
+        throw new Error('Dynamic passwords are not supported for SQLite');
+
+    }
+    if (verifier && config.connection.dialect !== 'postgres') {
+
+        throw new Error('ssl.checkServerIdentity is only supported for PostgreSQL');
+
+    }
+
     // Safety guards
     checkRequireTest(config, options);
 
@@ -145,7 +186,7 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     // without every call site (or ContextState fixture) special-casing undefined.
     const resolvedOptions: CreateContextOptions = { ...options, channel: options.channel ?? 'user' };
 
-    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, resolvedOptions, projectRoot);
+    return new Context<DB, Procs, Funcs, Tvfs>(config, settings, identity, resolvedOptions, projectRoot, state);
 
 }
 
@@ -160,6 +201,7 @@ export { NoormOps } from './noorm-ops.js';
 export {
     ChangesNamespace,
     RunNamespace,
+    PipelinesNamespace,
     DbNamespace,
     LockNamespace,
     VaultNamespace,
@@ -248,6 +290,26 @@ export type {
 } from '../core/explore/index.js';
 export type { TruncateResult, TeardownResult, TeardownPreview, TruncateOptions } from '../core/teardown/index.js';
 export type { BatchResult, FileResult, RunOptions } from '../core/runner/index.js';
+export type {
+    PipelineRunOptions,
+    PipelineDryRunResult,
+    PipelineRunResult,
+    PipelineError,
+    PipelineStepMetadata,
+    PipelineStepResult,
+    PipelineMode,
+    PipelineTransaction,
+} from '../core/pipeline/types.js';
+export type {
+    NoormPipelineRun,
+    NoormPipelineStep,
+    PipelineRunStatus,
+    PipelineStepStatus,
+    PipelineTransactionOutcome,
+} from '../core/shared/tables.js';
+export type { PipelineHistoryOptions } from './namespaces/pipelines.js';
+export type { PipelineHistoryRecord } from '../core/pipeline/history.js';
+export { PipelineBusyError } from '../core/pipeline/admission.js';
 export type {
     ChangeResult,
     BatchChangeResult,

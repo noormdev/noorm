@@ -36,6 +36,7 @@ erDiagram
     STAGE ||--o{ STAGE_SECRET : requires
 
     DB_CHANGESET ||--o{ DB_EXECUTION : parent_of
+    DB_PIPELINE_RUN ||--o{ DB_PIPELINE_STEP : parent_of
     DB_LOCK ||--|| CONFIG : scoped_to
     DB_IDENTITIES ||--o{ KNOWN_USER : syncs_to
 
@@ -106,16 +107,16 @@ File system paths are **not** on the config—they come from settings (`paths.sq
 
 ### ConfigAccess
 
-Per-channel access grant. `Role` is `'viewer' | 'operator' | 'admin'`; `Channel` is `'user' | 'agent'`.
+Per-channel access grant. `Role` is a built-in or project-defined role name; `Channel` is `'user' | 'agent'`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | user | Role | A human at the keyboard—CLI, TUI, or SDK |
 | agent | Role \| `false` | An AI agent, whichever binary it reached for. `false` hides the config entirely on this channel |
 
-The channel describes *who is driving*, not which transport was used: an agent that shells out to the CLI after an MCP refusal is still `agent`. The field was named `mcp` until state migration v3 renamed it to `agent`.
+The channel describes who is driving, not which transport was used. The field was named `mcp` until state migration v3 renamed it to `agent`. Environment-based channel detection is a default, not a boundary against a process that controls its environment.
 
-`checkPolicy(channel, config, permission)` resolves a `ConfigAccess` + `Permission` into `allow`/`confirm`/`deny`, channel-aware (`confirm` prompts on `user`, collapses to `deny` on `agent`). See `docs/spec/config-access-roles.md` for the full permission matrix.
+`checkPolicy(channel, config, permission)` uses the resolved config's non-enumerable policy context. Detached copies without it are denied. User `confirm` prompts; ordinary agent checks deny it. See `docs/spec/config-access-roles.md` for the full permission matrix.
 
 
 ### ConnectionConfig
@@ -193,6 +194,7 @@ build:
 paths:
     sql: db/sql
     changes: db/changes
+    pipelines: db/pipelines
 
 stages:
     dev:
@@ -205,7 +207,7 @@ stages:
         locked: true
         defaults:
             dialect: postgres
-            protected: true   # access ceiling: clamps resolved access to at most operator/viewer
+            protected: true   # immutable per-permission ceilings
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -251,8 +253,9 @@ Override default file locations. This is the only place paths are configured—c
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| sql | string | `./sql` | Path to SQL files |
-| changes | string | `./changes` | Path to change directories |
+| sql | string | `./db/sql` | Path to SQL files |
+| changes | string | `./db/changes` | Path to change directories |
+| pipelines | string | `./db/pipelines` | Path to pipeline definitions |
 
 
 ### Stage
@@ -281,7 +284,7 @@ Initial values when creating a config from a stage.
 | password | string? | Default password |
 | ssl | boolean? | Default SSL setting |
 | isTest | boolean? | Default test flag |
-| protected | boolean? | `true` becomes an access **ceiling** at resolution: resolved `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` — a stricter config-level `access` survives unchanged |
+| protected | boolean? | `true` caps each effective user permission at the original operator cell and each agent permission at the original viewer cell; assigned roles remain unchanged |
 
 
 ### StageSecret
@@ -485,7 +488,7 @@ The decrypted `ciphertext` is JSON of the shape `{ config, secrets }`. There is 
 
 ## Database Tables
 
-noorm creates six tracking tables in the target database, all in schema migration v1.
+noorm creates six tracking tables in the target database in schema migration v1, and two pipeline history tables in migration v3.
 
 Their names depend on the dialect. PostgreSQL and SQL Server get a dedicated `noorm` schema with clean names (`noorm.version`, `noorm.change`, and so on). MySQL and SQLite have no schemas, so they keep the `__noorm_*__` prefixed forms in the default schema, which is what the headings below use.
 
@@ -618,6 +621,59 @@ Team-shared secrets, encrypted with a vault key distributed via each member's pu
 | updated_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When last updated |
 
 **Index:** `idx_vault_secret_key` on (`secret_key`).
+
+
+### `__noorm_pipeline_run__`
+
+One row per pipeline invocation, written by schema migration v3. Independent of `__noorm_change__` and `__noorm_executions__`.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | serial | PK | Primary key |
+| slug | varchar(255) | NOT NULL | Pipeline slug |
+| config_name | varchar(255) | NOT NULL | Config the run used |
+| executed_by | varchar(255) | NOT NULL | Identity that ran it |
+| cli_version | varchar(50) | NOT NULL | noorm version |
+| created_at | timestamp | NOT NULL, DEFAULT CURRENT_TIMESTAMP | When the run was admitted |
+| manifest_checksum | varchar(64) | NOT NULL | SHA-256 of the manifest file |
+| transaction_policy | varchar(20) | NOT NULL | `pipeline`, `step` or `none` |
+| single_run | boolean | NOT NULL, DEFAULT false | Whether the manifest allows one active run at a time |
+| status | varchar(20) | NOT NULL | `pending`, `running`, `success`, `failed`, `partial`, `interrupted` or `unknown` |
+| transaction_outcome | varchar(20) | NOT NULL | `pending`, `committed`, `rolled_back`, `partial`, `no_effects` or `unknown` |
+| started_at | timestamp | NULL | When execution began |
+| finished_at | timestamp | NULL | When execution settled |
+| error_message | varchar(2000) | NOT NULL, DEFAULT `''` | Failure text |
+| duration_ms | integer | NOT NULL, DEFAULT 0 | Run duration |
+| active_key | varchar(64) | NULL | SHA-256 of `[config_name, slug]` while a `single_run` run is active; NULL otherwise |
+
+**Index:** `idx_pipeline_run_active_key`, unique on (`active_key`). A second admission for the same config and slug hits the unique violation and surfaces as `PipelineBusyError`. SQL Server makes it a filtered index (`WHERE active_key IS NOT NULL`).
+
+
+### `__noorm_pipeline_step__`
+
+One row per step of a run. Deleting a run cascades to its steps.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| pipeline_run_id | integer | PK, FK to the run table `id`, ON DELETE CASCADE | Owning run |
+| step_no | integer | PK | Position within the run |
+| name | varchar(255) | NOT NULL | Step name |
+| filepath | varchar(500) | NOT NULL | Step SQL file |
+| checksum | varchar(64) | NOT NULL | File checksum |
+| needs | text | NOT NULL | Dependencies |
+| status | varchar(20) | NOT NULL | `pending`, `running`, `success`, `failed`, `skipped`, `interrupted` or `unknown` |
+| transaction_outcome | varchar(20) | NOT NULL | The run values plus `not_started` |
+| started_at | timestamp | NULL | When the step began |
+| finished_at | timestamp | NULL | When the step settled |
+| error_message | varchar(2000) | NOT NULL, DEFAULT `''` | Failure text |
+| skip_reason | varchar(255) | NOT NULL, DEFAULT `''` | Why the step was skipped |
+| duration_ms | integer | NOT NULL, DEFAULT 0 | Step duration |
+
+**Constraints:** `pk_pipeline_step` on (`pipeline_run_id`, `step_no`); `fk_pipeline_step_run` to the run table.
+
+**Unique step name per run:** PostgreSQL and SQLite use the constraint `uq_pipeline_step_run_name` on (`pipeline_run_id`, `name`); PostgreSQL stores `name` with the `C` collation. MySQL and SQL Server add a generated binary `name_key` column and a unique index of the same name on (`pipeline_run_id`, `name_key`), so step names compare byte for byte.
+
+v3 is idempotent: it creates each table, `name_key` column and index only when missing. An older CLI or TUI rejects a schema 3 database with `VersionMismatchError`; an older SDK ignores the pipeline tables, except that `vault.copy` to a v3 destination throws `VersionMismatchError`. See [Version](/dev/version).
 
 
 ---
@@ -808,7 +864,7 @@ Available in `.sql.tmpl` templates via Eta.
 | Helper | Signature | Description |
 |--------|-----------|-------------|
 | `$.include(path)` | string → Promise\<string\> | Include another SQL file |
-| `$.escape(value)` | string → string | SQL-escape a string |
+| `$.escape(value)` | string → string | SQL-escape a string; throws in pipelines |
 | `$.quote(value)` | any → string | Escape and quote a value |
 | `$.json(value)` | any → string | JSON stringify |
 | `$.now()` | () → string | Current ISO timestamp |
@@ -863,7 +919,7 @@ Each layer has independent migrations that run automatically when version mismat
 
 | Layer | Current Version |
 |-------|-----------------|
-| schema | 2 |
+| schema | 3 |
 | state | 3 |
 | settings | 1 |
 

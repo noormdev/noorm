@@ -113,7 +113,7 @@ function makeConfig(name: string, role: Role): Config {
     return {
         name,
         type: 'local',
-        isTest: true,
+        isTest: false,
         access: { user: role, agent: role },
         connection: {
             dialect: 'sqlite',

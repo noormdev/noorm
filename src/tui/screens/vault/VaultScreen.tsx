@@ -58,6 +58,10 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     const [status, setStatus] = useState<VaultStatus | null>(null);
     const [secrets, setSecrets] = useState<VaultSecret[]>([]);
     const [propagating, setPropagating] = useState(false);
+    const [pendingRead, setPendingRead] = useState<'propagate' | null>(null);
+    const [readApproved, setReadApproved] = useState(false);
+    const readCheck = activeConfig ? checkConfigPolicy('user', activeConfig, 'vault:read') : null;
+    const writeCheck = activeConfig ? checkConfigPolicy('user', activeConfig, 'vault:write') : null;
 
     // Non-null while awaiting confirmation, and holds exactly who would be
     // granted the vault key — propagation used to run on the bare `p`
@@ -70,37 +74,32 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     );
 
     const { phase, error, connRef } = useVaultConnection({
+        enabled: !!readCheck?.allowed && (!readCheck.requiresConfirmation || readApproved),
         onReady: async (db, isCancelled, dialect) => {
 
             if (!identity) return;
 
-            const vaultStatus = await getVaultStatus(db as Kysely<NoormDatabase>, identity.identityHash, dialect);
-
-            if (isCancelled()) return;
-
-            setStatus(vaultStatus);
-
-            if (vaultStatus.hasAccess) {
-
-                const privateKey = await loadPrivateKey();
-
-                if (privateKey && !isCancelled()) {
-
-                    const vaultKey = await getVaultKey(db as Kysely<NoormDatabase>, identity.identityHash, privateKey, dialect);
-
-                    if (vaultKey && !isCancelled()) {
-
-                        const allSecrets = await getAllVaultSecrets(db as Kysely<NoormDatabase>, vaultKey, dialect);
-                        setSecrets(Object.values(allSecrets));
-
-                    }
-
-                }
-
-            }
+            if (!activeConfig) return;
+            await loadVault(db as Kysely<NoormDatabase>, dialect, isCancelled);
 
         },
     });
+    async function loadVault(db: Kysely<NoormDatabase>, dialect: Parameters<typeof getVaultStatus>[2], isCancelled: () => boolean = () => false) {
+
+        if (!identity) return;
+        const vaultStatus = await getVaultStatus(db, identity.identityHash, dialect);
+        if (isCancelled()) return;
+        setStatus(vaultStatus);
+        if (!vaultStatus.hasAccess) return;
+        const privateKey = await loadPrivateKey();
+        if (!privateKey || isCancelled()) return;
+        const vaultKey = await getVaultKey(db, identity.identityHash, privateKey, dialect);
+        if (!vaultKey || isCancelled()) return;
+        const allSecrets = await getAllVaultSecrets(db, vaultKey, dialect);
+        if (!isCancelled()) setSecrets(Object.values(allSecrets));
+
+    }
+
 
     // Get defined secret keys that aren't in the vault
     const unsetDefinedSecrets = useMemo(() => {
@@ -211,9 +210,27 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
     }, [connRef, propagateCheck, showToast]);
 
     // Handle propagate
-    const handlePropagate = useCallback(async () => {
+    const handlePropagate = useCallback(async (recipients: PropagationRecipient[]) => {
 
         if (!connRef.current || !identity) return;
+
+        if (!activeConfig) return;
+        const propagationPolicy = checkConfigPolicy('user', activeConfig, 'vault:propagate');
+        if (!propagationPolicy.allowed) {
+
+            showToast({ message: propagationPolicy.blockedReason ?? 'Propagating vault access is not allowed', variant: 'error' });
+
+            return;
+
+        }
+        const check = checkConfigPolicy('user', activeConfig, 'vault:read');
+        if (!check.allowed) {
+
+            showToast({ message: check.blockedReason ?? 'Vault read is not allowed', variant: 'error' });
+
+            return;
+
+        }
 
         setPropagating(true);
 
@@ -260,7 +277,9 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-        const [result, propagateErr] = await attempt(() => propagateVaultKey(db as Kysely<NoormDatabase>, vaultKey, connDialect));
+        const [result, propagateErr] = await attempt(() => propagateVaultKey(
+            db as Kysely<NoormDatabase>, vaultKey, connDialect, { reviewedRecipients: recipients },
+        ));
 
         if (propagateErr || !result) {
 
@@ -270,6 +289,15 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
             return;
 
         }
+        if (result.failed.length > 0) {
+
+            showToast({ message: `Granted ${result.propagatedTo.length}; failed ${result.failed.length}. Review recipients again`, variant: 'error' });
+            setPropagating(false);
+
+            return;
+
+        }
+
 
         if (result.propagatedTo.length > 0) {
 
@@ -300,12 +328,12 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         setStatus(newStatus);
         setPropagating(false);
 
-    }, [identity, showToast]);
+    }, [activeConfig, identity, showToast]);
 
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused) return;
+        if (!isFocused || pendingRead || pendingRecipients || (readCheck?.requiresConfirmation && !readApproved)) return;
 
         if (key.escape) {
 
@@ -314,6 +342,14 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
             return;
 
         }
+        if (!readCheck?.allowed) {
+
+            if (input === 'i' && writeCheck?.allowed) navigate('vault/init');
+
+            return;
+
+        }
+
 
         if (input === 'a') {
 
@@ -359,6 +395,60 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         );
 
     }
+    if (readCheck && !readCheck.allowed) {
+
+        return (
+            <Panel title="Vault" borderColor="yellow">
+                <Box flexDirection="column">
+                    <Text color="yellow">{readCheck.blockedReason ?? 'Vault read is not allowed'}</Text>
+                    {writeCheck?.allowed && <Text>[i] Initialize vault</Text>}
+                    <Text dimColor>[Esc] Back</Text>
+                </Box>
+            </Panel>
+        );
+
+    }
+
+    if ((pendingRead || (readCheck?.requiresConfirmation && !readApproved)) && readCheck) {
+
+        return (
+            <SmartConfirm
+                focusLabel="VaultReadConfirm"
+                requiresConfirmation
+                confirmationPhrase={readCheck.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action="read vault for"
+                message="Read vault secrets?"
+                onConfirm={() => {
+
+                    const action = pendingRead;
+                    setPendingRead(null);
+                    if (!activeConfig || !checkConfigPolicy('user', activeConfig, 'vault:read').allowed) return;
+                    if (action === 'propagate' && pendingRecipients) {
+
+                        setPendingRecipients(null);
+                        void handlePropagate(pendingRecipients);
+
+                    }
+                    else setReadApproved(true);
+
+                }}
+                onCancel={() => {
+
+                    if (!readApproved) back();
+                    else {
+
+                        setPendingRead(null);
+                        setPendingRecipients(null);
+
+                    }
+
+                }}
+            />
+        );
+
+    }
+
 
     // Connecting
     if (phase === 'connecting') {
@@ -388,6 +478,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
         );
 
     }
+
 
     // Vault not initialized
     if (!status?.isInitialized) {
@@ -462,8 +553,13 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     message={`Grant vault access to ${pendingRecipients.length} user(s)?`}
                     onConfirm={() => {
 
-                        setPendingRecipients(null);
-                        handlePropagate();
+                        if (readCheck?.requiresConfirmation) setPendingRead('propagate');
+                        else {
+
+                            setPendingRecipients(null);
+                            void handlePropagate(pendingRecipients);
+
+                        }
 
                     }}
                     onCancel={() => setPendingRecipients(null)}

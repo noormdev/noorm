@@ -3,10 +3,10 @@
  */
 import { defineCommand } from 'citty';
 
-import { withVaultContext, outputResult, sharedArgs } from '../_utils.js';
+import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { getVaultKeyChecked, getAllVaultSecrets, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 const listCommand = defineCommand({
     meta: {
@@ -15,6 +15,7 @@ const listCommand = defineCommand({
     },
     args: {
         config: sharedArgs.config,
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -42,6 +43,12 @@ const listCommand = defineCommand({
 
                 }
 
+                if (check.requiresConfirmation && !isYesMode(args)) {
+
+                    return { success: false, error: `Confirmation required (${check.confirmationPhrase}); pass --yes.` };
+
+                }
+
                 const status = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
 
                 if (!status.isInitialized) {
@@ -62,7 +69,8 @@ const listCommand = defineCommand({
 
                 }
 
-                const vaultKey = await getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect);
+                const vaultKey = await withPolicyConfirmation(config, ['vault:read'], () =>
+                    getVaultKeyChecked(gate, db, cryptoIdentity.identityHash, privateKey, ctx.dialect));
 
                 if (!vaultKey) {
 

@@ -15,6 +15,8 @@ import { DbNamespace } from '../../../src/sdk/namespaces/db.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
 
 import type { ContextState } from '../../../src/sdk/state.js';
+import { getStateManager } from '../../../src/core/state/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { ConnectionResult } from '../../../src/core/connection/index.js';
 
 describe('integration: sdk DbNamespace reset vs preserveTables', () => {
@@ -42,7 +44,7 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
 
     function makeState(): ContextState {
 
-        return {
+        const state: ContextState = {
             connection: conn,
             config: {
                 name: 'test',
@@ -59,8 +61,16 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
             // refused, which is the intended behaviour, not a test concern.
             options: { yes: true },
             projectRoot: '/tmp',
+            stateManager: getStateManager('/tmp'),
             changeManager: null,
         };
+
+        attachPolicyContext(state.config!.access!, {
+            roles: state.settings.access?.roles,
+            protectedStage: state.settings.stages?.[state.config!.name]?.defaults?.protected === true,
+        });
+
+        return state;
 
     }
 

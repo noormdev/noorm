@@ -3,23 +3,31 @@ name: CI
 on:
     workflow_dispatch:
     push:
-        branches: [main, master]
+        branches: [main, master, next]
         paths:
             - 'src/**'
             - 'tests/**'
             - 'packages/**'
             - 'examples/**'
             - 'bun.lockb'
+            - 'bun.lock'
+            - 'package.json'
+            - 'tsup.*.config.ts'
+            - 'scripts/**'
             - 'tsconfig*.json'
             - '.github/workflows/ci.yml'
     pull_request:
-        branches: [main, master]
+        branches: [main, master, next]
         paths:
             - 'src/**'
             - 'tests/**'
             - 'packages/**'
             - 'examples/**'
             - 'bun.lockb'
+            - 'bun.lock'
+            - 'package.json'
+            - 'tsup.*.config.ts'
+            - 'scripts/**'
             - 'tsconfig*.json'
             - '.github/workflows/ci.yml'
 
@@ -136,7 +144,8 @@ jobs:
                   FORCE_COLOR: 'true'
               run: |
                   bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-                      ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
+                      ! -name 'cli-logger-settings.test.ts' \
+                      ! -name 'protected-config-escape.test.tsx' | sort | tr '\n' ' ')
             # Isolated for the same reason tests/core/transfer is: bun's
             # `mock.module` registry is process-global and re-registering does
             # not restore, so an `afterAll` cleanup is a no-op. Two init screen
@@ -151,6 +160,13 @@ jobs:
                   CI: 'false'
                   FORCE_COLOR: 'true'
               run: bun test --serial tests/cli/cli-logger-settings.test.ts
+            # Isolated for the same reason: init-screen tests mock
+            # `state/manager.js` and this test needs the real StateManager.
+            - name: Run CLI protected config escape tests (isolated)
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial tests/cli/screens/protected-config-escape.test.tsx
             - name: Run integration tests
               env:
                   CI: 'false'
@@ -427,6 +443,9 @@ jobs:
 
             - run: bun install --frozen-lockfile
             - run: bun run build
+
+            - name: Smoke built MCP tools and embedded prompts
+              run: node scripts/smoke-mcp.mjs
 
             # Test: Valid SQL should build successfully (exit 0)
             - name: Test valid SQL build

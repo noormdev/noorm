@@ -21,7 +21,8 @@
  */
 import { describe, it, expect, vi, mock, beforeAll, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
-import React from 'react';
+import React, { act } from 'react';
+import { Text } from 'ink';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,16 +30,24 @@ import { join } from 'node:path';
 import type { CryptoIdentity } from '../../src/core/identity/types.js';
 
 import { FocusProvider } from '../../src/tui/focus.js';
-import { RouterProvider } from '../../src/tui/router.js';
+import { RouterProvider, useRouter } from '../../src/tui/router.js';
 import { AppContextProvider } from '../../src/tui/app-context.js';
-import { ConnectionProvider } from '../../src/tui/providers/ConnectionProvider.js';
-import { ToastProvider } from '../../src/tui/components/index.js';
+import { ConnectionProvider, useConnectionContext } from '../../src/tui/providers/ConnectionProvider.js';
+import { ToastProvider, useToast } from '../../src/tui/components/index.js';
 import { VaultScreen } from '../../src/tui/screens/vault/VaultScreen.js';
+import { VaultInitScreen } from '../../src/tui/screens/vault/VaultInitScreen.js';
+import { SettingsAccessEditScreen } from '../../src/tui/screens/settings/SettingsAccessEditScreen.js';
+import { SettingsAccessListScreen } from '../../src/tui/screens/settings/SettingsAccessListScreen.js';
+import { SecretRemoveScreen } from '../../src/tui/screens/secret/SecretRemoveScreen.js';
+import { parseSettings } from '../../src/core/settings/schema.js';
 
 const actualCore = await import('../../src/core/index.js');
 const actualIdentity = await import('../../src/core/identity/index.js');
 const actualIdentityStorage = await import('../../src/core/identity/storage.js');
 const actualVault = await import('../../src/core/vault/index.js');
+const actualInitializeVault = actualVault.initializeVault;
+let initializationRace = false;
+let initializationStatusReads = 0;
 
 /** Every call to the real propagation entry point. */
 const propagateCalls: unknown[] = [];
@@ -73,11 +82,13 @@ const RECIPIENTS = [
 mock.module('../../src/core/vault/index.js', () => ({
     ...actualVault,
     getVaultStatus: scoped(async () => ({
-        isInitialized: true,
-        hasAccess: true,
+        isInitialized: !initializationRace || initializationStatusReads++ > 0,
+        hasAccess: !initializationRace,
         usersWithAccess: 1,
         usersWithoutAccess: RECIPIENTS.length,
     }), actualVault.getVaultStatus),
+    initializeVault: scoped(async (...args: Parameters<typeof actualInitializeVault>) =>
+        initializationRace ? [null, null] : actualInitializeVault(...args), actualInitializeVault),
     getAllVaultSecrets: scoped(async () => [], actualVault.getAllVaultSecrets),
     getVaultKey: scoped(async () => 'vault-key', actualVault.getVaultKey),
     // Mirrors the real `[users, error]` tuple: a failed lookup must not be
@@ -89,7 +100,7 @@ mock.module('../../src/core/vault/index.js', () => ({
 
         propagateCalls.push(args);
 
-        return { propagatedTo: RECIPIENTS.map((r) => r.identityHash), skipped: [] };
+        return { propagatedTo: RECIPIENTS.map((r) => r.identityHash), failed: [] };
 
     }, actualVault.propagateVaultKey),
 }));
@@ -127,6 +138,8 @@ const createMockStateManager = () => ({
     getConfig: vi.fn().mockReturnValue(makeConfig()),
     setConfig: vi.fn().mockResolvedValue(undefined),
     setActiveConfig: vi.fn().mockResolvedValue(undefined),
+    getSecret: vi.fn().mockReturnValue('existing'),
+    deleteSecret: vi.fn().mockResolvedValue(undefined),
     hasPrivateKey: vi.fn().mockReturnValue(true),
     isLoaded: true,
 });
@@ -134,9 +147,13 @@ const createMockStateManager = () => ({
 const createMockSettingsManager = () => ({
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
-    settings: { version: '0.1.0' },
+    settings: parseSettings({}),
     getStages: vi.fn().mockReturnValue({}),
     getStage: vi.fn().mockReturnValue(undefined),
+    getAccessRoles: vi.fn().mockReturnValue({}),
+    removeAccessRole: vi.fn().mockResolvedValue(false),
+    setAccessRole: vi.fn().mockResolvedValue(undefined),
+    getRequiredSecrets: vi.fn().mockReturnValue([]),
 });
 
 let mockStateManager = createMockStateManager();
@@ -163,7 +180,7 @@ describe('cli: VaultScreen propagate', () => {
 
     const tick = (ms = 300) => new Promise((r) => setTimeout(r, ms));
 
-    function tree() {
+    function tree(screen: React.ReactNode = <VaultScreen params={{}} />) {
 
         return (
             <FocusProvider>
@@ -171,7 +188,7 @@ describe('cli: VaultScreen propagate', () => {
                     <AppContextProvider projectRoot={tempDir} autoLoad={true}>
                         <ConnectionProvider>
                             <ToastProvider>
-                                <VaultScreen params={{}} />
+                                {screen}
                             </ToastProvider>
                         </ConnectionProvider>
                     </AppContextProvider>
@@ -194,6 +211,8 @@ describe('cli: VaultScreen propagate', () => {
         delete process.env['NOORM_YES'];
 
         propagateCalls.length = 0;
+        initializationRace = false;
+        initializationStatusReads = 0;
         mockStateManager = createMockStateManager();
         mockSettingsManager = createMockSettingsManager();
 
@@ -212,6 +231,190 @@ describe('cli: VaultScreen propagate', () => {
     afterAll(() => {
 
         vaultTestsActive = false;
+
+    });
+    it('does not offer descendants as a custom role parent', async () => {
+
+        mockSettingsManager.getAccessRoles.mockReturnValue({
+            lead: {},
+            child: { extends: 'lead' },
+            grandchild: { extends: 'child' },
+            peer: {},
+        });
+        const { stdin, lastFrame, unmount } = render(tree(<SettingsAccessEditScreen params={{ name: 'lead' }} />));
+        await tick(600);
+        stdin.write('m');
+        await tick();
+        stdin.write('\r');
+        await tick();
+        const frame = lastFrame() ?? '';
+        expect(frame).toContain('viewer');
+        expect(frame).not.toContain('child');
+        expect(frame).not.toContain('grandchild');
+        unmount();
+
+    });
+
+    it('does not report a reset when the role has no overrides', async () => {
+
+        const { stdin, lastFrame, unmount } = render(tree(<SettingsAccessListScreen params={{}} />));
+        await tick(600);
+        stdin.write('d');
+        await tick();
+        stdin.write('y');
+        await tick();
+        expect(mockSettingsManager.removeAccessRole).toHaveBeenCalledWith('viewer');
+        expect(lastFrame()).not.toContain('Reset "viewer" overrides');
+        unmount();
+
+    });
+    it('shows a role save error instead of reporting success', async () => {
+
+        mockSettingsManager.getAccessRoles.mockReturnValue({ lead: {} });
+        mockSettingsManager.setAccessRole.mockRejectedValue(new Error('Unknown parent role'));
+        const { stdin, lastFrame, unmount } = render(tree(<SettingsAccessEditScreen params={{ name: 'lead' }} />));
+        await tick(600);
+        stdin.write('s');
+        await tick();
+        expect(mockSettingsManager.setAccessRole).toHaveBeenCalled();
+        expect(lastFrame()).toContain('Unknown parent role');
+        expect(lastFrame()).not.toContain('Role "lead" updated');
+        unmount();
+
+    });
+
+
+    it('removes a named secret without reading it when secret read is denied', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'secret:read': 'deny', 'secret:write': 'allow' } } } },
+        });
+        const { stdin, unmount } = render(tree(<SecretRemoveScreen params={{ name: 'TOKEN' }} />));
+        await tick(600);
+        stdin.write('y');
+        await tick();
+        expect(mockStateManager.getSecret).not.toHaveBeenCalled();
+        expect(mockStateManager.deleteSecret).toHaveBeenCalledWith('test', 'TOKEN');
+        unmount();
+
+    });
+
+    it('reaches initialization without connecting or reading when only vault write is allowed', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:read': 'deny', 'vault:write': 'allow' } } } },
+        });
+        function RoutedVault() {
+
+            const { route } = useRouter();
+            const { state } = useConnectionContext();
+
+            return <>
+                <Text>{state.db ? 'connected' : 'not-connected'}</Text>
+                {route === 'vault/init' ? <VaultInitScreen params={{}} /> : <VaultScreen params={{}} />}
+            </>;
+
+        }
+        const { stdin, lastFrame, unmount } = render(tree(<RoutedVault />));
+        await tick(600);
+        expect(lastFrame()).toContain('[i] Initialize vault');
+        expect(lastFrame()).toContain('not-connected');
+        stdin.write('i');
+        await tick();
+        expect(lastFrame()).toContain('Initialize the vault for this database?');
+        expect(lastFrame()).toContain('not-connected');
+        stdin.write('\r');
+        await tick(600);
+        expect(lastFrame()).not.toContain('not-connected');
+        unmount();
+
+    });
+
+    it('warns when another identity initializes the vault before this user can acquire its key', async () => {
+
+        initializationRace = true;
+        function InitWithOutcome() {
+
+            const { toast } = useToast();
+
+            return <><VaultInitScreen params={{}} /><Text>{toast?.variant}: {toast?.message}</Text></>;
+
+        }
+        const { stdin, lastFrame, unmount } = render(tree(<InitWithOutcome />));
+        const waitFor = async (predicate: () => boolean) => {
+
+            const deadline = Date.now() + 3000;
+            while (!predicate() && Date.now() < deadline) await tick(10);
+
+        };
+        try {
+
+            await waitFor(() => Boolean(lastFrame()?.includes('[Enter] Initialize')));
+            await act(async () => {
+
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                stdin.write('\r');
+
+            });
+            await waitFor(() => Boolean(lastFrame()?.includes('warning:')));
+            expect(lastFrame()).toContain('warning:');
+            expect(lastFrame()).toContain('lack access');
+            expect(lastFrame()).not.toContain('success:');
+
+        }
+        finally {
+
+            unmount();
+
+        }
+
+    });
+
+    it('does not connect to initialize when vault write is denied', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:write': 'deny' } } } },
+        });
+        function InitWithConnectionState() {
+
+            const { state } = useConnectionContext();
+
+            return <><Text>{state.db ? 'connected' : 'not-connected'}</Text><VaultInitScreen params={{}} /></>;
+
+        }
+        const { stdin, lastFrame, unmount } = render(tree(<InitWithConnectionState />));
+        await tick(600);
+        stdin.write('\r');
+        await tick();
+        expect(lastFrame()).toContain('not-connected');
+        expect(lastFrame()).toContain('vault:write');
+        unmount();
+
+    });
+
+    it('waits for write confirmation before connecting to initialize', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:write': 'confirm' } } } },
+        });
+        function InitWithConnectionState() {
+
+            const { state } = useConnectionContext();
+
+            return <><Text>{state.db ? 'connected' : 'not-connected'}</Text><VaultInitScreen params={{}} /></>;
+
+        }
+        const { stdin, lastFrame, unmount } = render(tree(<InitWithConnectionState />));
+        await tick(600);
+        stdin.write('\r');
+        await tick();
+        expect(lastFrame()).toContain('not-connected');
+        stdin.write('yes-test');
+        await tick();
+        stdin.write('\r');
+        await tick(600);
+        expect(lastFrame()).not.toContain('not-connected');
+        unmount();
 
     });
 

@@ -1,5 +1,6 @@
 export { ChangesNamespace } from './changes.js';
 export { RunNamespace } from './run.js';
+export { PipelinesNamespace } from './pipelines.js';
 export { DbNamespace } from './db.js';
 export { LockNamespace } from './lock.js';
 export { VaultNamespace } from './vault.js';

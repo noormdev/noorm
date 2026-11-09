@@ -27,7 +27,7 @@ bun run typecheck               # Type check
 
 ## Running Tests
 
-A single `bun test` (whole suite, one process) does **not** reflect CI. CI splits the suite into five
+A single `bun test` (whole suite, one process) does **not** reflect CI. CI splits the suite into six
 independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml`
 for the split and [`docs/wiki/index.md`](docs/wiki/index.md) for the exact per-group commands.
 
@@ -151,15 +151,19 @@ For setup wizards where the target database may not exist yet, use `testConnecti
 | `docs/guide/environments/stages.md` | stages | atomic-writing |
 | `docs/guide/environments/secrets.md` | secrets, config-scoped vs global | atomic-writing |
 | `docs/guide/environments/vault.md` | vault, secret resolution, encryption | atomic-writing |
+| `docs/guide/pipeline-recovery.md` | clearing an abandoned pipeline guard, unknown outcomes | atomic-writing |
+| `docs/guide/pipeline-terminal.md` | pipeline screens in the TUI | atomic-writing |
 | `docs/guide/relational-design.md` | inherited keys, basetype-subtype modeling | atomic-writing |
 | `docs/guide/sql-files/organization.md` | directory structure, naming, execution order | atomic-writing |
 | `docs/guide/sql-files/execution.md` | run build, run file, execution | atomic-writing |
 | `docs/guide/sql-files/templates.md` | Eta template syntax, rendering context | atomic-writing |
+| `docs/guide/sql-pipelines.md` | pipeline definitions, inputs, transactions, history, SDK | atomic-writing |
 | `docs/guide/troubleshooting.md` | common failure modes, flag gotchas | atomic-writing |
 | `docs/cli/flags.md` | global vs per-subcommand flags, --config overload | terse-technical |
 | `docs/cli/help.md` | help discovery | terse-technical |
 | `docs/cli/identity.md` | identity management commands | terse-technical |
 | `docs/cli/init.md` | noorm init | terse-technical |
+| `docs/cli/pipeline.md` | noorm pipeline run, history, show, exit codes, error messages | terse-technical |
 | `docs/cli/run.md` | noorm run subcommands, exit codes | terse-technical |
 | `docs/cli/secret.md` | noorm secret | terse-technical |
 | `docs/cli/settings-edit.md` | noorm settings edit | terse-technical |

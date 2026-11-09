@@ -146,6 +146,53 @@ describe('cli: noorm config list — access tag display', () => {
 
     });
 
+    it('reports effective custom permissions without exposing connection credentials', async () => {
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), [
+            'access:',
+            '  roles:',
+            '    auditor:',
+            '      extends: viewer',
+            '      permissions:',
+            '        sql:read: deny',
+            '        explore: deny',
+            '',
+        ].join('\n'));
+        await seedConfig({ user: 'auditor', agent: 'auditor' });
+
+        const result = spawnSync('node', [CLI, 'config', 'list', '--json'], {
+            cwd: tmpDir,
+            encoding: 'utf-8',
+            env: identityEnv,
+        });
+        expect(result.status).toBe(0);
+        const output = JSON.parse(result.stdout);
+        expect(output.configs[0].effectivePermissions.user['sql:read']).toBe('allow');
+        expect(output.configs[0].effectivePermissions.user['explore']).toBe('allow');
+        expect(output.configs[0].effectivePermissions.agent['sql:read']).toBe('deny');
+        expect(output.configs[0].effectivePermissions.agent['explore']).toBe('deny');
+        expect(output.configs[0].connection).toBeUndefined();
+
+    });
+    it('returns JSON summaries when settings or a role reference is invalid', async () => {
+
+        await seedConfig({ user: 'missing', agent: 'viewer' });
+        const runJson = () => spawnSync('node', [CLI, 'config', 'list', '--json'], {
+            cwd: tmpDir, encoding: 'utf-8', env: identityEnv,
+        });
+        let result = runJson();
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout).configs[0].name).toBe(CONFIG_NAME);
+        expect(JSON.parse(result.stdout).configs[0].effectivePermissions).toBeUndefined();
+
+        writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'access:\n  roles:\n    broken:\n      extends: absent\n');
+        result = runJson();
+        expect(result.status).toBe(0);
+        expect(JSON.parse(result.stdout).configs[0].name).toBe(CONFIG_NAME);
+
+    });
+
+
     describe('agent: false invisibility', () => {
 
         /** Runs `config list` from inside an agent harness. */

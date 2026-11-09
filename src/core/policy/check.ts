@@ -1,7 +1,97 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import { shouldSkipConfirmations } from '../environment.js';
 import { DEFAULT_ACCESS } from './legacy-access.js';
-import { MATRIX } from './matrix.js';
-import type { Channel, ConfigAccess, Permission, PolicyCheck, PolicyTarget } from './types.js';
+import { compareCells, isBuiltinRole, MATRIX, TEST_DB_LIFECYCLE, USER_ALWAYS_ALLOWED } from './matrix.js';
+import type { Channel, ConfigAccess, Permission, PolicyCell, PolicyCheck, PolicyContext, PolicyTarget } from './types.js';
+
+const POLICY_CONTEXT = Symbol('noorm.policyContext');
+type ContextualAccess = ConfigAccess & { [POLICY_CONTEXT]?: PolicyContext };
+type ConfigTarget = { name: string; access?: ConfigAccess };
+const approvals = new AsyncLocalStorage<readonly { fingerprint: string; permissions: readonly Permission[] }[]>();
+
+/** Attach project-specific policy without persisting it in config exports or state. */
+export function attachPolicyContext(access: ConfigAccess, context: PolicyContext): void {
+
+    Object.defineProperty(access, POLICY_CONTEXT, { value: context, configurable: true });
+
+}
+
+/** Read the policy bound during configuration resolution. */
+export function getPolicyContext(access: ConfigAccess): PolicyContext | undefined {
+
+    return (access as ContextualAccess)[POLICY_CONTEXT];
+
+}
+
+/** Bind approvals to a project and connection without exposing credentials. */
+export function policyTargetIdentity(projectRoot: string, connection: unknown): string {
+
+    return createHash('sha256').update(JSON.stringify([resolve(projectRoot), connection])).digest('hex');
+
+}
+
+function effectiveCell(role: string, permission: Permission, context: PolicyContext, seen = new Set<string>()): PolicyCell {
+
+    if (seen.has(role)) return 'deny';
+    seen.add(role);
+    const definition = context.roles && Object.hasOwn(context.roles, role) ? context.roles[role] : undefined;
+    const explicit = definition?.permissions?.[permission];
+    if (explicit === 'allow' || explicit === 'confirm' || explicit === 'deny') return explicit;
+    if (explicit !== undefined) return 'deny';
+    if (isBuiltinRole(role)) return MATRIX[permission]?.[role] ?? 'deny';
+    if (!definition) return 'deny';
+
+    return definition.extends ? effectiveCell(definition.extends, permission, context, seen) : 'deny';
+
+}
+
+/** Effective cell with the protected-stage ceiling; `USER_ALWAYS_ALLOWED` reads `allow` on the user channel, `TEST_DB_LIFECYCLE` on isTest. */
+export function getConfigPermission(channel: Channel, config: ConfigTarget, permission: Permission): PolicyCell {
+
+    if (channel === 'user' && USER_ALWAYS_ALLOWED.includes(permission)) return 'allow';
+
+    const access = config.access as ContextualAccess | undefined;
+    const role = access?.[channel];
+    if (!access || !role || !Object.hasOwn(MATRIX, permission)) return 'deny';
+    const context = access[POLICY_CONTEXT];
+    if (!context) return 'deny';
+    const roleResolves = isBuiltinRole(role) || (context.roles !== undefined && Object.hasOwn(context.roles, role));
+    if (context.isTest === true && roleResolves && TEST_DB_LIFECYCLE.includes(permission)) return 'allow';
+    const cell = effectiveCell(role, permission, context);
+    if (!context.protectedStage) return cell;
+    const ceiling = MATRIX[permission][channel === 'user' ? 'operator' : 'viewer'];
+
+    return compareCells(cell, ceiling) <= 0 ? cell : ceiling;
+
+}
+
+/** Fingerprint the effective assignments and cells, not object insertion order. */
+export function getPolicyFingerprint(config: ConfigTarget): string {
+
+    const permissions = Object.keys(MATRIX).sort() as Permission[];
+    const policy = permissions.map((permission) => [
+        permission,
+        getConfigPermission('user', config, permission),
+        getConfigPermission('agent', config, permission),
+    ]);
+
+    return createHash('sha256').update(JSON.stringify([
+        config.name, config.access?.user, config.access?.agent,
+        (config.access as ContextualAccess | undefined)?.[POLICY_CONTEXT]?.protectedStage === true,
+        (config.access as ContextualAccess | undefined)?.[POLICY_CONTEXT]?.targetIdentity,
+        policy,
+    ])).digest('hex');
+
+}
+
+/** Internal grant, intended only for callers that have independently validated consent. */
+export function withPolicyConfirmation<T>(config: ConfigTarget, permissions: readonly Permission[], action: () => Promise<T>): Promise<T> {
+
+    return approvals.run([...(approvals.getStore() ?? []), { fingerprint: getPolicyFingerprint(config), permissions: [...permissions] }], action);
+
+}
 
 /**
  * The type-to-confirm phrase for a config — the single source every
@@ -20,11 +110,11 @@ export function confirmationPhraseFor(name: string): string {
 /**
  * Resolve whether a channel may exercise a permission against a config.
  *
- * The matrix cell is channel-agnostic (`allow`/`confirm`/`deny`); only
- * `confirm` resolves differently per channel: the `user` channel prompts for
- * `yes-<config>` (skippable via `NOORM_YES`), while `agent` collapses confirm
- * to deny — an agent confirming its own destructive action is theater, and on
- * the CLI it would need only `--yes` to do it.
+ * The `user` channel always reads `USER_ALWAYS_ALLOWED` permissions as `allow`;
+ * every other cell comes from the role, capped by the protected-stage ceiling.
+ * `confirm` also differs per channel: the `user` channel prompts for
+ * `yes-<config>` (skippable via `NOORM_YES`), while `agent` is denied unless an
+ * independently validated human approval grants the exact permission.
  *
  * `agent: false` (invisible config) is never a role and is not expected to
  * reach this function — visibility is enforced upstream. If it does, this
@@ -49,7 +139,7 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
 
     }
 
-    const cell = MATRIX[permission][role];
+    const cell = getConfigPermission(channel, target, permission);
 
     if (cell === 'allow') {
 
@@ -64,6 +154,14 @@ export function checkPolicy(channel: Channel, target: PolicyTarget, permission: 
             requiresConfirmation: false,
             blockedReason: `"${permission}" is not allowed on config "${target.name}" (role: ${role}).`,
         };
+
+    }
+
+    const approval = approvals.getStore();
+    const fingerprint = approval ? getPolicyFingerprint(target) : null;
+    if (approval?.some((grant) => grant.permissions.includes(permission) && grant.fingerprint === fingerprint)) {
+
+        return { allowed: true, requiresConfirmation: false };
 
     }
 
@@ -157,8 +255,7 @@ export function assertPolicy(
 
 /**
  * Whether a config is visible on a channel — the agent-channel invisibility
- * rule, extracted so `list_configs` and `session.ts`'s `connect()` share one
- * fail-closed implementation instead of two independently drifting copies.
+ * rule.
  *
  * Fails closed: missing `access` is treated the same as `access.agent ===
  * false`. The `user` channel is always visible; only `agent` can be hidden.
@@ -182,7 +279,15 @@ export function isVisibleToChannel(access: ConfigAccess | undefined, channel: Ch
  */
 export function guarded(target: PolicyTarget): boolean {
 
-    return target.access.user !== 'admin';
+    const context = getPolicyContext(target.access);
+    if (target.access.user !== 'admin' || context?.protectedStage) return true;
+    if (!context) return false;
+
+    return (Object.keys(MATRIX) as Permission[]).some((permission) => {
+
+        return compareCells(getConfigPermission('user', target, permission), MATRIX[permission].admin) < 0;
+
+    });
 
 }
 

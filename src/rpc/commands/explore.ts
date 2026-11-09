@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { fetchOverview, fetchList, fetchDetail } from '../../core/explore/operations.js';
+import { gatedExplore } from '../../sdk/namespaces/db.js';
 import type { RpcCommand } from '../types.js';
 
 const categoryEnum = z.enum([
@@ -38,7 +39,7 @@ const overviewCommand: RpcCommand<Record<string, never>> = {
 
         const ctx = session.getContext();
 
-        return fetchOverview(ctx.kysely, ctx.dialect);
+        return ctx.noorm.db[gatedExplore]('overview', (gate) => fetchOverview(ctx.kysely, ctx.dialect, { gate }));
 
     },
 };
@@ -58,7 +59,7 @@ const listCommand: RpcCommand<ListInput> = {
         const { category } = input;
         const ctx = session.getContext();
 
-        return fetchList(ctx.kysely, ctx.dialect, category);
+        return ctx.noorm.db[gatedExplore](category, (gate) => fetchList(ctx.kysely, ctx.dialect, category, { gate }));
 
     },
 };
@@ -78,7 +79,7 @@ const detailCommand: RpcCommand<DetailInput> = {
         const { category, name, schema } = input;
         const ctx = session.getContext();
 
-        return fetchDetail(ctx.kysely, ctx.dialect, category, name, schema);
+        return ctx.noorm.db[gatedExplore](category, (gate) => fetchDetail(ctx.kysely, ctx.dialect, category, name, { schema, gate }));
 
     },
 };

@@ -13,11 +13,20 @@ The noorm SDK provides programmatic access to noorm-managed databases. Use it fo
 
 ## Installation
 
-The SDK is published as a standalone `@noormdev/sdk` package:
+The SDK is published as a standalone `@noormdev/sdk` package and needs Node 22.13 or newer, `kysely`, and the driver for your dialect:
 
 ```bash
-pnpm add @noormdev/sdk
+pnpm add @noormdev/sdk kysely pg
 ```
+
+| Dialect | Driver |
+|---|---|
+| PostgreSQL | `pg` |
+| MySQL | `mysql2` |
+| SQLite | `better-sqlite3` |
+| SQL Server | `tedious` |
+
+Drivers are optional peer dependencies, so install only the one you use. Tarn is bundled and does not need a separate install.
 
 
 ## Quick Start
@@ -61,6 +70,7 @@ The Context API is split into two levels:
 
 **ctx.noorm** — noorm management operations, organized by namespace:
 - `run`: `build()`, `file()`, `files()`, `dir()`, `discover()`, `preview()`
+- `pipelines`: `run()`, `history()`, `getRun()`
 - `db`: `truncate()`, `teardown()`, `previewTeardown()`, `reset()`, `overview()`, `listTables()`, `describeTable()`, `listViews()`, `describeView()`, `listProcedures()`, `describeProcedure()`, `listFunctions()`, `describeFunction()`, `listTypes()`, `describeType()`, `listIndexes()`, `listForeignKeys()`
 - `changes`: `apply()`, `revert()`, `ff()`, `next()`, `rewind()`, `status()`, `pending()`, `history()`, `historyForChange()`, `getFileHistory()`, `create()`, `addFile()`, `removeFile()`, `renameFile()`, `reorderFiles()`, `delete()`, `discover()`, `parse()`, `validate()`
 - `lock`: `acquire()`, `release()`, `status()`, `withLock()`, `forceRelease()`
@@ -71,6 +81,8 @@ The Context API is split into two levels:
 - `vault`: `init()`, `status()`, `set()`, `get()`, `getAll()`, `list()`, `delete()`, `exists()`, `propagate()`, `copy()`
 - `utils`: `checksum()`, `testConnection()`
 - Properties: `config`, `settings`, `identity`
+
+For a connected pipeline invocation and history lookup, see [SQL pipelines](/guide/sql-pipelines#sdk) and the [SDK reference](/reference/sdk#ctx-noorm-pipelines).
 
 The event bus is **not** on the context. It is a process-global singleton exported
 as `noormObserver` from the package root — one `ObserverEngine` shared by every
@@ -87,8 +99,11 @@ context in the process. See [Event Subscriptions](#event-subscriptions).
 Creates an SDK context for programmatic database access.
 
 ```typescript
+import type { CreateContextOptions as SdkOptions } from '@noormdev/sdk'
+
 interface CreateContextOptions {
     config?: string          // Config name (or use NOORM_CONFIG env var)
+    connection?: SdkOptions['connection'] // Inline fields and runtime hooks; see SDK reference
     projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
     channel?: Channel        // 'user' (default) or 'agent' — which access role applies
@@ -110,11 +125,13 @@ const ctx = await createContext<MyDatabase>({
 })
 ```
 
+For inline-only resolution, credential callbacks, TLS identity hooks, session controls, and idle-pool events, use the [SDK connection reference](/reference/sdk#createcontext-options). The public `connection` type is indexed from the exported `CreateContextOptions`; callbacks stay outside persisted `Config`.
+
 **Safety Options:**
 
 - `requireTest: true` - Throws `RequireTestError` if the config doesn't have `isTest: true`. Use this in test suites to prevent accidentally running against production.
 
-- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError`. See [Access Roles](./config.md#access-roles).
+- `channel: 'agent'` - Enforces the config's `access.agent` role instead of `access.user` for destructive operations (`truncate`, `teardown`, `reset`, `changes.revert`) and for reads gated by `explore` (the `db` explore methods and change history). Use this when embedding the SDK behind an MCP-like surface. Defaults to `'user'`. A denied or unconfirmable operation throws `ProtectedConfigError`. See [Access Roles](./config.md#access-roles).
 
 - `yes: true` - Pre-confirms `confirm`-tier permissions, the programmatic equivalent of the CLI's `--yes`. The SDK has no prompt, so without it a `confirm` cell blocks like an outright denial. Setting `NOORM_YES` in the environment has the same effect (`checkPolicy` consults it before returning `requiresConfirmation`). Both are **user-channel only**: on `agent`, `confirm` collapses to deny before either is read, so an agent cannot walk through a gate meant for a human.
 
@@ -139,11 +156,7 @@ export NOORM_CONFIG=staging
 const ctx = await createContext()
 ```
 
-Priority (highest to lowest):
-1. `NOORM_*` env vars
-2. Stored config
-3. Stage defaults
-4. Defaults
+Connection fields follow the [shared resolution order](/dev/config#config-resolution), with inline SDK `connection` values above environment overrides.
 
 
 #### Env-Only Mode (No Stored Config)

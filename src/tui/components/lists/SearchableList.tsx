@@ -23,7 +23,7 @@ import { useFocusScope } from '../../focus.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { SelectList } from './SelectList.js';
 
-import type { SelectListItem } from './SelectList.js';
+import type { SelectListItem, SelectListProps } from './SelectList.js';
 
 /**
  * Rows this component draws around the list it wraps: the search row, the hint
@@ -99,6 +99,9 @@ export interface SearchableListProps<T = unknown> {
     /** Callback when Escape is pressed (and not in search mode with search text) */
     onCancel?: () => void;
 
+    /** Custom single-row rendering; labels remain available in full for search. */
+    renderItem?: SelectListProps<T>['renderItem'];
+
 }
 
 /**
@@ -123,6 +126,7 @@ export function SearchableList<T = unknown>({
     initialHighlightedKey,
     onFilterChange,
     onCancel,
+    renderItem,
 }: SearchableListProps<T>): ReactElement {
 
     // The wrapped SelectList is handed a resolved number, so it never
@@ -341,6 +345,7 @@ export function SearchableList<T = unknown>({
                     isFocused={isFocused && !searchMode}
                     numberNav={numberNav}
                     defaultValue={currentHighlightedKey}
+                    renderItem={renderItem}
                 />
             )}
 

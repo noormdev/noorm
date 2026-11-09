@@ -8,9 +8,11 @@ paths:
   - "tests/core/rpc/**"
 ---
 
-Domain: mcp-rpc. MCP server over stdio wrapping flat RPC command registry, permission-gated dispatch.
+Domain: mcp-rpc. MCP over stdio and permission-gated RPC dispatch.
 
 Map:
   - docs/wiki/mcp-rpc.md
+Related:
+  - docs/guide/automation/mcp.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

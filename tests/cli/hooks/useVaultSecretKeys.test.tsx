@@ -8,21 +8,24 @@
  * Drives the real AppContextProvider rather than stubbing useAppContext —
  * mocking src/tui/app-context.js leaks into sibling TUI test files.
  */
-import React, { useEffect } from 'react';
+import React, { act, useEffect } from 'react';
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi, mock } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { Text } from 'ink';
 
-import { AppContextProvider } from '../../../src/tui/app-context.js';
+import { AppContextProvider, useAppContext } from '../../../src/tui/app-context.js';
 import { useVaultSecretKeys, type VaultSecretKeysResult } from '../../../src/tui/hooks/useVaultSecretKeys.js';
-import type { VaultStatus } from '../../../src/core/vault/index.js';
+import type { VaultStatus, VaultSecret } from '../../../src/core/vault/index.js';
+import { parseSettings } from '../../../src/core/settings/schema.js';
 
 // Pre-import actual modules for restoration
 const actualCore = await import('../../../src/core/index.js');
 const actualIdentity = await import('../../../src/core/identity/index.js');
 const actualUseConnection = await import('../../../src/tui/hooks/useConnection.js');
+const realUseConnection = actualUseConnection.useConnection;
 const actualVault = await import('../../../src/core/vault/index.js');
 const actualStorage = await import('../../../src/core/identity/storage.js');
+const readAllVaultSecrets = vi.fn(actualVault.getAllVaultSecrets);
 
 const testConfig = {
     name: 'dev',
@@ -40,6 +43,7 @@ const testConfig = {
 const mockStateManager = {
     load: vi.fn().mockResolvedValue(undefined),
     getActiveConfig: vi.fn(() => testConfig),
+    getConfig: vi.fn(() => testConfig),
     getActiveConfigName: vi.fn(() => 'dev'),
     listConfigs: vi.fn(() => []),
     hasPrivateKey: vi.fn(() => false),
@@ -47,9 +51,11 @@ const mockStateManager = {
 };
 
 const mockSettingsManager = {
+    projectRoot: process.cwd(),
+    getStage: vi.fn(() => undefined),
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
-    settings: { version: '0.1.0' },
+    settings: parseSettings({}),
     getStages: vi.fn(() => ({})),
     getRequiredSecrets: vi.fn(() => []),
 };
@@ -66,17 +72,19 @@ mock.module('../../../src/core/identity/index.js', () => ({
     loadExistingIdentity: vi.fn().mockResolvedValue({ identityHash: 'hash123' }),
 }));
 
+const useConnectionMock = vi.fn();
+
 // Spread the real modules so only the exports under test are replaced
 mock.module('../../../src/tui/hooks/useConnection.js', () => ({
     ...actualUseConnection,
-    useConnection: vi.fn(),
+    useConnection: useConnectionMock,
 }));
 
 mock.module('../../../src/core/vault/index.js', () => ({
     ...actualVault,
     getVaultStatus: vi.fn(),
     getVaultKey: vi.fn(),
-    getAllVaultSecrets: vi.fn(),
+    getAllVaultSecrets: readAllVaultSecrets,
 }));
 
 mock.module('../../../src/core/identity/storage.js', () => ({
@@ -99,12 +107,13 @@ const vaultStatus = (hasAccess: boolean): VaultStatus => ({
     usersWithoutAccess: 0,
 });
 
-/**
- * Test wrapper component that exposes hook state.
- */
+let refreshContext: (() => Promise<void>) | undefined;
+
+/** Test wrapper component that exposes hook state. */
 function TestComponent({ onResult }: { onResult: (result: VaultSecretKeysResult) => void }) {
 
     const result = useVaultSecretKeys();
+    refreshContext = useAppContext().refresh;
 
     useEffect(() => {
 
@@ -131,12 +140,15 @@ describe('cli: useVaultSecretKeys', () => {
         vi.clearAllMocks();
         actualCore.observer.clear();
         latestResult = null;
+        refreshContext = undefined;
 
         mockStateManager.getActiveConfig.mockReturnValue(testConfig);
+        mockStateManager.getConfig.mockReturnValue(testConfig);
         mockStateManager.getActiveConfigName.mockReturnValue('dev');
         mockStateManager.listConfigs.mockReturnValue([]);
         mockSettingsManager.getStages.mockReturnValue({});
         mockSettingsManager.getRequiredSecrets.mockReturnValue([]);
+        mockSettingsManager.settings = parseSettings({});
 
         (useConnection as any).mockReturnValue({
             db: {},
@@ -161,6 +173,9 @@ describe('cli: useVaultSecretKeys', () => {
     // Restore mocked modules to prevent pollution of subsequent test files
     afterAll(() => {
 
+        // The mock outlives this file; `realUseConnection` is a by-value copy because the namespace
+        // is rewritten to the mock.
+        useConnectionMock.mockImplementation(realUseConnection);
         mock.module('../../../src/core/index.js', () => actualCore);
         mock.module('../../../src/core/identity/index.js', () => actualIdentity);
         mock.module('../../../src/tui/hooks/useConnection.js', () => actualUseConnection);
@@ -287,6 +302,85 @@ describe('cli: useVaultSecretKeys', () => {
 
         expect(latestResult?.vaultError).toContain('Could not unlock vault');
 
+        unmount();
+
+    });
+    it('does not request a connection or schema setup when vault read is denied', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:read': 'deny' } } } },
+        });
+        const { unmount } = await renderHook();
+
+        expect(useConnection).toHaveBeenLastCalledWith({ ensureSchema: true, enabled: false });
+        expect(getVaultStatus).not.toHaveBeenCalled();
+        expect(latestResult?.vaultSecretKeys).toEqual([]);
+        unmount();
+
+    });
+
+    it('discards an in-flight read after switching configurations', async () => {
+
+        const deferred = Promise.withResolvers<Record<string, VaultSecret>>();
+        readAllVaultSecrets.mockImplementationOnce(() => deferred.promise);
+        const { unmount } = await renderHook();
+        expect(readAllVaultSecrets).toHaveBeenCalled();
+        mockStateManager.getActiveConfig.mockReturnValue({ ...testConfig, name: 'other' });
+        mockStateManager.getActiveConfigName.mockReturnValue('other');
+        await act(async () => {
+
+            await refreshContext?.();
+            deferred.resolve({ STALE: { key: 'STALE', value: 'secret', setBy: 'test', createdAt: new Date(0), updatedAt: new Date(0) } });
+            await new Promise((resolve) => setTimeout(resolve, 150));
+
+        });
+        expect(latestResult?.vaultSecretKeys).not.toContain('STALE');
+        unmount();
+
+    });
+
+
+    it('does not expose vault keys until a configured confirmation is accepted', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:read': 'confirm' } } } },
+        });
+        readAllVaultSecrets.mockResolvedValue({
+            PRIVATE: { key: 'PRIVATE', value: 'secret', setBy: 'test', createdAt: new Date(0), updatedAt: new Date(0) },
+        });
+        const { unmount } = await renderHook();
+        expect(latestResult?.vaultSecretKeys).toEqual([]);
+        expect(getVaultStatus).not.toHaveBeenCalled();
+        expect(useConnection).toHaveBeenLastCalledWith({ ensureSchema: true, enabled: false });
+        const confirmation = latestResult?.vaultConfirmation;
+        expect(confirmation).not.toBeNull();
+        await act(async () => {
+
+            confirmation?.onConfirm();
+            await new Promise((resolve) => setTimeout(resolve, 150));
+
+        });
+        expect(latestResult?.vaultSecretKeys).toEqual(['PRIVATE']);
+        expect(useConnection).toHaveBeenLastCalledWith({ ensureSchema: true, enabled: true });
+        expect(latestResult?.vaultConfirmation).toBeNull();
+        unmount();
+
+    });
+
+    it('does not read vault contents when configured confirmation is cancelled', async () => {
+
+        mockSettingsManager.settings = parseSettings({
+            access: { roles: { admin: { permissions: { 'vault:read': 'confirm' } } } },
+        });
+        const { unmount } = await renderHook();
+        await act(async () => {
+
+            latestResult?.vaultConfirmation?.onCancel();
+
+        });
+        expect(getVaultStatus).not.toHaveBeenCalled();
+        expect(latestResult?.vaultSecretKeys).toEqual([]);
+        expect(latestResult?.vaultError).not.toBeNull();
         unmount();
 
     });

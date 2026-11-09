@@ -7,6 +7,7 @@ import {
     ProtectedConfigError,
 } from '../../src/sdk/guards.js';
 import type { Config } from '../../src/core/config/types.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 import type { ConfigAccess } from '../../src/core/policy/index.js';
 import type { CreateContextOptions } from '../../src/sdk/types.js';
 
@@ -15,6 +16,10 @@ const OPERATOR_ACCESS: ConfigAccess = { user: 'operator', agent: 'viewer' };
 const VIEWER_ACCESS: ConfigAccess = { user: 'viewer', agent: false };
 
 function makeConfig(access: ConfigAccess, overrides: Partial<Config> = {}): Config {
+
+    access = { ...access };
+
+    attachPolicyContext(access, {});
 
     return {
         name: 'test',

@@ -14,9 +14,11 @@ import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
 import type { ConnectionRetryOptions } from '../core/connection/index.js';
+import { getStateManager, type StateManager } from '../core/state/index.js';
 
 import { callProc, callFunc, callTvf, qualifyName, withRoutines } from './routines.js';
 import { NoormOps } from './noorm-ops.js';
+import { bindSdkPolicy } from './guards.js';
 import type { ContextState } from './state.js';
 import { requireConnection } from './state.js';
 import type { CreateContextOptions, ExtractArgs, ExtractReturn, RoutineCalls, TransactionScope } from './types.js';
@@ -110,7 +112,16 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         identity: Identity,
         options: CreateContextOptions,
         projectRoot: string,
+        stateManager: StateManager = getStateManager(projectRoot),
     ) {
+
+        // Configs may carry metadata from another project or an older settings snapshot.
+        // Always bind authority to the settings and target supplied to this Context.
+        if (config.access) {
+
+            config = bindSdkPolicy(config, settings, projectRoot, options.stage ? [options.stage] : undefined);
+
+        }
 
         this.#state = {
             connection: null,
@@ -119,6 +130,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             identity,
             options,
             projectRoot,
+            stateManager,
             changeManager: null,
         };
 
@@ -127,6 +139,12 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     // ─────────────────────────────────────────────────────────
     // Read-only Properties
     // ─────────────────────────────────────────────────────────
+
+    get projectRoot(): string {
+
+        return this.#state.projectRoot;
+
+    }
 
     get dialect(): Dialect {
 
@@ -191,6 +209,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             this.#state.identity,
             this.#state.options,
             this.#state.projectRoot,
+            this.#state.stateManager,
         );
 
         derived.#state = this.#state;
@@ -249,6 +268,13 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             this.#state.config.connection,
             this.#state.config.name,
             retryOptions,
+            undefined,
+            {
+                password: typeof this.#state.options.connection?.password === 'function'
+                    ? this.#state.options.connection.password : undefined,
+                checkServerIdentity: typeof this.#state.options.connection?.ssl === 'object'
+                    ? this.#state.options.connection.ssl.checkServerIdentity : undefined,
+            },
         );
 
     }

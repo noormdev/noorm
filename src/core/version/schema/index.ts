@@ -28,6 +28,7 @@ import {
 // Import migrations
 import { v1 } from './migrations/v1.js';
 import { v2 } from './migrations/v2.js';
+import { v3 } from './migrations/v3.js';
 
 import { waitForIdentityToLoad } from '../../identity/index.js';
 import { getCurrentVersion } from '../../update/checker.js';
@@ -36,7 +37,7 @@ import { getCurrentVersion } from '../../update/checker.js';
  * All schema migrations in order.
  * Add new migrations here as they're created.
  */
-const MIGRATIONS: SchemaMigration[] = [v1, v2];
+const MIGRATIONS: SchemaMigration[] = [v1, v2, v3];
 
 /**
  * Check if tracking tables exist.
@@ -508,7 +509,7 @@ export async function migrateSchema(
 
         // Tables exist but version record is missing (interrupted migration).
         // v1 tables were created but version record was never written.
-        // Skip v1, run v2+ as pending migrations (v2 is idempotent).
+        // Skip v1, run v2+ as pending migrations (every v2+ migration must be idempotent).
         currentVersion = 1;
 
     }

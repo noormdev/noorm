@@ -169,6 +169,11 @@ When a batch fails, the error starts with `[batch 2 of 2]`. SQLite errors start 
 | A line that is only `GO` inside a string or block comment splits the file | The splitter reads lines, not SQL | Keep `GO` out of strings and `/* */` comments |
 
 
+## Named workflows
+
+[SQL pipelines](/guide/sql-pipelines) execute named workflow declarations fresh on each invocation, including repeated references to the same file. Their independent history and transaction boundaries do not use the checksum skip behavior described above.
+
+
 ## Next
 
 

@@ -32,7 +32,7 @@ A [config](/guide/environments/configs) uses the stage with its name. The stage 
 
 - is created by the TUI from `defaults` if it does not exist yet
 - cannot be deleted, because the stage is `locked`
-- resolves to at most `operator` for you and `viewer` for agents, because the stage is `protected`
+- has each permission capped by the original `operator` matrix for you and `viewer` matrix for agents, because the stage is `protected`
 - shows `PAYMENT_GATEWAY_KEY` as missing in the TUI until someone sets it
 
 From the SDK, `createContext({ stage: 'prod' })` picks a stage for a config with another name.
@@ -41,23 +41,27 @@ From the SDK, `createContext({ stage: 'prod' })` picks a stage for a config with
 ## Where do `defaults` apply?
 
 
-`defaults` is a template for the first config, not a layer under every config. When `noorm ui` opens, it creates a config for each stage that sets `defaults.dialect` and has no config of its name yet, provided this machine has an identity. `host` falls back to `localhost`, `database` to the stage name, and a `protected` stage starts the config at `operator` for you and `viewer` for agents.
+When `noorm ui` opens, it creates a config for each stage that sets `defaults.dialect` and has no config of its name yet, provided this machine has an identity. `host` falls back to `localhost`, and `database` to the stage name. A protected stage caps effective permission cells against the original operator matrix for users and viewer matrix for agents. TUI seeding preserves a stage's configured password; keep credentials out of committed settings.
 
-From then on, the stored config holds the values. Editing `defaults` later does not change it. A stage selected for an [environment-only](/headless#environment-only-mode) run also passes its `isTest`.
+At runtime, stage defaults are also a layer beneath stored values. Editing a default fills fields absent from a stored config, but does not replace stored fields. An SDK context can select that layer with `stage`, including in inline or [environment-only mode](/headless#environment-only-mode). The stage's `isTest` applies unless a higher-priority value overrides it.
+
+To replace stored fields with current defaults, run `noorm config sync --stage staging --name review`. For unattended creation, use `noorm config create --stage staging --name review` or `--all`. These aliases require an unprotected stage: create and sync reject a different config name for a protected stage because a stored config does not retain a stage association. Use the stage name for protected stages. The [CLI reference](/headless#config-create) owns their password, preview, and overwrite rules.
 
 
 ## Which value wins?
 
 
-Each source overrides the one above it, then a protected stage caps `access`:
+Each source overrides the one above it; policy checks then apply the protected-stage ceiling:
 
 ```mermaid
 flowchart TD
-    D["built-in defaults"] --> C["stored config<br/>state.enc"]
+    D["built-in defaults"] --> S["stage defaults"]
+    S --> C["stored config<br/>state.enc, if selected"]
     C --> E["NOORM_* variables"]
-    E --> P{"stage has<br/>protected: true?"}
-    P -->|yes| K["cap access at<br/>user operator<br/>agent viewer"]
-    P -->|no| R["effective config"]
+    E --> I["inline SDK connection"]
+    I --> P{"stage has<br/>protected: true?"}
+    P -->|yes| K["cap each permission<br/>at original operator / viewer"]
+    P -->|no| R["policy decision"]
     K --> R
 ```
 
@@ -69,21 +73,18 @@ flowchart TD
 |---|---|
 | `description` | Shown in the TUI |
 | `locked: true` | Configs on this stage cannot be deleted |
-| `defaults` | `dialect`, `host`, `port`, `database`, `user`, `password`, `ssl`, `isTest`: the template the TUI creates the config from. `protected: true` also caps access on every resolve, below |
+| `defaults` | Flat connection fields (`dialect`, `host`, `port`, `database`, `user`, `password`, `ssl`) plus `type`, `isTest`, and `access`. `protected: true` caps effective permission cells |
 | `secrets` | Secrets this stage requires |
 
 
 ### What does `protected: true` cap?
 
 
-It lowers each channel to the ceiling and leaves stricter values alone. The cap applies on every resolve, so editing stored state does not raise it.
+The cap applies to each effective permission at policy-check time, without changing the assigned role name. It uses the original built-in `operator` matrix for users and `viewer` matrix for agents, not their project overrides. For each cell, the stricter result wins: `deny` is stricter than `confirm`, which is stricter than `allow`. Custom roles and built-in overrides cannot relax this ceiling; stricter project policy remains in effect. The one exception is a config with `isTest: true`, which runs the database lifecycle cells regardless ([access roles](/guide/environments/configs#access-roles)). `agent: false` still hides the config.
 
-| Config sets | Resolves to |
-|---|---|
-| `user: admin` | `operator` |
-| `user: viewer` | `viewer` |
-| `agent: admin` or `agent: operator` | `viewer` |
-| `agent: false` | `false` (hidden) |
+For example, even if a project grants an agent `run:build: allow`, a protected stage caps it at the original viewer cell, `deny`. A user's `run:build: allow` is capped at the original operator cell, `confirm`.
+
+The ceiling applies when any of three sources marks the stage protected: the stage settings resolved for the config, the config's own name, or an explicit `stage` option. An option can add the ceiling and never remove it. Copying or renaming a config from a protected stage to a name that is not protected is refused, so a copy cannot shed the ceiling.
 
 
 ## How do I require a secret?
@@ -112,11 +113,11 @@ For an optional secret, probe first with `{% if ('PAYMENT_GATEWAY_KEY' in $.secr
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Editing a stage's `host` or `port` does not change the config | `defaults` only seeds a config the TUI creates; the stored config wins after that | Edit the config, or set a `NOORM_CONNECTION_*` variable |
+| Editing a stage's `host` or `port` does not replace the config's value | Stored fields override the stage layer | Preview `noorm config sync --stage staging --name review`, or use a runtime environment override |
 | No config appears for a stage | The stage sets no `defaults.dialect`, or this machine had no identity when `noorm ui` opened | Add `dialect` under `defaults`, or set up an identity, then reopen `noorm ui` |
 | A database password is in git history | `defaults.password` sits in the committed `settings.yml` | Leave `password` out of `defaults`. Set it on each config in `noorm ui` |
 | `Config "prod" is linked to locked stage "prod" and cannot be deleted` | The stage has `locked: true` | Remove `locked` from the stage in `settings.yml` |
-| A config set to `admin` behaves as `operator` | The stage is `protected` | Intended. Put the config on an unprotected stage |
+| A permissive role is denied or requires confirmation | The stage is `protected` and caps each permission | Inspect the original operator/user and viewer/agent cells; use an unprotected stage only when appropriate |
 
 
 ## Next

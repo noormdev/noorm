@@ -28,13 +28,12 @@ import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js
 import { Panel, Spinner, SmartConfirm, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS } from '../../hooks/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
-import { discoverFiles, runBuild } from '../../../core/runner/index.js';
+import { buildRunContext, discoverFiles, runBuild } from '../../../core/runner/index.js';
 import { filterFilesByPaths, findUnmatchedIncludePatterns } from '../../../core/shared/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import {
     getErrorMessage,
     resolveScreenIdentity,
-    buildRunContext,
     withScreenConnection,
     progressPercentage,
     runCancelMessage,

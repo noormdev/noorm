@@ -92,7 +92,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
         const config: Config = {
             name: CONFIG_NAME,
             type: 'local',
-            isTest: true,
+            isTest: false,
             access,
             connection: { dialect: 'sqlite', database: dbPath },
         };
@@ -195,7 +195,7 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
         const config: Config = {
             name: CONFIG_NAME,
             type: 'local',
-            isTest: true,
+            isTest: false,
             access,
             connection: { dialect: 'sqlite', database: dbPath },
         };

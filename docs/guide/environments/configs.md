@@ -38,7 +38,16 @@ Use the TUI wizard: run `noorm ui`, press `c` for configs, then `a`. Before it s
 
 Schema and change folders are not config fields. `paths` in `.noorm/settings.yml` sets them.
 
-`noorm config add` and `config edit` exit 1 and point you at the TUI. To create a config without it, write a JSON file and import it. This `staging.json` is hidden from agents:
+Create a config from an existing stage without connecting:
+
+```bash
+noorm config create --stage staging --name review --host db.example.com
+noorm config validate review
+```
+
+`create` saves the stage's defaults with one-time connection overrides. To update an existing config from changed defaults, use `noorm config sync --stage staging --name review`; it previews changes and asks before saving. Neither command stores a stage link. The [CLI reference](/headless#config-create) lists flags, password rules, and overwrite authorization.
+
+`noorm config add` and `config edit` exit 1 and point you at the TUI. For a complete config object, import JSON instead. This `staging.json` is hidden from agents:
 
 ```json
 {
@@ -87,6 +96,15 @@ Environment variables override the stored config. [Stages](/guide/environments/s
 | `NOORM_YES` | Any value except empty, `0`, or `false` skips `confirm` prompts on the `user` channel |
 | `NOORM_CHANNEL` | `user` or `agent`. See [Which channel is a process on?](#which-channel-is-a-process-on) |
 
+CamelCase fields keep their schema spelling within one segment:
+
+```bash
+export NOORM_CONNECTION_connectTimeoutMs=30000
+export NOORM_CONNECTION_SSL_rejectUnauthorized=true
+```
+
+Underscores mean nesting, so splitting `connectTimeoutMs` into words addresses a different object. Use either scalar SSL or nested SSL settings, without mixing both forms. The [environment field reference](/dev/config#environment-variables) lists the supported schema paths and validation behavior. `config validate` tests the effective environment-overridden connection without saving overrides.
+
 When no config is selected by flag, `NOORM_CONFIG`, or `config use`, noorm builds one named `__env__` from the variables. It needs `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`:
 
 ```bash
@@ -111,16 +129,16 @@ Each config has two roles, one per channel. The `user` channel is you, in the CL
 | `viewer` | Reads only, no secrets. Default for `agent` |
 | `operator` | Writes data. Builds, changes, and `db create` ask first |
 | `admin` | Everything allowed, but irreversible operations still ask. Default for `user` |
-| `false` | `agent` only. Hides the config: `config list` omits it and MCP answers as if it does not exist |
+| `false` | `agent` only. Hides the config: `config list` omits it and MCP answers as if it does not exist. This is not a role |
 
-Every permission has one cell per role, fixed in `src/core/policy/matrix.ts`:
+The table shows the **built-in defaults**, defined in `src/core/policy/matrix.ts`. Project settings can override them:
 
 | Permission | viewer | operator | admin |
 |---|---|---|---|
 | `explore`, `sql:read` (`SELECT`, `EXPLAIN`) | allow | allow | allow |
 | `sql:write` (`INSERT`, `UPDATE`, `DELETE`) | deny | allow | allow |
 | `sql:ddl` (`CREATE`, `ALTER`, `DROP`) | deny | deny | allow |
-| `run:build`, `run:file`, `run:dir`, `change:run`, `change:ff`, `change:revert`, `db:create`, `db:reset` | deny | confirm | allow |
+| `run:build`, `run:file`, `run:dir`, `pipeline:run`, `change:run`, `change:ff`, `change:revert`, `db:create`, `db:reset` | deny | confirm | allow |
 | `db:truncate`, `change:rm`, `config:rm`, `config:write`, `vault:propagate`, `lock:force` | deny | confirm | confirm |
 | `db:destroy` (`db drop`), `db:teardown` | deny | deny | confirm |
 | `vault:read`, `secret:read`, `transfer:plan` | deny | allow | allow |
@@ -128,21 +146,62 @@ Every permission has one cell per role, fixed in `src/core/policy/matrix.ts`:
 | `debug:read` | allow | allow | allow |
 | `debug:write` | deny | deny | confirm |
 
-A `confirm` cell never opens for an agent:
+The read cells, `explore` and `sql:read`, apply to the `agent` channel only. The `user` channel always reads them as `allow`, so a `viewer` or a custom role with `explore: deny` still lets you browse and query your own database from the CLI, TUI, and SDK. The access-roles editor labels these cells as agent-channel cells. An agent without `explore` is also refused the table listing behind `db transfer --export` (when `--tables` is omitted).
+
+Define project roles in `.noorm/settings.yml`:
+
+```yaml
+access:
+    roles:
+        operator:
+            permissions:
+                sql:write: confirm
+        deployer:
+            extends: operator
+            permissions:
+                run:build: allow
+```
+
+An override of a built-in role keeps its other default cells; built-ins cannot use `extends`. A custom role inherits its parent's effective project policy, including overrides; parents may themselves be custom roles. Without `extends`, unspecified permissions deny. Unknown permissions, values or parents and inheritance cycles are rejected. Select the role in the config's TUI access fields, or set its name in imported JSON. An unknown assigned role fails closed.
+
+On a stage with `defaults.protected: true`, each effective permission is capped by the **original** operator matrix for users and viewer matrix for agents, regardless of overrides or inheritance. The stricter cell wins (`deny` < `confirm` < `allow`); role names do not change. `noorm config cp` and the TUI copy and rename screens refuse to move a config from a protected stage to an unprotected name, because the copy would drop the ceiling. See [Stages](/guide/environments/stages#what-does-protected-true-cap).
+
+A config with `isTest: true` is exempt from the database lifecycle cells: `db create`, `db reset`, `db truncate`, `db teardown`, and `db drop` are allowed for every role on both channels, protected stage included. A `confirm` cell becomes `allow`, so a user-channel admin no longer needs `--yes` for `db create`, `truncate`, `teardown`, or `drop`. `db reset` still needs `--yes`, and its rebuild still needs `run:build`, which `isTest` does not relax; the SDK checks `run:build` before it drops anything. Test harnesses launched from an agent session can then drop and recreate their own database. Every other permission keeps its cell. A role name that resolves to nothing still fails closed, `isTest` or not.
+
+The same exemption covers a transfer destination and `dt.importFile`, since both write through `db:reset`. A transfer or vault destination counts as `isTest` when its stored config says so and it still points at that config's target; the SDK looks the destination up by name. A destination with no stored config keeps only an `isTest` already bound for the same target.
+
+The flag counts only from a source the caller cannot overlay:
+
+| Source | When `isTest` counts |
+|---|---|
+| Stored config | Its own `isTest` is `true` and env, flags, or an inline `connection` leave the target alone |
+| Stage default that declares a database | The stage says `isTest: true` and the resolved target is the stage's |
+| Env-only config (no stored config of that name) | `NOORM_isTest=true`, no stage sets `isTest: false`, no stage in play is protected, and env or flags supply the database (and the host, on server dialects) |
+
+The target is dialect, host, database, and file; a port counts only when the source declares one, so an env port on a stage that declares none is not a retarget. Changing only the user or password keeps the flag. Anywhere else the env value is ignored: `NOORM_isTest=true noorm --config prod db drop` and `NOORM_NAME=prod NOORM_isTest=true` against a protected `prod` stage are still refused. An agent that sets `NOORM_isTest=true` on an env-only config whose target it supplies is the harness path, and it is allowed.
+
+The TUI also stores `user: operator, agent: viewer` on a config it creates for a protected stage. The ceiling does not depend on that stored value; it is the starting point you can see and edit.
+
+For `confirm`, a human on the user channel can confirm interactively or use `--yes` / `NOORM_YES=1`. Agent CLI calls always deny `confirm`, even with those flags. MCP can instead request a mediated human approval when the client supports it; rejection or unavailable approval denies the action. No confirmation opens a `deny` cell.
+
+The effective permission decides whether confirmation is possible; the caller decides how it is collected.
 
 ```mermaid
 flowchart TD
-    A["noorm run build"] --> B{"role on this<br/>channel"}
-    B -->|false| H["config hidden"]
-    B -->|a role| C{"matrix cell"}
-    C -->|allow| R["runs"]
-    C -->|deny| D["refused"]
-    C -->|confirm| E{"channel"}
-    E -->|user| F["type yes-prod<br/>or pass --yes"]
-    E -->|agent| D
+    accTitle: Permission and confirmation decisions
+    accDescr: Deny blocks execution. Allow executes. Confirm requires a human mechanism, and agent CLI calls cannot supply it.
+    %% source: src/core/policy/check.ts, src/mcp/approval.ts
+    P{"Effective permission"} -->|deny| D["Blocked"]
+    P -->|allow| E["Execute"]
+    P -->|confirm| C{"Caller"}
+    C -->|Human CLI or TUI| H{"Human confirmation"}
+    C -->|Agent CLI or SDK| D
+    C -->|MCP| M{"Human elicitation"}
+    H -->|Confirmed| E
+    H -->|Missing or cancelled| D
+    M -->|Valid approval| E
+    M -->|Unavailable or rejected| D
 ```
-
-`--yes` and `NOORM_YES=1` satisfy a `confirm` cell. They never open a `deny` cell.
 
 
 ### Which channel is a process on?
@@ -164,7 +223,7 @@ flowchart TD
 The harness variables are `CLAUDECODE`, `CLAUDE_CODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`, `CURSOR_AGENT`, `GEMINI_CLI`, `AI_AGENT`, and `NOORM_AGENT`. `TERM_PROGRAM`, `CI`, and whether stdout is a terminal are ignored, because they describe the terminal, not the caller.
 
 ::: warning Roles prevent accidents
-Roles stop a wrong-database teardown and an agent that shells out after an MCP refusal. They do not stop someone with the credentials, and an agent can set `NOORM_CHANNEL` too. Use database permissions for security.
+Roles guard noorm operations against mistakes such as a wrong-database teardown. They are not a process sandbox: someone with the credentials can use another client, and an agent can set `NOORM_CHANNEL`. Use database permissions for security.
 :::
 
 
@@ -196,7 +255,7 @@ Exit 0 when valid, 1 when not. Every check runs, so one report lists all failure
 | Needs | The recipient's identity known locally | A role that can read secrets |
 | Import | TUI: `+`, then `i` | `noorm config import <file>` |
 
-`config export --output` writes the file with `0600` permissions. Treat it as a credential. Importing over an existing name needs `--force --yes`, because an overwrite rewrites the config's roles.
+`config export --output` writes the file with `0600` permissions. Treat it as a credential. Creating a config through CLI import is user-channel only. Importing over an existing name needs `--force --yes` and the `config:write` permission, because an overwrite rewrites the config's roles.
 
 
 ## What bites
@@ -206,7 +265,7 @@ Exit 0 when valid, 1 when not. Every check runs, so one report lists all failure
 |---|---|---|
 | `noorm -c prod run build` fails: `--cwd path is not a directory` | Before the subcommand, `-c` is `--cwd` | `noorm run build --config prod` |
 | `"db:teardown" is not allowed on config "prod" (role: operator).` | The role's cell is `deny`, and no flag opens it | Change the role in the TUI, or use a config with `admin` |
-| `"run:build" on config "prod" requires confirmation from a human.` | A `confirm` cell is `deny` on the `agent` channel | Run it in your own terminal, or with `NOORM_CHANNEL=user` when you script inside an agent session |
+| `"run:build" on config "prod" requires confirmation from a human.` | An agent CLI call cannot satisfy a `confirm` cell | Run it in your own terminal, or use MCP with mediated human approval |
 | An imported config is open to `admin` | The file has no `access`, so it gets `user: admin`, `agent: viewer` | Put `access` in the file |
 
 

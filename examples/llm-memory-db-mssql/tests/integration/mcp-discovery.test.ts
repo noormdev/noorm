@@ -3,29 +3,17 @@
  *
  * Exercises the noorm MCP server (`noorm mcp serve`) end-to-end. Spawns
  * the CLI as a subprocess, connects via the MCP TypeScript SDK over
- * stdio, and asserts the two exposed tools (`noorm_help`, `run_noorm_cmd`)
- * behave as documented:
+ * stdio, and checks tool discovery, database exploration, and recovery
+ * after an invalid tool request.
  *
- *   1. `noorm_help` (no args) lists at least the core commands.
- *   2. `run_noorm_cmd("overview")` returns the dev DB's expected counts.
- *   3. `run_noorm_cmd("list", { category: "types" })` returns the four
- *      composite TVP types defined in `sql/00_types/`.
- *   4. A bad command name yields `isError: true` and a follow-up valid
- *      call still succeeds — the server didn't crash.
- *
- * The MCP SDK is hoisted at the monorepo root (`@modelcontextprotocol/sdk`,
- * a noorm dependency). Bun resolves it via workspace hoisting; no example
- * package.json change is needed. If resolution ever breaks, switch to a
- * skipped suite with a gap row in `mssql-problems.md`.
- *
- * Spawned subprocess CWD must be the example dir so the MCP server
- * discovers `.noorm/settings.yml` and the active `dev` config. The test
- * issues an explicit `connect` first — `overview` and `list` need an
- * active session.
+ * The modern MCP client is hoisted at the monorepo root.
+ * The subprocess CWD must be the example directory for project discovery.
+ * Each database request explicitly targets the suite's provisioned test config;
+ * no connection handshake or active database session is required.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 const PROJECT_ROOT = new URL('../..', import.meta.url).pathname;
 
@@ -115,35 +103,17 @@ beforeAll(async () => {
         stderr: 'pipe',
     });
 
-    client = new Client({ name: 'mcp-discovery-test', version: '0.0.1' });
+    client = new Client({ name: 'mcp-discovery-test', version: '0.0.1' }, {
+        versionNegotiation: { mode: { pin: '2026-07-28' } },
+    });
     await client.connect(transport);
 
-    // The MCP server starts disconnected. `overview` and `list` both call
-    // `session.getContext()`, which throws if no connection exists. Connect
-    // once for the whole suite — the SessionManager memoises by config.
-    // Connect with the `test` config — the one the suite bootstraps
-    // (createContext({ config: 'test' }) in the helpers, and `noorm ci init
-    // --name test` in CI). The `dev` config isn't provisioned under test.
-    const connectRes = await client.callTool({
-        name: 'run_noorm_cmd',
-        arguments: { command: 'connect', config: 'test' },
-    });
-
-    expect(isError(connectRes)).toBeFalsy();
 
 }, 30_000);
 
 afterAll(async () => {
 
-    // Disconnect the DB session before tearing down the transport so the
-    // MCP child cleanly closes its Kysely pool. Best-effort — if the server
-    // already exited we don't want to mask a real test failure.
     if (client) {
-
-        await client.callTool({
-            name: 'run_noorm_cmd',
-            arguments: { command: 'disconnect' },
-        }).catch(() => undefined);
 
         await client.close().catch(() => undefined);
     }
@@ -155,51 +125,25 @@ afterAll(async () => {
 
 });
 
-describe('mcp-discovery: noorm_help', () => {
+describe('mcp-discovery: direct tools', () => {
 
-    it('lists at least the core commands when called without arguments', async () => {
+    it('advertises the core discovery tools', async () => {
 
-        const result = await client.callTool({ name: 'noorm_help', arguments: {} });
-        const text = firstText(result);
+        const result = await client.listTools();
+        const names = result.tools.map((tool) => tool.name);
+        for (const name of ['list_configs', 'overview', 'list', 'detail', 'sql']) {
 
-        const requiredCommands = ['connect', 'overview', 'list', 'detail', 'sql'];
-
-        for (const name of requiredCommands) {
-
-            expect(text).toContain(`**${name}**`);
+            expect(names).toContain(name);
 
         }
 
     });
 
-    it('returns detailed help for a specific command', async () => {
-
-        const result = await client.callTool({
-            name: 'noorm_help',
-            arguments: { command: 'overview' },
-        });
-
-        expect(isError(result)).toBeFalsy();
-
-        const text = firstText(result);
-
-        // The detailed help text always names the command somewhere; we don't
-        // pin to an exact format because the registry's help renderer
-        // (`registry.getHelp`) may evolve — what matters is that detailed
-        // help is materially different from the unfiltered list.
-        expect(text.toLowerCase()).toContain('overview');
-
-    });
-
-});
-
-describe('mcp-discovery: run_noorm_cmd', () => {
-
     it('returns the expected object counts for `overview` against dev', async () => {
 
         const result = await client.callTool({
-            name: 'run_noorm_cmd',
-            arguments: { command: 'overview' },
+            name: 'overview',
+            arguments: { config: 'test' },
         });
 
         expect(isError(result)).toBeFalsy();
@@ -222,8 +166,8 @@ describe('mcp-discovery: run_noorm_cmd', () => {
     it('lists the four composite TVP types via `list { category: "types" }`', async () => {
 
         const result = await client.callTool({
-            name: 'run_noorm_cmd',
-            arguments: { command: 'list', payload: { category: 'types' } },
+            name: 'list',
+            arguments: { config: 'test', category: 'types' },
         });
 
         expect(isError(result)).toBeFalsy();
@@ -248,33 +192,12 @@ describe('mcp-discovery: run_noorm_cmd', () => {
 
 describe('mcp-discovery: error resilience', () => {
 
-    it('flags a bad command with isError and keeps the server alive', async () => {
+    it('rejects an unknown tool and keeps the server alive', async () => {
 
-        const bad = await client.callTool({
-            name: 'run_noorm_cmd',
-            arguments: { command: 'nonexistent.command' },
-        });
-
-        // The server must mark the tool call as an error AND it must not
-        // crash. Per `src/mcp/server.ts:38`, unknown commands return an
-        // `isError: true` envelope with an "Unknown command" message —
-        // exfiltrating the available command list so the caller can self-correct.
-        expect(isError(bad)).toBe(true);
-
-        const text = firstText(bad);
-        const errorPayload = JSON.parse(text);
-
-        expect(errorPayload.error).toMatch(/Unknown command/i);
-
-        // The server must still answer follow-up calls. If the bad call
-        // had crashed the subprocess, this would either throw (transport
-        // closed) or hang past the test timeout.
-        const recovered = await client.callTool({ name: 'noorm_help', arguments: {} });
-
+        await expect(client.callTool({ name: 'nonexistent.command', arguments: {} })).rejects.toThrow();
+        const recovered = await client.callTool({ name: 'overview', arguments: { config: 'test' } });
         expect(isError(recovered)).toBeFalsy();
-
-        const recoveredText = firstText(recovered);
-        expect(recoveredText).toContain('**connect**');
+        expect(JSON.parse(firstText(recovered))).toMatchObject({ tables: 38 });
 
     });
 

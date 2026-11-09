@@ -5,14 +5,16 @@
  * Settings are version controlled and shared across the team (unlike encrypted state).
  */
 import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { attempt, clone, merge, makeNestedConfig } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import { isBuiltinRole } from '../policy/matrix.js';
 import { parseSettings, validateSettings } from './schema.js';
 import {
     DEFAULT_SETTINGS,
+    DEFAULT_PIPELINES_PATH,
     SETTINGS_DIR_PATH,
     createDefaultSettings,
 } from './defaults.js';
@@ -28,6 +30,7 @@ import type {
     StrictConfig,
     LoggingConfig,
     TeardownConfig,
+    RoleDefinition,
     RulesEvaluationResult,
     ConfigForRuleMatch,
 } from './types.js';
@@ -55,13 +58,25 @@ const META_SETTINGS_ENV_VARS = new Set([
 function allSettingsEnv(): Partial<Settings> {
 
     const { allConfigs } = makeNestedConfig<Partial<Settings>>(process.env as Record<string, string>, {
-        filter: (key) => key.startsWith('NOORM_') && !META_SETTINGS_ENV_VARS.has(key) && !key.startsWith('NOORM_IDENTITY_') && !key.startsWith('NOORM_CONNECTION_'),
+        filter: (key) => key.startsWith('NOORM_')
+            && !META_SETTINGS_ENV_VARS.has(key)
+            && !key.startsWith('NOORM_IDENTITY_')
+            && !key.startsWith('NOORM_CONNECTION_')
+            && !/^NOORM_ACCESS(?:[_.]|$)/i.test(key),
         stripPrefix: 'NOORM_',
         forceAllCapToLower: true,
         memoizeOpts: false,
     });
 
-    return allConfigs();
+    const overlay = allConfigs();
+    delete overlay.access;
+    for (const stage of Object.values(overlay.stages ?? {})) {
+
+        if (stage?.defaults && typeof stage.defaults === 'object') delete stage.defaults.protected;
+
+    }
+
+    return overlay;
 
 }
 
@@ -120,6 +135,13 @@ export class SettingsManager {
     // ─────────────────────────────────────────────────────────────
     // Path Helpers
     // ─────────────────────────────────────────────────────────────
+
+    /** Project root used to bind policy approvals to this project. */
+    get projectRoot(): string {
+
+        return this.#projectRoot;
+
+    }
 
     /**
      * Get the full path to the settings directory.
@@ -422,6 +444,74 @@ export class SettingsManager {
         this.#assertLoaded();
 
         return this.#settings!.logging ?? DEFAULT_SETTINGS.logging!;
+
+    }
+
+    /**
+     * Role definitions from the persisted document, without environment overlays.
+     */
+    getAccessRoles(): Record<string, RoleDefinition> {
+
+        this.#assertLoaded();
+
+        return structuredClone(this.#document!.access?.roles ?? {});
+
+    }
+
+    /**
+     * Replace one role definition. Missing permissions are inherited or defaulted.
+     */
+    async setAccessRole(name: string, definition: RoleDefinition): Promise<void> {
+
+        this.#assertLoaded();
+        this.#assertAccessRoleName(name);
+
+        const candidate = structuredClone(this.#document!);
+        const roles = candidate.access?.roles ?? {};
+        Object.defineProperty(roles, name, {
+            value: structuredClone(definition),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        });
+        candidate.access = { ...candidate.access, roles };
+        validateSettings(candidate);
+
+        await this.#saveRoleDocument(candidate);
+
+    }
+
+    /**
+     * Remove a custom role or reset a built-in role's stored override.
+     */
+    async removeAccessRole(name: string): Promise<boolean> {
+
+        this.#assertLoaded();
+        this.#assertAccessRoleName(name);
+
+        const roles = this.#document!.access?.roles;
+        if (!roles || !Object.hasOwn(roles, name)) return false;
+
+        const builtin = isBuiltinRole(name);
+        if (!builtin) {
+
+            const dependent = Object.entries(roles).find(([roleName, role]) =>
+                roleName !== name && role.extends === name,
+            );
+            if (dependent) {
+
+                throw new Error(`Role "${name}" is extended by role "${dependent[0]}"`);
+
+            }
+
+        }
+
+        const candidate = structuredClone(this.#document!);
+        delete candidate.access!.roles![name];
+        validateSettings(candidate);
+        await this.#saveRoleDocument(candidate);
+
+        return true;
 
     }
 
@@ -732,18 +822,22 @@ export class SettingsManager {
 
     /**
      * Update path configuration.
+     *
+     * Keys omitted from `paths` keep their stored value.
      */
     async setPaths(paths: PathConfig): Promise<void> {
 
-        this.#assertLoaded();
+        const document = this.#assertLoaded();
 
-        this.#document!.paths = clone(paths);
+        const merged = { ...document.paths, ...clone(paths) };
+
+        document.paths = merged;
 
         await this.save();
 
         this.#refreshResolved();
 
-        observer.emit('settings:paths-updated', { paths });
+        observer.emit('settings:paths-updated', { paths: clone(merged) });
 
     }
 
@@ -1028,11 +1122,46 @@ export class SettingsManager {
     /**
      * Assert that settings have been loaded.
      */
-    #assertLoaded(): void {
+    #assertLoaded(): Settings {
 
         if (!this.#loaded || !this.#document) {
 
             throw new Error('SettingsManager not loaded. Call load() first.');
+
+        }
+
+        return this.#document;
+
+    }
+
+    #assertAccessRoleName(name: string): void {
+
+        if (!name) throw new Error('Role name cannot be empty');
+        // Zod's record parser drops this key, so it cannot round-trip.
+        if (name === '__proto__') throw new Error('Role name "__proto__" cannot be persisted');
+
+    }
+
+    /**
+     * Keep the prior in-memory document and view if validation or saving fails.
+     */
+    async #saveRoleDocument(candidate: Settings): Promise<void> {
+
+        const previousDocument = this.#document;
+        const previousSettings = this.#settings;
+        this.#document = candidate;
+        const [, err] = await attempt(async () => {
+
+            this.#refreshResolved();
+            await this.save();
+
+        });
+
+        if (err) {
+
+            this.#document = previousDocument;
+            this.#settings = previousSettings;
+            throw err;
 
         }
 
@@ -1048,14 +1177,22 @@ export class SettingsManager {
      */
     #refreshResolved(): void {
 
-        const merged = merge(clone(this.#document!), allSettingsEnv());
+        const document = structuredClone(this.#document!);
+        // Access definitions have no environment overlay. Keep role names
+        // resembling prototype keys out of the generic deep merge.
+        delete document.access;
+        const merged = merge(document, allSettingsEnv());
+        if (this.#document!.access) merged.access = structuredClone(this.#document!.access);
 
         // Validated, not re-parsed: the overlay lands after the document was
         // parsed, so env values arrive unchecked, and a scalar in an array
         // field (NOORM_BUILD_INCLUDE=00_tables) used to be iterated character
         // by character and silently match nothing. Asserting rather than
-        // transforming keeps the view shaped exactly like the document.
+        // transforming keeps the view the same as the document before the
+        // pipelines default is filled in below.
         validateSettings(merged);
+
+        merged.paths = { ...merged.paths, pipelines: merged.paths?.pipelines ?? DEFAULT_PIPELINES_PATH };
 
         this.#settings = merged as Settings;
 
@@ -1079,7 +1216,7 @@ export class SettingsManager {
 // Singleton / Reset Pattern
 // ─────────────────────────────────────────────────────────────
 
-let settingsManagerInstance: SettingsManager | null = null;
+const settingsManagers = new Map<string, SettingsManager>();
 
 /**
  * Get or create a SettingsManager instance for a project.
@@ -1095,23 +1232,27 @@ export function getSettingsManager(
     options?: SettingsManagerOptions,
 ): SettingsManager {
 
-    if (!settingsManagerInstance) {
+    const root = resolve(projectRoot);
+    let manager = settingsManagers.get(root);
 
-        settingsManagerInstance = new SettingsManager(projectRoot, options);
+    if (!manager) {
+
+        manager = new SettingsManager(projectRoot, options);
+        settingsManagers.set(root, manager);
 
     }
 
-    return settingsManagerInstance;
+    return manager;
 
 }
 
 /**
- * Reset the singleton instance.
+ * Drop every cached instance.
  *
  * Useful for testing to ensure clean state between tests.
  */
 export function resetSettingsManager(): void {
 
-    settingsManagerInstance = null;
+    settingsManagers.clear();
 
 }

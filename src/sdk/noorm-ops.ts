@@ -13,6 +13,7 @@ import type { ContextState } from './state.js';
 import {
     ChangesNamespace,
     RunNamespace,
+    PipelinesNamespace,
     DbNamespace,
     LockNamespace,
     VaultNamespace,
@@ -31,7 +32,7 @@ import {
  * Noorm-specific operations accessed via ctx.noorm.
  *
  * Domain-aligned sub-namespaces mirror the TUI home screen:
- * changes, run, db, lock, vault, secrets, templates, transfer, dt, utils.
+ * changes, run, pipelines, db, lock, vault, secrets, templates, transfer, dt, utils.
  *
  * @example
  * ```typescript
@@ -50,6 +51,7 @@ export class NoormOps {
     // Lazy namespace instances
     #changes: ChangesNamespace | null = null;
     #run: RunNamespace | null = null;
+    #pipelines: PipelinesNamespace | null = null;
     #db: DbNamespace | null = null;
     #lock: LockNamespace | null = null;
     #vault: VaultNamespace | null = null;
@@ -104,6 +106,14 @@ export class NoormOps {
         if (!this.#run) this.#run = new RunNamespace(this.#state);
 
         return this.#run;
+
+    }
+
+    get pipelines(): PipelinesNamespace {
+
+        if (!this.#pipelines) this.#pipelines = new PipelinesNamespace(this.#state);
+
+        return this.#pipelines;
 
     }
 
