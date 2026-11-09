@@ -1,5 +1,51 @@
 # @noormdev/sdk
 
+## 1.8.0
+
+### Minor Changes
+
+- 622116b: Configs with `isTest: true` allow the database lifecycle operations (`db create`, `truncate`, `teardown`, `drop`) for every role on both channels, without confirmation, so test harnesses launched from an agent session can drop and recreate their own database. `db reset` still needs `--yes` and `run:build`. `noorm ci init --test` is now refused on the agent channel. Where the flag counts is in [access roles](https://noorm.dev/guide/environments/configs#access-roles).
+- 622116b: Support project-defined access roles and partial overrides of built-in viewer, operator, and admin permissions. Resolve inherited permissions consistently across guarded noorm APIs and preserve immutable protected-stage ceilings. Built-in defaults, including operator DML access, remain unchanged without explicit overrides.
+
+  The SDK `Role` type accepts custom role names. Resolved configs carry non-enumerable policy context; detached copies without it are denied by guarded operations. Malformed stored access is preserved for diagnosis and repair rather than silently replaced.
+
+  Vault set, propagate, copy, and identity enrollment require `vault:read` when they unseal an existing vault key. Secret writes do not require secret read, and initializing a fresh vault can use write-only access.
+
+  Manage role definitions in the TUI under Settings → Access Roles. Create custom roles, edit inheritance and permission overrides, preview effective permissions and protected-stage ceilings, reset built-in overrides, and remove unused custom roles with confirmation.
+
+  Display the TUI Settings overview as a responsive table with separate section, purpose, and current-value columns. Preserve number-key navigation and keep long values from shifting adjacent columns.
+
+  Upgrade the stdio MCP server to protocol 2026-07-28 with discovery, per-request metadata, scoped human approval through form elicitation, JSON database exploration resources, and eight user-selected prompt cookbooks, including headless automation and test/deployment CI. Database calls require an explicit config; legacy initialization and MCP connect/disconnect/status commands are no longer supported. Approvals are short-lived, single-use, and bound to the request, target, effective policy, and captured executable content. Agent CLI confirm permissions remain denied even with yes flags; human confirmation paths remain available.
+
+  Approved template changes retain the checksum of the captured source while executing the captured rendered SQL, so subsequent ordinary change runs recognize unchanged templates. Ordinary file runs continue tracking rendered output.
+
+  Check every SQL permission represented in a batch, including nested writes, before execution. Allowed DDL cannot mask denied writes or skip required write confirmation.
+
+  MCP migration: replace `run_noorm_cmd` with the individual tool named by `command`, moving `payload` fields alongside `config`. Replace `noorm_help` with `tools/list` and its schemas. The old tools have been removed. Clients must support the modern revision and pass an explicit config instead of establishing a database session.
+
+  The read permissions `explore` and `sql:read` apply to the agent channel only; the user channel always reads them as allowed. On the agent channel, `explore` now gates every schema read and change-history read in the CLI, SDK, and MCP, including the table listing behind `db transfer --export` when `--tables` is omitted. `db.previewTeardown()` checks `db:teardown` the way `teardown({ dryRun: true })` does; a role that may not tear down cannot preview. A protected stage keeps its ceiling when the caller passes an explicit `stage`, when a config is copied or renamed to an unprotected name (now refused), and on SDK transfer and vault destinations. MCP approvals redact only the password and SSL material; user and database names stay visible. When the active config has malformed access, the TUI stays usable and Home names `noorm config repair-access <name>`.
+
+  Named SQL pipelines have their own `pipeline:run` permission (viewer deny, operator confirm, admin allow) instead of borrowing `run:dir`, so a role can run pipelines without directory runs and the reverse. On the agent channel, `pipelines.history`, `getRun`, and `noorm pipeline history`/`show` now require `explore`.
+
+- 622116b: Allow runtime password callbacks for fresh physical connections in PostgreSQL, MySQL, and SQL Server. Preserve credential-provider errors, sanitize observer events, and bundle the pool dependency required by MySQL and SQL Server.
+
+  Release PostgreSQL authentication sockets when a credential callback rejects, preserving the original error without leaving a failed connection alive.
+
+- 622116b: Allow non-persisted per-context connection overrides without a stored config. Inline connections ignore the active stored config unless a stored base is selected through `config` or `NOORM_CONFIG`, preventing inherited access roles and test clearance.
+- 622116b: Expose PostgreSQL idle, statement and query timeouts, application name, and TCP keepalive.
+- 622116b: Verify explicit PostgreSQL TLS identities across tunnels and support runtime identity callbacks.
+- 622116b: Add SQL pipelines for named workflows with typed inputs, dependency-aware execution, transaction boundaries, and independent config-scoped history through the CLI and SDK. Add native terminal screens for definition review, explicit typed input overrides, protected run and dry-run confirmation, settled execution and transaction evidence, and bounded history or run-ID lookup without a local definition. Pipeline stop and managed shutdown wait for active work and bookkeeping without promising server-side cancellation; cleanup warnings preserve recorded outcomes and nonzero shutdown status.
+
+  Pipelines move the tracking schema to version 3, which adds the pipeline run and step tables. The move is one way. An older CLI or TUI that connects to a version 3 database fails with `VersionMismatchError`, so upgrade them before the first connect. An older SDK keeps working and ignores the pipeline tables, except that `vault.copy` to a version 3 destination throws `VersionMismatchError`. A pipeline run checks that a step did not end the managed transaction, which needs PostgreSQL 13 or later and SQL Server 2016 or later.
+
+  The TUI shutdown screen now marks phases that timed out and says that a second `Ctrl+C` forces exit. A timed-out phase, a failed cleanup, or a forced exit leaves the process with a nonzero exit code. Shutdown no longer replaces an exit code already set with `0`.
+
+### Patch Changes
+
+- 622116b: Use native nested environment configuration with camelCase field segments, preserve password strings, and validate the effective CLI connection without persisting runtime overrides.
+- 622116b: Provide a CommonJS SDK runtime with an ESM facade that shares its constructors and observer. Load optional database drivers through lazy CommonJS wrappers so CommonJS test runners can connect without experimental VM modules. Publish one canonical set of ESM declarations with a CommonJS re-export facade so mixed CommonJS and ESM consumers share Context, namespace, and error types. Declarations reference Kysely's ESM types, so `ctx.kysely` type-checks with your own `kysely` imports such as `sql`; in CommonJS files compiled with `module: node16` or later (`node18`, `node20`, `nodenext`), Kysely types imported there do not match `ctx.kysely`.
+- 622116b: Report idle and checked-out PostgreSQL connection failures to the observer without exposing driver error details. Keep pinned sessions on their original connection so subsequent queries reject instead of silently retrying, and retain the pool's disposal of broken clients.
+
 ## 1.7.0
 
 ### Minor Changes
