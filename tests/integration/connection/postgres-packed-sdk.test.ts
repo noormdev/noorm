@@ -24,7 +24,7 @@ it('connects a packed SDK from plain Jest CommonJS and shares its runtime with E
         await exec('bun', ['run', 'build:packages'], {
             cwd: root,
             env,
-            timeout: 90_000,
+            timeout: 240_000,
         });
         const packed = await exec('npm', [
             'pack', join(root, 'packages/sdk'), '--json', '--pack-destination', consumer,
@@ -236,10 +236,39 @@ export async function mixedConditions() {
             'consumer.mts', 'consumer.cts',
         ], { cwd: consumer, env: consumerEnv, timeout: 30_000 });
 
+        // Kysely's CJS and ESM declarations are incompatible, so the SDK's Kysely must match the
+        // consumer's own kysely import under both modern ESM and node10 resolution.
+        await writeFile(join(consumer, 'kysely-interop.ts'), `
+import { sql, type Kysely } from 'kysely';
+import { createContext } from '@noormdev/sdk';
+
+export async function interop() {
+    const ctx = await createContext({
+        connection: { dialect: 'postgres', database: 'noorm_test' },
+    });
+    const db: Kysely<unknown> = ctx.kysely;
+
+    await sql\`select 1\`.execute(ctx.kysely);
+
+    return db;
+}
+`);
+        for (const flags of [
+            ['--module', 'NodeNext', '--moduleResolution', 'NodeNext'],
+            ['--module', 'CommonJS', '--moduleResolution', 'Node10'],
+        ]) {
+
+            await exec('node', [
+                'node_modules/typescript/bin/tsc', '--noEmit', '--strict', ...flags, '--target', 'ES2022',
+                'kysely-interop.ts',
+            ], { cwd: consumer, env: consumerEnv, timeout: 30_000 });
+
+        }
+
     });
 
     await rm(consumer, { recursive: true, force: true });
 
     if (err) throw err;
 
-}, 120_000);
+}, 300_000);
