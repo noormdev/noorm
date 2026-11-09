@@ -165,7 +165,7 @@ rm ci-secrets.env
 | `ci init` exits 1: `State already exists at … Use --force to overwrite.` | A cached or committed `.noorm/state/state.enc` is in the workspace | `ci init --force` backs it up first. At a terminal it also needs `--yes` |
 | `ci identity enroll` exits 1: `About to grant irrevocable vault access` | `--yes` is missing, and sealing a vault key cannot be undone | Check the fingerprint it prints, then rerun with `--yes` |
 | `change ff` exits 1: `requires confirmation` | A stage named like the config (`prod`) has `protected: true`, which caps `user` at `operator` | Set `NOORM_YES=1` on the deploy step |
-| Tests fail: `Config "ci" does not have isTest: true` | `ci init` leaves `isTest` false, and an environment-only config has it false too | `ci init --test`. `ci identity new` mints a throwaway identity for it |
+| Tests fail: `Config "ci" does not have isTest: true` | `ci init` leaves `isTest` false, and an environment-only config has it false too | `ci init --test`, run by a person: it is refused on the agent channel. `ci identity new` mints a throwaway identity for it |
 | `Secret "STRIPE_KEY" not found (searched: config-local, global-local, vault)` | A template reads a secret this job does not have | Use prod CI for vault secrets, or `ci secrets` for job-scoped ones |
 | `ci secrets` exits 3 | Some keys were stored and some failed | Fix the errors it lists, then rerun. Stored keys are skipped |
 

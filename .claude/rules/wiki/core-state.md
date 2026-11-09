@@ -21,7 +21,7 @@ paths:
   - "tests/core/shared/**"
 ---
 
-Domain: core-state. Encrypted state, settings.yml, config resolution, lifecycle, version migration, and observer events.
+Domain: core-state. Encrypted state, settings, config resolution, lifecycle, version migration, and observer events.
 
 Map:
   - docs/wiki/core-state.md

@@ -18,7 +18,7 @@ sequenceDiagram
     participant Files as model files
     participant Validate as ignatius validate
     You->>Agent: /ignatius-modeling discover
-    Agent->>MCP: run_noorm_cmd list, detail
+    Agent->>MCP: list and detail tools
     MCP->>DB: read system catalogs
     DB-->>MCP: tables, columns, keys
     MCP-->>Agent: JSON results
@@ -44,8 +44,8 @@ noorm mcp init
 
 
 1. A model root: any folder with an `ignatius.yml`. `/ignatius-modeling model` scaffolds one. `mkdir -p models/legacy && echo "name: Legacy Schema" > models/legacy/ignatius.yml` is the minimum. Keep it in the repository whose schema it describes.
-2. The agent's MCP config. `noorm mcp init` writes `.mcp.json` for Claude Code, and `noorm mcp init --agent cursor` writes `.cursor/mcp.json`. The agent gets two tools, `noorm_help` and `run_noorm_cmd`.
-3. A noorm config for the database you mean. The agent connects to the active config unless it names another. A model of staging is not a model of production.
+2. The agent's MCP config. `noorm mcp init` writes `.mcp.json` for Claude Code, and `noorm mcp init --agent cursor` writes `.cursor/mcp.json`. The client must speak MCP `2026-07-28`; noorm exposes individual tools, prompt cookbooks, and JSON exploration resources. Discover the tool schemas with `tools/list`.
+3. A noorm config for the database you mean. Every database tool call and resource URI names its config explicitly; there is no active MCP database session. A model of staging is not a model of production.
 4. The skill and the binary, both on [Download](/download).
 
 

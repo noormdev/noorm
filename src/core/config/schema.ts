@@ -18,7 +18,7 @@ export const DialectSchema = z.enum(['postgres', 'mysql', 'sqlite', 'mssql']);
 /**
  * Per-channel access roles. Mirrors `ConfigAccess` from `core/policy`.
  */
-const RoleSchema = z.enum(['viewer', 'operator', 'admin']);
+const RoleSchema = z.string().refine((name) => name.trim().length > 0, 'Role name is required');
 
 export const AccessSchema = z.object({
     user: RoleSchema,

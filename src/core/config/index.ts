@@ -100,6 +100,8 @@ export {
     checkConfigCompleteness,
     canDeleteConfig,
     assertCanDeleteConfig,
+    assertCanMoveProtectedConfig,
+    ProtectedStageEscapeError,
     ConfigStageLockedError,
     type ResolveOptions,
     type StateProvider,

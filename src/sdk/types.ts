@@ -60,6 +60,9 @@ export interface CreateContextOptions {
     /** Project root directory. Defaults to process.cwd() */
     projectRoot?: string;
 
+    /** Resolve state and settings from independent disk snapshots for this context. */
+    freshState?: boolean;
+
     /** Refuse if config.isTest !== true. Default: false */
     requireTest?: boolean;
 

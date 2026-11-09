@@ -144,7 +144,7 @@ export function PipelineRunScreen({ params }: ScreenProps): ReactElement {
 
     }, [projectRoot, path, slug]);
 
-    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'run:dir') : null;
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'pipeline:run') : null;
     const requestRun = () => {
 
         if (!definition || submitting.current || busy || operations.running) return;

@@ -29,12 +29,17 @@ import {
 } from '../../utils/db.js';
 
 import type { ContextState } from '../../../src/sdk/state.js';
+import { loadedStateManager } from '../../utils/state-manager.js';
 import type { Config } from '../../../src/core/config/types.js';
 import type { Dialect } from '../../../src/core/connection/types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Fixtures
 // ─────────────────────────────────────────────────────────────
+
+const stateManager = await loadedStateManager();
+
+const CONNECTION_ERROR = /ECONNREFUSED|Failed to connect|refused/i;
 
 function makeState(config: Config): ContextState {
 
@@ -45,6 +50,7 @@ function makeState(config: Config): ContextState {
         identity: { name: 'tester', source: 'system' },
         options: {},
         projectRoot: '/tmp',
+        stateManager,
         changeManager: null,
     };
 
@@ -81,13 +87,13 @@ function describeTransferNamespaceFailure(dialect: Dialect): void {
 
         it('transfer.to() rejects the underlying connection Error on an unreachable dest', async () => {
 
-            await expect(transfer.to(destConfig)).rejects.toThrow();
+            await expect(transfer.to(destConfig)).rejects.toThrow(CONNECTION_ERROR);
 
         });
 
         it('transfer.plan() rejects the underlying connection Error on an unreachable dest', async () => {
 
-            await expect(transfer.plan(destConfig)).rejects.toThrow();
+            await expect(transfer.plan(destConfig)).rejects.toThrow(CONNECTION_ERROR);
 
         });
 

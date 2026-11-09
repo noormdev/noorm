@@ -12,7 +12,7 @@ import { getStateManager } from '../../core/state/index.js';
 import { getPackageVersion } from '../../core/state/version.js';
 import { ensureSchemaVersion } from '../../core/version/index.js';
 import { checkProtectedConfig } from '../guards.js';
-import { requireConnection, type ContextState } from '../state.js';
+import { requireConnection, runGatedExplore, type ContextState } from '../state.js';
 
 /** Options for {@link PipelinesNamespace.history}. */
 export interface PipelineHistoryOptions {
@@ -42,7 +42,7 @@ export class PipelinesNamespace {
     async run(slug: string, options: PipelineRunOptions = {}): Promise<PipelineDryRunResult | PipelineRunResult> {
 
         const { connection, db } = this.#connected();
-        checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'pipelines.run');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'pipeline:run', 'pipelines.run');
         const dialect = connection.dialect;
         const context = await buildPipelineContext({
             db,
@@ -86,7 +86,7 @@ export class PipelinesNamespace {
 
         if (options.limit !== undefined) assertHistoryLimit(options.limit);
 
-        return listPipelineHistory(await this.#historyContext(), slug, options);
+        return runGatedExplore(this.#state, 'pipeline history', async () => listPipelineHistory(await this.#historyContext(), slug, options));
 
     }
 
@@ -101,7 +101,7 @@ export class PipelinesNamespace {
 
         assertRunId(id);
 
-        return getPipelineRun(await this.#historyContext(), id);
+        return runGatedExplore(this.#state, 'pipeline history', async () => getPipelineRun(await this.#historyContext(), id));
 
     }
 

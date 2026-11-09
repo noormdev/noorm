@@ -7,27 +7,32 @@
  * @example
  * ```typescript
  * import { fetchOverview, fetchList, fetchDetail } from './core/explore'
+ * import type { ExploreGate } from './core/explore'
+ *
+ * const gate: ExploreGate = { configName: 'dev', access, channel: 'user' }
  *
  * // Get counts of all object types
- * const overview = await fetchOverview(db, 'postgres')
+ * const overview = await fetchOverview(db, 'postgres', { gate })
  *
  * // List all tables
- * const tables = await fetchList(db, 'postgres', 'tables')
+ * const tables = await fetchList(db, 'postgres', 'tables', { gate })
  *
  * // Get full table detail
- * const detail = await fetchDetail(db, 'postgres', 'tables', 'users', 'public')
+ * const detail = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate })
  * ```
  */
 export {
     DEFAULT_PEEK_ROWS,
+    GATED_BY_CALLER,
     fetchOverview,
     fetchList,
     fetchDetail,
     fetchRowPeek,
     formatSummaryDescription,
+    userGate,
 } from './operations.js';
 
-export type { DetailCategory, ExploreOptions, RowPeek, RowPeekGate } from './operations.js';
+export type { DetailCategory, ExploreGate, ExploreOptions, RowPeek } from './operations.js';
 
 export { getExploreOperations } from './dialects/index.js';
 

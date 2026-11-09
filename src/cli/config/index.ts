@@ -10,6 +10,7 @@ import edit from './edit.js';
 import exportCmd from './export.js';
 import importCmd from './import.js';
 import list from './list.js';
+import repairAccess from './repair-access.js';
 import rm from './rm.js';
 import sync from './sync.js';
 import use from './use.js';
@@ -20,5 +21,8 @@ export default defineCommand({
         name: 'config',
         description: 'Manage database configurations',
     },
-    subCommands: { add, cp, create, edit, export: exportCmd, import: importCmd, list, rm, sync, use, validate },
+    subCommands: {
+        add, cp, create, edit, export: exportCmd, import: importCmd, list,
+        'repair-access': repairAccess, rm, sync, use, validate,
+    },
 });

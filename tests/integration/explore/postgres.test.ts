@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test'
 import { sql } from 'kysely';
 import type { Kysely } from 'kysely';
 
-import { fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchOverview, fetchList, fetchDetail } from '../../../src/core/explore/index.js';
 import {
     createTestConnection,
     deployTestSchema,
@@ -60,7 +60,7 @@ describe('integration: postgres explore', () => {
 
         it('should return correct counts for all object types', async () => {
 
-            const overview = await fetchOverview(db, 'postgres');
+            const overview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
 
             // Fixture schema has:
             // - 3 tables: users, todo_lists, todo_items
@@ -74,7 +74,7 @@ describe('integration: postgres explore', () => {
 
         it('should exclude noorm internal tables by default', async () => {
 
-            const overview = await fetchOverview(db, 'postgres');
+            const overview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
 
             // Without noorm tables, should only have our 3 test tables
             expect(overview.tables).toBe(3);
@@ -83,8 +83,8 @@ describe('integration: postgres explore', () => {
 
         it('should include noorm tables when option is set', async () => {
 
-            const overviewWithout = await fetchOverview(db, 'postgres');
-            const overviewWith = await fetchOverview(db, 'postgres', { includeNoormTables: true });
+            const overviewWithout = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
+            const overviewWith = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER, includeNoormTables: true });
 
             // With noorm tables should be >= without (may or may not have noorm tables depending on state)
             expect(overviewWith.tables).toBeGreaterThanOrEqual(overviewWithout.tables);
@@ -93,7 +93,7 @@ describe('integration: postgres explore', () => {
 
         it('should return indexes for the tables', async () => {
 
-            const overview = await fetchOverview(db, 'postgres');
+            const overview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
 
             // Fixture creates several indexes:
             // - 3 PKs (users, todo_lists, todo_items)
@@ -106,7 +106,7 @@ describe('integration: postgres explore', () => {
 
         it('should return foreign key counts', async () => {
 
-            const overview = await fetchOverview(db, 'postgres');
+            const overview = await fetchOverview(db, 'postgres', { gate: GATED_BY_CALLER });
 
             // Fixture has 2 FKs:
             // - todo_lists.user_id -> users.id
@@ -121,7 +121,7 @@ describe('integration: postgres explore', () => {
 
         it('should return all 3 tables with correct names', async () => {
 
-            const tables = await fetchList(db, 'postgres', 'tables');
+            const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER });
             const tableNames = tables.map((t) => t.name).sort();
 
             expect(tableNames).toEqual(['todo_items', 'todo_lists', 'users']);
@@ -130,7 +130,7 @@ describe('integration: postgres explore', () => {
 
         it('should return column counts for each table', async () => {
 
-            const tables = await fetchList(db, 'postgres', 'tables');
+            const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER });
 
             const users = tables.find((t) => t.name === 'users');
             const todoLists = tables.find((t) => t.name === 'todo_lists');
@@ -150,7 +150,7 @@ describe('integration: postgres explore', () => {
 
         it('should exclude noorm tables by default', async () => {
 
-            const tables = await fetchList(db, 'postgres', 'tables');
+            const tables = await fetchList(db, 'postgres', 'tables', { gate: GATED_BY_CALLER });
             const noormTables = tables.filter((t) => t.name.startsWith('__noorm_'));
 
             expect(noormTables.length).toBe(0);
@@ -163,7 +163,7 @@ describe('integration: postgres explore', () => {
 
         it('should return all 3 views', async () => {
 
-            const views = await fetchList(db, 'postgres', 'views');
+            const views = await fetchList(db, 'postgres', 'views', { gate: GATED_BY_CALLER });
             const viewNames = views.map((v) => v.name).sort();
 
             expect(viewNames).toEqual([
@@ -176,7 +176,7 @@ describe('integration: postgres explore', () => {
 
         it('should return column counts for views', async () => {
 
-            const views = await fetchList(db, 'postgres', 'views');
+            const views = await fetchList(db, 'postgres', 'views', { gate: GATED_BY_CALLER });
 
             const activeUsers = views.find((v) => v.name === 'v_active_users');
             const listsWithCounts = views.find((v) => v.name === 'v_todo_lists_with_counts');
@@ -196,7 +196,7 @@ describe('integration: postgres explore', () => {
 
         it('should return all 15 functions', async () => {
 
-            const functions = await fetchList(db, 'postgres', 'functions');
+            const functions = await fetchList(db, 'postgres', 'functions', { gate: GATED_BY_CALLER });
 
             // Filter to just our test functions (exclude system functions)
             const testFunctions = functions.filter((f) =>
@@ -211,7 +211,7 @@ describe('integration: postgres explore', () => {
 
         it('should include function parameter counts', async () => {
 
-            const functions = await fetchList(db, 'postgres', 'functions');
+            const functions = await fetchList(db, 'postgres', 'functions', { gate: GATED_BY_CALLER });
 
             // create_user has 5 parameters
             const createUser = functions.find((f) => f.name === 'create_user');
@@ -225,7 +225,7 @@ describe('integration: postgres explore', () => {
 
         it('should include return type information', async () => {
 
-            const functions = await fetchList(db, 'postgres', 'functions');
+            const functions = await fetchList(db, 'postgres', 'functions', { gate: GATED_BY_CALLER });
 
             // create_user returns UUID
             const createUser = functions.find((f) => f.name === 'create_user');
@@ -245,7 +245,7 @@ describe('integration: postgres explore', () => {
 
             try {
 
-                const functions = await fetchList(db, 'postgres', 'functions');
+                const functions = await fetchList(db, 'postgres', 'functions', { gate: GATED_BY_CALLER });
                 const signatures = functions
                     .filter((f) => f.name === 'overload_probe')
                     .map((f) => f.signature);
@@ -273,7 +273,7 @@ describe('integration: postgres explore', () => {
 
             try {
 
-                const procedures = await fetchList(db, 'postgres', 'procedures');
+                const procedures = await fetchList(db, 'postgres', 'procedures', { gate: GATED_BY_CALLER });
                 const signatures = procedures
                     .filter((p) => p.name === 'overload_probe_proc')
                     .map((p) => p.signature);
@@ -296,7 +296,7 @@ describe('integration: postgres explore', () => {
 
         it('should return indexes for all tables', async () => {
 
-            const indexes = await fetchList(db, 'postgres', 'indexes');
+            const indexes = await fetchList(db, 'postgres', 'indexes', { gate: GATED_BY_CALLER });
 
             // Filter to our test tables
             const testIndexes = indexes.filter((i) =>
@@ -309,7 +309,7 @@ describe('integration: postgres explore', () => {
 
         it('should identify primary key indexes', async () => {
 
-            const indexes = await fetchList(db, 'postgres', 'indexes');
+            const indexes = await fetchList(db, 'postgres', 'indexes', { gate: GATED_BY_CALLER });
 
             const primaryIndexes = indexes.filter((i) => i.isPrimary);
 
@@ -320,7 +320,7 @@ describe('integration: postgres explore', () => {
 
         it('should identify unique indexes', async () => {
 
-            const indexes = await fetchList(db, 'postgres', 'indexes');
+            const indexes = await fetchList(db, 'postgres', 'indexes', { gate: GATED_BY_CALLER });
 
             // users table has unique constraints on email and username
             const userUniqueIndexes = indexes.filter(
@@ -337,7 +337,7 @@ describe('integration: postgres explore', () => {
 
         it('should return all foreign key relationships', async () => {
 
-            const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys');
+            const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys', { gate: GATED_BY_CALLER });
 
             expect(foreignKeys.length).toBe(2);
 
@@ -345,7 +345,7 @@ describe('integration: postgres explore', () => {
 
         it('should include correct table and column references', async () => {
 
-            const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys');
+            const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys', { gate: GATED_BY_CALLER });
 
             const listsFk = foreignKeys.find((fk) => fk.tableName === 'todo_lists');
             expect(listsFk?.columns).toContain('user_id');
@@ -365,7 +365,7 @@ describe('integration: postgres explore', () => {
 
         it('should return full column details for users table', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'tables', 'users', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.name).toBe('users');
@@ -387,7 +387,7 @@ describe('integration: postgres explore', () => {
 
         it('should return table indexes', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'tables', 'users', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.indexes).toBeDefined();
@@ -401,7 +401,7 @@ describe('integration: postgres explore', () => {
 
         it('should return table constraints', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'tables', 'todo_items', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'tables', 'todo_items', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -421,7 +421,7 @@ describe('integration: postgres explore', () => {
 
         it('should return null for non-existent table', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'tables', 'non_existent_table', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'tables', 'non_existent_table', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -433,7 +433,7 @@ describe('integration: postgres explore', () => {
 
         it('should return column details for view', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'views', 'v_active_users', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'views', 'v_active_users', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.name).toBe('v_active_users');
@@ -446,7 +446,7 @@ describe('integration: postgres explore', () => {
 
         it('should return view definition', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'views', 'v_active_users', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'views', 'v_active_users', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.definition).toBeDefined();
@@ -461,7 +461,7 @@ describe('integration: postgres explore', () => {
 
         it('should return function parameter details', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.name).toBe('create_user');
@@ -476,7 +476,7 @@ describe('integration: postgres explore', () => {
 
         it('should return function source code', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.definition).toBeDefined();
@@ -486,7 +486,7 @@ describe('integration: postgres explore', () => {
 
         it('should return function language', async () => {
 
-            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', 'public');
+            const detail = await fetchDetail(db, 'postgres', 'functions', 'create_user', { schema: 'public', gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.language).toBe('plpgsql');

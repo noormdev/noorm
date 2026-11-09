@@ -128,7 +128,9 @@ Each config gives a **role** to two channels: `user` (you, in the CLI or TUI) an
 | `operator` | explore, SQL reads and writes | build, change, `db create`, truncate | raw DDL, `db drop`, `db teardown` |
 | `admin` | everything else | `db drop`, `db teardown`, `db truncate`, `change rm`, config edits, `vault propagate`, `lock force` | |
 
-A stage with `protected: true` caps its configs at `operator` for the user and `viewer` for agents. Roles catch mistakes, such as a teardown against the wrong database. They do not stop someone who has the credentials and connects with another client. [Stages](/guide/environments/stages) covers the rest.
+These are the built-in roles. `settings.yml` can override their cells and define custom roles ([access roles](/guide/environments/configs#access-roles)). The read cells (`explore`, `sql:read`) apply to agents only; you always read your own database. A stage with `protected: true` caps its configs at `operator` for the user and `viewer` for agents. A config with `isTest: true` allows the database lifecycle (`db create`, `truncate`, `teardown`, `drop`) for every role, so test harnesses can rebuild their own database; `db reset` still needs `--yes` and `run:build`. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+
+Roles catch mistakes, such as a teardown against the wrong database. They do not stop someone who has the credentials and connects with another client. [Stages](/guide/environments/stages) covers the rest.
 
 
 ## Secrets stay out of committed SQL

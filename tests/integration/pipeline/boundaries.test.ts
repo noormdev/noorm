@@ -10,6 +10,7 @@ import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { getNoormTables, type PipelineStepStatus, type PipelineTransactionOutcome } from '../../../src/core/shared/tables.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const dialects: Dialect[] = ['sqlite', 'postgres', 'mysql', 'mssql'];
 type Policy = 'pipeline' | 'step' | 'none';
@@ -53,7 +54,7 @@ function historyContext(context: PipelineContext) {
 function contextFor(db: PipelineContext['db'], dialect: Dialect, root: string, connectionConfig: ConnectionConfig): PipelineContext {
 
     return { db, dialect, connectionConfig, configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root,
-        access: { user: 'admin', agent: 'admin' }, channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
+        access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
 
 }
 

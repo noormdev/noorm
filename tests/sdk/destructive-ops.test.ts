@@ -24,8 +24,10 @@ import { ChangesNamespace } from '../../src/sdk/namespaces/changes.js';
 import { RunNamespace } from '../../src/sdk/namespaces/run.js';
 import { TransferNamespace } from '../../src/sdk/namespaces/transfer.js';
 import { ProtectedConfigError } from '../../src/sdk/guards.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
+import { loadedStateManager } from '../utils/state-manager.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { ConfigAccess } from '../../src/core/policy/index.js';
 import type { Change } from '../../src/core/change/index.js';
@@ -45,6 +47,9 @@ const ADMIN_ACCESS: ConfigAccess = { user: 'admin', agent: 'admin' };
 
 function makeConfig(access: ConfigAccess): Config {
 
+    access = { ...access };
+    attachPolicyContext(access, {});
+
     return {
         name: access.user === 'admin' ? 'dev' : 'prod',
         type: 'local',
@@ -54,6 +59,8 @@ function makeConfig(access: ConfigAccess): Config {
     };
 
 }
+
+const stateManager = await loadedStateManager();
 
 function makeState(access: ConfigAccess, options: ContextState['options'] = {}): ContextState {
 
@@ -67,6 +74,7 @@ function makeState(access: ConfigAccess, options: ContextState['options'] = {}):
         },
         options,
         projectRoot: '/tmp',
+        stateManager,
         changeManager: null,
     };
 

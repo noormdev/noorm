@@ -7,7 +7,7 @@ paths:
   - "tests/integration/change/**"
 ---
 
-Domain: core-change. Versioned DB changes: scaffold, parse, execute, revert, history (timestamps hydrated as UTC on pg/mysql).
+Domain: core-change. Versioned SQL changes, reverts, and execution history.
 
 Map:
   - docs/wiki/core-change.md

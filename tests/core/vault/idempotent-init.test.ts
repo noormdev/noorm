@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { Kysely, SqliteDialect } from 'kysely';
 
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
-import { initializeVault } from '../../../src/core/vault/index.js';
+import { initializeVault, getVaultKey } from '../../../src/core/vault/index.js';
 import { observer } from '../../../src/core/observer.js';
 import {
     NOORM_TABLES,
@@ -103,6 +103,31 @@ describe('vault: initializeVault idempotency', () => {
         expect(err).toBeNull();
         expect(vaultKey).toBeInstanceOf(Buffer);
         expect(vaultKey?.length).toBe(32);
+
+    });
+
+    it('does not report initialization when the identity has no database row', async () => {
+
+        const keys = generateKeyPair();
+        const [vaultKey, error] = await initializeVault(db, 'unregistered', keys.publicKey, 'sqlite');
+
+        expect(vaultKey).toBeNull();
+        expect(error).toBeInstanceOf(Error);
+
+    });
+
+    it('does not initialize to a key different from the registered identity', async () => {
+
+        const alice = await seedIdentity(db);
+        const other = generateKeyPair();
+        const [rejectedKey, error] = await initializeVault(db, alice.identityHash, other.publicKey, 'sqlite');
+        expect(rejectedKey).toBeNull();
+        expect(error).toBeInstanceOf(Error);
+
+        const [key, retryError] = await initializeVault(db, alice.identityHash, alice.publicKey, 'sqlite');
+        expect(retryError).toBeNull();
+        expect(key).toBeInstanceOf(Buffer);
+        expect(await getVaultKey(db, alice.identityHash, alice.privateKey, 'sqlite')).toEqual(key);
 
     });
 

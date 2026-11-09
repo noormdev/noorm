@@ -14,6 +14,7 @@ import { createConnection, testConnection } from '../../src/core/connection/fact
 import type { ConnectionConfig, ConnectionResult, Dialect } from '../../src/core/connection/types.js';
 import type { Config } from '../../src/core/config/types.js';
 import { splitMssqlBatches } from '../../src/core/runner/mssql-batches.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 /**
  * Test connection configurations.
@@ -915,12 +916,15 @@ export async function skipIfNoContainer(dialect: Dialect): Promise<void> {
  */
 export function makeTestConfig(name: string, connection: ConnectionConfig): Config {
 
-    return {
+    const config: Config = {
         name,
         type: 'local',
         isTest: true,
         access: { user: 'admin', agent: 'admin' },
         connection,
     };
+    attachPolicyContext(config.access, {});
+
+    return config;
 
 }

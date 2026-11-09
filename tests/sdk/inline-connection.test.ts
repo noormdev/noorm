@@ -14,6 +14,7 @@ import { getStateManager, resetStateManager } from '../../src/core/state/index.j
 import { generateKeyPair } from '../../src/core/identity/index.js';
 import { clearKeyOverride, setKeyOverride } from '../../src/core/identity/storage.js';
 import { observer, type NoormEvents } from '../../src/core/observer.js';
+import { getPolicyContext, policyTargetIdentity } from '../../src/core/policy/index.js';
 
 describe('inline connections', () => {
 
@@ -30,6 +31,36 @@ describe('inline connections', () => {
 
         inlineRoot = undefined;
         inlineContexts.length = 0;
+
+    });
+
+    it('binds fresh inline contexts while retaining runtime connection options', async () => {
+
+        inlineRoot = await mkdtemp(join(tmpdir(), 'noorm-inline-fresh-'));
+        const verify = () => undefined;
+        const ctx = await createContext({
+            projectRoot: inlineRoot,
+            freshState: true,
+            connection: {
+                dialect: 'postgres', database: 'app', host: 'db.example.com',
+                password: () => 'token',
+                ssl: { rejectUnauthorized: true, checkServerIdentity: verify },
+                tlsServerName: 'cert.example.com',
+                statementTimeoutMs: 1234,
+                applicationName: 'service',
+                pool: { max: 4, idleTimeoutMillis: 250 },
+            },
+        });
+        inlineContexts.push(ctx);
+        expect(ctx.noorm.config.connection).toMatchObject({
+            dialect: 'postgres', database: 'app', host: 'db.example.com',
+            ssl: { rejectUnauthorized: true }, tlsServerName: 'cert.example.com',
+            statementTimeoutMs: 1234, applicationName: 'service',
+            pool: { max: 4, idleTimeoutMillis: 250 },
+        });
+        expect(ctx.noorm.config.connection.password).toBeUndefined();
+        expect(getPolicyContext(ctx.noorm.config.access)?.targetIdentity)
+            .toBe(policyTargetIdentity(inlineRoot, ctx.noorm.config.connection));
 
     });
 

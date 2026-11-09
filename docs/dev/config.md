@@ -181,13 +181,13 @@ flowchart TD
     N -->|no| I{"Inline connection or<br/>usable env connection?"}
     I -->|no| R["Return null"]
     I -->|yes| E["Merge defaults, stage,<br/>env, flags"]
-    M --> V["parseConfig(),<br/>applyStageCeiling()"]
+    M --> V["parseConfig(),<br/>bind policy context"]
     E --> V
 ```
 
 Inline mode is available through `options.flags.connection`; the SDK maps its `connection` option there. With no selected stored name, the synthetic name defaults to `__inline__` when that object exists and `__env__` otherwise. `NOORM_NAME` can supply the synthetic name without selecting a stored record. Environment-only resolution requires a connection object and a dialect/database supplied by the combined stage and environment layers. Inline input enters schema validation even when incomplete.
 
-`stageFields(defaults, true)` maps flat stage fields into nested `connection` before merging, including the stage password at runtime. Stored values, environment variables, and flags override that layer in order. Stage `type`, `isTest`, and `access` remain top-level; a protected stage caps access after schema validation. An explicit `options.stage` chooses the stage, otherwise the resolver matches the config name.
+`stageFields(defaults, true)` maps flat stage fields into nested `connection` before merging, including the stage password at runtime. Stored values, environment variables, and flags override that layer in order. Stage `type`, `isTest`, and `access` remain top-level; protected stages cap effective permission cells at policy-check time without changing assigned roles. An explicit `options.stage` chooses the stage, otherwise the resolver matches the config name. The protected-stage ceiling is the union of the stage the resolver bound, the config name, and `options.stage`: a caller option can add the ceiling and never remove it.
 
 ```typescript
 // Explicit name
@@ -294,7 +294,7 @@ const config = {
 }
 ```
 
-Three roles, hard-coded, not user-extensible:
+The built-in defaults below can be overridden, and `.noorm/settings.yml` can define custom roles. See [Access roles](/guide/environments/configs#access-roles) for the full matrix and inheritance rules.
 
 | Permission | viewer | operator | admin |
 |---|---|---|---|
@@ -303,13 +303,19 @@ Three roles, hard-coded, not user-extensible:
 | `sql:ddl` | deny | deny | allow |
 | `change:run`, `change:ff`, `change:revert` | deny | confirm | allow |
 | `run:build`, `run:file`, `run:dir` | deny | confirm | allow |
+| `pipeline:run` | deny | confirm | allow |
+
 | `db:create`, `db:reset` | deny | confirm | allow |
 | `db:destroy` | deny | deny | confirm |
 | `config:rm` | deny | confirm | confirm |
 
-`agent: false` is not a role — it makes the config invisible to agents on both MCP and the CLI (absent from `list_configs`, `connect` fails with the byte-identical error an unknown config produces).
+The read cells (`explore`, `sql:read`) apply to the `agent` channel only; `getConfigPermission` returns `allow` for them on the `user` channel.
+
+`agent: false` is not a role. It hides the config from agents on MCP and the CLI.
 
 Check policy before executing:
+Use a resolved config with its non-enumerable policy context. A detached or spread copy loses that context and enforcement denies it.
+
 
 ```typescript
 import { checkPolicy } from './core/policy'
@@ -353,7 +359,7 @@ stages:
         locked: true           # Cannot delete this config
         defaults:
             dialect: postgres
-            protected: true    # Access ceiling: clamps resolved access to at most operator/viewer
+            protected: true    # Immutable per-permission user/agent ceilings
         secrets:
             - key: DB_PASSWORD
               type: password
@@ -419,7 +425,7 @@ Stage constraints and how noorm checks them:
 
 | Constraint | Behavior |
 |------------|----------|
-| `protected: true` in defaults | Clamps resolved `access` to at most `{ user: 'operator', agent: 'viewer' }` — stricter survives, looser is clamped down (see [Access Roles](#access-roles)) |
+| `protected: true` in defaults | Caps each effective user cell at the original operator matrix and each agent cell at the original viewer matrix; assigned role names remain unchanged |
 | `isTest: true` in defaults | A resolved `isTest: false` is reported as a stage-completeness violation; resolution does not force it back to `true` |
 | `locked: true` | Config cannot be deleted |
 

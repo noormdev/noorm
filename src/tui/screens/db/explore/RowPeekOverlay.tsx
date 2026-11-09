@@ -47,7 +47,7 @@ import type { ReactElement } from 'react';
 import type { Kysely } from 'kysely';
 
 import type { Dialect } from '../../../../core/connection/types.js';
-import type { RowPeek, RowPeekGate, TableDetail } from '../../../../core/explore/index.js';
+import type { ExploreGate, RowPeek, TableDetail } from '../../../../core/explore/index.js';
 
 import { fetchRowPeek } from '../../../../core/explore/index.js';
 import { useFocusScope } from '../../../focus.js';
@@ -70,7 +70,7 @@ export interface RowPeekOverlayProps {
     detail: TableDetail;
 
     /** Config name, access roles and channel the read is checked against. */
-    gate: RowPeekGate;
+    gate: ExploreGate;
 
     /** Lines the overlay may draw, its header included. */
     height: number;

@@ -9,6 +9,7 @@ import { getPipelineRun } from '../../../src/core/pipeline/history.js';
 import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 interface NativeConnection extends DatabaseConnection {
     commitTransaction(): Promise<void>;
@@ -85,7 +86,7 @@ else {
                         const context: PipelineContext = {
                             db: db.withPlugin(plugin), dialect: 'mssql', connectionConfig: connection,
                             configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root,
-                            access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                            access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                             pipelinesPath: './db/pipelines', cliVersion: 'test',
                         };
                         const stateQuery = sql<SessionState>`

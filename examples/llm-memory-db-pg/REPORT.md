@@ -1,6 +1,9 @@
 # Final Report — examples/llm-memory-db-pg
 
 
+> This report predates the current MCP surface. The server no longer has `noorm_help`, `run_noorm_cmd`, or `connect`; each command is its own tool and takes an explicit config.
+
+
 This is the Phase 2 deliverable for the LLM memory + task-tracker example built end-to-end against PostgreSQL using noorm. It captures: what was built, the coverage stats, every noorm CLI / SDK / MCP issue surfaced along the way, and the judgment calls that shaped the final shape.
 
 For Phase 1 details (schema authoring play-by-play, the three SDK bugs that were fixed mid-build, and the convention quirks that bit the early subagents) see `REPORT-PHASE-1.md` in this directory. The full external problem log lives at `postgres-problems.md` in this directory.

@@ -6,7 +6,7 @@ import { defineCommand } from 'citty';
 import { withVaultContext, outputResult, sharedArgs, isYesMode } from '../_utils.js';
 import { initializeVaultChecked, getVaultStatus, checkVaultPolicy } from '../../core/vault/index.js';
 import type { VaultPolicyGate } from '../../core/vault/index.js';
-import { resolveChannel } from '../../core/policy/index.js';
+import { resolveChannel, withPolicyConfirmation } from '../../core/policy/index.js';
 
 const initCommand = defineCommand({
     meta: {
@@ -70,17 +70,25 @@ const initCommand = defineCommand({
 
                 }
 
-                const [, initErr] = await initializeVaultChecked(
-                    gate,
-                    db,
-                    cryptoIdentity.identityHash,
-                    cryptoIdentity.publicKey,
-                    ctx.dialect,
-                );
+                const [vaultKey, initErr] = await withPolicyConfirmation(config, ['vault:write'], () => initializeVaultChecked(
+                    gate, db, cryptoIdentity.identityHash, cryptoIdentity.publicKey, ctx.dialect,
+                ));
 
                 if (initErr) {
 
                     return { success: false, message: initErr.message };
+
+                }
+                if (!vaultKey) {
+
+                    const current = await getVaultStatus(db, cryptoIdentity.identityHash, ctx.dialect);
+
+                    return {
+                        success: current.isInitialized && current.hasAccess,
+                        message: current.hasAccess
+                            ? 'Vault already initialized and you have access'
+                            : 'Vault initialized elsewhere but you do not have access. Ask a team member to propagate.',
+                    };
 
                 }
 

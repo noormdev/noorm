@@ -17,6 +17,7 @@ import {
     fetchList,
     fetchDetail,
 } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER } from '../../../src/core/explore/index.js';
 
 
 describe('integration: sqlite explore', () => {
@@ -45,7 +46,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return correct counts for all object types', async () => {
 
-            const overview = await fetchOverview(db, 'sqlite');
+            const overview = await fetchOverview(db, 'sqlite', { gate: GATED_BY_CALLER });
 
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
@@ -57,7 +58,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return correct index count', async () => {
 
-            const overview = await fetchOverview(db, 'sqlite');
+            const overview = await fetchOverview(db, 'sqlite', { gate: GATED_BY_CALLER });
 
             // SQLite fixture has 6 explicit indexes (partial indexes)
             // idx_users_email, idx_users_username
@@ -69,7 +70,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return correct foreign key count', async () => {
 
-            const overview = await fetchOverview(db, 'sqlite');
+            const overview = await fetchOverview(db, 'sqlite', { gate: GATED_BY_CALLER });
 
             // 2 FK relationships: todo_lists -> users, todo_items -> todo_lists
             expect(overview.foreignKeys).toBe(2);
@@ -82,7 +83,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return all 3 tables with correct names', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
 
             expect(tables).toHaveLength(3);
 
@@ -93,7 +94,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return column counts for each table', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
 
             const usersTable = tables.find((t) => t.name === 'users');
             expect(usersTable).toBeDefined();
@@ -109,7 +110,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return row count estimates', async () => {
 
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
 
             const usersTable = tables.find((t) => t.name === 'users');
             expect(usersTable).toBeDefined();
@@ -127,7 +128,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return all 3 views', async () => {
 
-            const views = await fetchList(db, 'sqlite', 'views');
+            const views = await fetchList(db, 'sqlite', 'views', { gate: GATED_BY_CALLER });
 
             expect(views).toHaveLength(3);
 
@@ -142,7 +143,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return column counts for views', async () => {
 
-            const views = await fetchList(db, 'sqlite', 'views');
+            const views = await fetchList(db, 'sqlite', 'views', { gate: GATED_BY_CALLER });
 
             const activeUsersView = views.find((v) => v.name === 'v_active_users');
             expect(activeUsersView).toBeDefined();
@@ -155,7 +156,7 @@ describe('integration: sqlite explore', () => {
 
         it('should mark views as not updatable', async () => {
 
-            const views = await fetchList(db, 'sqlite', 'views');
+            const views = await fetchList(db, 'sqlite', 'views', { gate: GATED_BY_CALLER });
 
             for (const view of views) {
 
@@ -171,7 +172,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return empty array for procedures (SQLite unsupported)', async () => {
 
-            const procedures = await fetchList(db, 'sqlite', 'procedures');
+            const procedures = await fetchList(db, 'sqlite', 'procedures', { gate: GATED_BY_CALLER });
 
             expect(procedures).toEqual([]);
 
@@ -179,7 +180,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return empty array for functions (SQLite unsupported)', async () => {
 
-            const functions = await fetchList(db, 'sqlite', 'functions');
+            const functions = await fetchList(db, 'sqlite', 'functions', { gate: GATED_BY_CALLER });
 
             expect(functions).toEqual([]);
 
@@ -191,7 +192,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return empty array for types (SQLite unsupported)', async () => {
 
-            const types = await fetchList(db, 'sqlite', 'types');
+            const types = await fetchList(db, 'sqlite', 'types', { gate: GATED_BY_CALLER });
 
             expect(types).toEqual([]);
 
@@ -203,7 +204,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return indexes for all tables', async () => {
 
-            const indexes = await fetchList(db, 'sqlite', 'indexes');
+            const indexes = await fetchList(db, 'sqlite', 'indexes', { gate: GATED_BY_CALLER });
 
             expect(indexes.length).toBeGreaterThanOrEqual(6);
 
@@ -218,7 +219,7 @@ describe('integration: sqlite explore', () => {
 
         it('should include table names for indexes', async () => {
 
-            const indexes = await fetchList(db, 'sqlite', 'indexes');
+            const indexes = await fetchList(db, 'sqlite', 'indexes', { gate: GATED_BY_CALLER });
 
             const usersEmailIdx = indexes.find((i) => i.name === 'idx_users_email');
             expect(usersEmailIdx).toBeDefined();
@@ -228,7 +229,7 @@ describe('integration: sqlite explore', () => {
 
         it('should include column information', async () => {
 
-            const indexes = await fetchList(db, 'sqlite', 'indexes');
+            const indexes = await fetchList(db, 'sqlite', 'indexes', { gate: GATED_BY_CALLER });
 
             const usersEmailIdx = indexes.find((i) => i.name === 'idx_users_email');
             expect(usersEmailIdx).toBeDefined();
@@ -242,7 +243,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return all foreign key relationships', async () => {
 
-            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys');
+            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER });
 
             expect(foreignKeys).toHaveLength(2);
 
@@ -250,7 +251,7 @@ describe('integration: sqlite explore', () => {
 
         it('should include correct FK details', async () => {
 
-            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys');
+            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER });
 
             // todo_lists -> users FK
             const todoListsFK = foreignKeys.find((fk) => fk.tableName === 'todo_lists');
@@ -269,7 +270,7 @@ describe('integration: sqlite explore', () => {
 
         it('should include ON DELETE CASCADE action', async () => {
 
-            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys');
+            const foreignKeys = await fetchList(db, 'sqlite', 'foreignKeys', { gate: GATED_BY_CALLER });
 
             const todoListsFK = foreignKeys.find((fk) => fk.tableName === 'todo_lists');
             expect(todoListsFK).toBeDefined();
@@ -283,7 +284,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return full detail for users table', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users');
+            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.name).toBe('users');
@@ -295,7 +296,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return correct column details', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users');
+            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 
@@ -317,7 +318,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return row count estimate', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users');
+            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.rowCountEstimate).toBe(3);
@@ -326,7 +327,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return indexes for the table', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users');
+            const detail = await fetchDetail(db, 'sqlite', 'tables', 'users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.indexes.length).toBeGreaterThanOrEqual(2);
@@ -338,7 +339,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return null for non-existent table', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'tables', 'nonexistent_table');
+            const detail = await fetchDetail(db, 'sqlite', 'tables', 'nonexistent_table', { gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -350,7 +351,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return full detail for v_active_users view', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'views', 'v_active_users');
+            const detail = await fetchDetail(db, 'sqlite', 'views', 'v_active_users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.name).toBe('v_active_users');
@@ -362,7 +363,7 @@ describe('integration: sqlite explore', () => {
 
         it('should include view definition', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'views', 'v_active_users');
+            const detail = await fetchDetail(db, 'sqlite', 'views', 'v_active_users', { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
             expect(detail!.definition).toBeDefined();
@@ -373,7 +374,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return null for non-existent view', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'views', 'nonexistent_view');
+            const detail = await fetchDetail(db, 'sqlite', 'views', 'nonexistent_view', { gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -385,7 +386,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return null for procedures (SQLite unsupported)', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'procedures', 'any_proc');
+            const detail = await fetchDetail(db, 'sqlite', 'procedures', 'any_proc', { gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -393,7 +394,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return null for functions (SQLite unsupported)', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'functions', 'any_func');
+            const detail = await fetchDetail(db, 'sqlite', 'functions', 'any_func', { gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -401,7 +402,7 @@ describe('integration: sqlite explore', () => {
 
         it('should return null for types (SQLite unsupported)', async () => {
 
-            const detail = await fetchDetail(db, 'sqlite', 'types', 'any_type');
+            const detail = await fetchDetail(db, 'sqlite', 'types', 'any_type', { gate: GATED_BY_CALLER });
 
             expect(detail).toBeNull();
 
@@ -414,7 +415,7 @@ describe('integration: sqlite explore', () => {
         it('should exclude __noorm_ prefixed tables by default', async () => {
 
             // The fetchOverview and fetchList exclude noorm tables by default
-            const tables = await fetchList(db, 'sqlite', 'tables');
+            const tables = await fetchList(db, 'sqlite', 'tables', { gate: GATED_BY_CALLER });
 
             const noormTables = tables.filter((t) => t.name.startsWith('__noorm_'));
             expect(noormTables).toHaveLength(0);

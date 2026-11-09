@@ -51,6 +51,7 @@ import {
 } from '../../utils/db.js';
 
 import type { ContextState } from '../../../src/sdk/state.js';
+import { getStateManager } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
 import type { ConnectionResult, Dialect } from '../../../src/core/connection/types.js';
 
@@ -67,6 +68,7 @@ function makeState(connection: ConnectionResult | null, config: Config): Context
         identity: { name: 'tester', source: 'system' },
         options: {},
         projectRoot: '/tmp',
+        stateManager: getStateManager('/tmp'),
         changeManager: null,
     };
 

@@ -10,6 +10,7 @@ import type { PipelineContext, PipelineRunResult, PipelineTransaction } from '..
 import type { NoormDatabase } from '../../../src/core/shared/tables.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const values = ["O'Brien\\backslash", 'Café 😀', '', "'); DROP TABLE literal_values; --\\b"];
 
@@ -53,7 +54,7 @@ async function withPipelineFixture(
 
         await run({
             db, dialect, connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' },
-            projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test',
+            projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test',
         }, folder);
 
     }

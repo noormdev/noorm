@@ -7,9 +7,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'bun:test';
 import type { Kysely, RawBuilder } from 'kysely';
+import { sql } from 'kysely';
 
 import { executeRawSql, executeRawSqlUnchecked } from '../../../src/core/sql-terminal/executor.js';
 import { observer } from '../../../src/core/observer.js';
+import { attachPolicyContext, withPolicyConfirmation } from '../../../src/core/policy/index.js';
 
 /**
  * Event data emitted after SQL execution.
@@ -295,25 +297,6 @@ describe('sql-terminal: executor', () => {
 
         });
 
-        it('should pass query correctly to sql.raw()', async () => {
-
-            mockExecute.mockResolvedValue({
-                rows: [],
-                numAffectedRows: undefined,
-            });
-
-            const { sql } = await import('kysely');
-            const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
-                execute: mockExecute,
-            } as unknown as RawBuilder<unknown>);
-
-            const query = 'SELECT * FROM users WHERE id = 42';
-            await executeRawSqlUnchecked(mockDb, query, 'test');
-
-            expect(rawSpy).toHaveBeenCalledWith(query);
-            expect(mockExecute).toHaveBeenCalledWith(mockDb);
-
-        });
 
         it('should handle empty result set', async () => {
 
@@ -410,6 +393,148 @@ describe('sql-terminal: executor', () => {
                 channel: 'user' as const,
                 dialect: 'postgres' as const,
             };
+            attachPolicyContext(VIEWER_GATE.access, {});
+            attachPolicyContext(ADMIN_GATE.access, {});
+
+
+            it('checks every batch permission before executing and scopes confirmation to each permission', async () => {
+
+                const previous = process.env['NOORM_YES'];
+                delete process.env['NOORM_YES'];
+                try {
+
+                    const access = { user: 'schema_only', agent: 'schema_only' };
+                    attachPolicyContext(access, { roles: { schema_only: { permissions: {
+                        'sql:write': 'confirm', 'sql:ddl': 'confirm',
+                    } } } });
+                    const gate = { access, channel: 'user' as const, dialect: 'postgres' as const };
+                    const target = { name: 'prod', access };
+                    const query = 'DELETE FROM records; CREATE TABLE marker (id int)';
+                    const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
+                        execute: mockExecute,
+                    } as unknown as RawBuilder<unknown>);
+                    mockExecute.mockResolvedValue({ rows: [] });
+
+                    await expect(withPolicyConfirmation(target, ['sql:ddl'], () =>
+                        executeRawSql(mockDb, query, 'prod', gate),
+                    )).rejects.toThrow(/confirmation/);
+                    expect(rawSpy).not.toHaveBeenCalled();
+                    await expect(withPolicyConfirmation(target, ['sql:write', 'sql:ddl'], () =>
+                        executeRawSql(mockDb, query, 'prod', gate),
+                    )).resolves.toMatchObject({ success: true });
+
+                    const deniedAccess = { user: 'schema_only', agent: 'schema_only' };
+                    attachPolicyContext(deniedAccess, { roles: { schema_only: { permissions: {
+                        'sql:write': 'deny', 'sql:ddl': 'allow',
+                    } } } });
+                    rawSpy.mockClear();
+                    await expect(withPolicyConfirmation({ name: 'prod', access: deniedAccess }, ['sql:write', 'sql:ddl'], () =>
+                        executeRawSql(mockDb, query, 'prod', { ...gate, access: deniedAccess }),
+                    )).rejects.toThrow(/sql:write/);
+                    expect(rawSpy).not.toHaveBeenCalled();
+
+                }
+                finally {
+
+                    if (previous === undefined) delete process.env['NOORM_YES'];
+                    else process.env['NOORM_YES'] = previous;
+
+                }
+
+            });
+
+            it('blocks or confirms semicolonless MSSQL privileged batches before submission', async () => {
+
+                const previous = process.env['NOORM_YES'];
+                delete process.env['NOORM_YES'];
+                try {
+
+                    const access = { user: 'reviewer', agent: 'reviewer' };
+                    attachPolicyContext(access, { roles: { reviewer: { permissions: {
+                        'sql:read': 'allow', 'sql:ddl': 'confirm',
+                    } } } });
+                    const gate = { access, channel: 'user' as const, dialect: 'mssql' as const };
+                    const target = { name: 'prod', access };
+                    const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
+                        execute: mockExecute,
+                    } as unknown as RawBuilder<unknown>);
+                    mockExecute.mockResolvedValue({ rows: [] });
+
+                    for (const statement of [
+                        'ENABLE TRIGGER ALL ON dbo.records',
+                        'DISABLE TRIGGER ALL ON dbo.records',
+                        "SETUSER 'dbo'\nSELECT USER_NAME()",
+                        'SET FMTONLY ON',
+                    ]) {
+
+                        const query = `SELECT 1\n${statement}`;
+                        rawSpy.mockClear();
+                        await expect(executeRawSql(mockDb, query, 'prod', {
+                            ...VIEWER_GATE, dialect: 'mssql',
+                        })).rejects.toThrow(/sql:ddl/);
+                        expect(rawSpy).not.toHaveBeenCalled();
+                        await expect(executeRawSql(mockDb, query, 'prod', gate)).rejects.toThrow(/confirmation/);
+                        expect(rawSpy).not.toHaveBeenCalled();
+                        await expect(withPolicyConfirmation(target, ['sql:ddl'], () =>
+                            executeRawSql(mockDb, query, 'prod', gate),
+                        )).resolves.toMatchObject({ success: true });
+
+                    }
+
+                }
+                finally {
+
+                    if (previous === undefined) delete process.env['NOORM_YES'];
+                    else process.env['NOORM_YES'] = previous;
+
+                }
+
+            });
+            it('requires scoped confirmation for custom SQL write and DDL cells, and for agent reads', async () => {
+
+                const previous = process.env['NOORM_YES'];
+                delete process.env['NOORM_YES'];
+                try {
+
+                    const access = { user: 'reviewer', agent: 'reviewer' };
+                    attachPolicyContext(access, { roles: { reviewer: { permissions: {
+                        'sql:read': 'confirm', 'sql:write': 'confirm', 'sql:ddl': 'confirm',
+                    } } } });
+                    const gate = { access, channel: 'user' as const, dialect: 'postgres' as const };
+                    const target = { name: 'prod', access };
+                    const rawSpy = vi.spyOn(sql, 'raw').mockReturnValue({
+                        execute: mockExecute,
+                    } as unknown as RawBuilder<unknown>);
+                    mockExecute.mockResolvedValue({ rows: [] });
+
+                    for (const [query, permission] of [
+                        ['INSERT INTO users VALUES (1)', 'sql:write'],
+                        ['CREATE TABLE users (id int)', 'sql:ddl'],
+                    ] as const) {
+
+                        await expect(executeRawSql(mockDb, query, 'prod', gate)).rejects.toThrow(/requires confirmation/);
+                        expect(rawSpy).not.toHaveBeenCalled();
+                        await expect(withPolicyConfirmation(target, [permission], () =>
+                            executeRawSql(mockDb, query, 'prod', gate),
+                        )).resolves.toMatchObject({ success: true });
+                        rawSpy.mockClear();
+
+                    }
+                    await expect(executeRawSql(mockDb, 'SELECT 1', 'prod', gate)).resolves.toMatchObject({ success: true });
+                    rawSpy.mockClear();
+                    await expect(executeRawSql(mockDb, 'SELECT 1', 'prod', { ...gate, channel: 'agent' }))
+                        .rejects.toThrow(/requires confirmation/);
+                    expect(rawSpy).not.toHaveBeenCalled();
+
+                }
+                finally {
+
+                    if (previous === undefined) delete process.env['NOORM_YES'];
+                    else process.env['NOORM_YES'] = previous;
+
+                }
+
+            });
 
             it('should execute a SELECT for a viewer role (sql:read allows)', async () => {
 

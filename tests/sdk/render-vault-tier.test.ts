@@ -15,6 +15,7 @@ import { TemplatesNamespace } from '../../src/sdk/namespaces/templates.js';
 import { getStateManager, resetStateManager } from '../../src/core/state/index.js';
 import { generateKeyPair } from '../../src/core/identity/index.js';
 import { setKeyOverride, clearKeyOverride } from '../../src/core/identity/storage.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
@@ -44,6 +45,8 @@ const mockIdentity: Identity = {
 
 function makeState(projectRoot: string, config: Config): ContextState {
 
+    attachPolicyContext(config.access, {});
+
     return {
         connection: null,
         config,
@@ -51,6 +54,7 @@ function makeState(projectRoot: string, config: Config): ContextState {
         identity: mockIdentity,
         options: {},
         projectRoot,
+        stateManager: getStateManager(projectRoot),
         changeManager: null,
     };
 

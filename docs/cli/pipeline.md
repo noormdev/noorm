@@ -26,7 +26,7 @@ Use `noorm pipeline --help` to list the static `run`, `history`, and `show` comm
 
 Missing required values prompt only when stdin and stdout are terminals and the invocation is not CI, JSON, `--yes`, `NOORM_YES`, or the agent channel. Otherwise supply every required value. Invalid explicit values and cancelled prompts stop before admission. Input flag names cannot collide with built-in flags.
 
-`--dry-run` validates and renders all declarations without creating history, claiming a guard, or executing workflow SQL. Trusted template helpers can still have side effects. Both normal and dry runs enforce `run:dir` access policy.
+`--dry-run` validates and renders all declarations without creating history, claiming a guard, or executing workflow SQL. Trusted template helpers can still have side effects. Both normal and dry runs enforce `pipeline:run` access policy. `pipeline history` and `pipeline show <run-id>` read through `explore`, which gates the agent channel only.
 
 ## History and show
 

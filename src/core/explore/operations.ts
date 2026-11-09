@@ -8,7 +8,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 import type { Dialect } from '../connection/types.js';
-import type { Channel, ConfigAccess } from '../policy/index.js';
+import type { Channel, ConfigAccess, Permission } from '../policy/index.js';
 import type {
     ColumnDetail,
     ExploreCategory,
@@ -33,7 +33,29 @@ import type {
 import { getExploreOperations } from './dialects/index.js';
 import { readPeekRows } from './peek.js';
 import { observer } from '../observer.js';
-import { assertPolicy } from '../policy/index.js';
+import { checkConfigPolicy } from '../policy/index.js';
+
+/** Policy inputs for an explore or row-peek read. */
+export interface ExploreGate {
+
+    configName: string;
+    access: ConfigAccess;
+    channel: Channel;
+
+}
+
+/**
+ * Gate for a read the person at the keyboard drives; always allowed.
+ * @example fetchOverview(db, dialect, { gate: userGate(config) })
+ */
+export function userGate(config: { name: string; access: ConfigAccess }): ExploreGate {
+
+    return { configName: config.name, access: config.access, channel: 'user' };
+
+}
+
+/** `gate` for the object inventory of a truncate or teardown: that operation's own `db:*` check governs the read, not `explore`. */
+export const GATED_BY_CALLER = Symbol('gatedByCaller');
 
 /**
  * Options for explore operations.
@@ -49,6 +71,28 @@ export interface ExploreOptions {
      * "the schema is empty".
      */
     schema?: string;
+
+    gate: ExploreGate | typeof GATED_BY_CALLER;
+
+}
+
+/** Throws unless allowed; a `confirm` cell passes only under `withPolicyConfirmation`. */
+function assertGateAllows(gate: ExploreGate, permission: Permission): void {
+
+    const check = checkConfigPolicy(gate.channel, { name: gate.configName, access: gate.access }, permission);
+
+    if (!check.allowed) throw new Error(check.blockedReason ?? `"${permission}" is not allowed on config "${gate.configName}".`);
+    if (check.requiresConfirmation) {
+
+        throw new Error(`"${permission}" on config "${gate.configName}" requires confirmation (${check.confirmationPhrase}).`);
+
+    }
+
+}
+
+function assertExplore(gate: ExploreOptions['gate']): void {
+
+    if (gate !== GATED_BY_CALLER) assertGateAllows(gate, 'explore');
 
 }
 
@@ -94,18 +138,20 @@ function assertSchemaSupported(dialect: Dialect, schema?: string): void {
  *
  * @example
  * ```typescript
- * const overview = await fetchOverview(db, 'postgres')
+ * const overview = await fetchOverview(db, 'postgres', { gate })
  * console.log(`Tables: ${overview.tables}`)
  * ```
  */
 export async function fetchOverview(
     db: Kysely<unknown>,
     dialect: Dialect,
-    options: ExploreOptions = {},
+    options: ExploreOptions,
 ): Promise<ExploreOverview> {
 
     const ops = getExploreOperations(dialect);
-    const { schema } = options;
+    const { schema, gate } = options;
+
+    assertExplore(gate);
 
     assertSchemaSupported(dialect, schema);
 
@@ -174,7 +220,7 @@ type ListMethodMap = {
  *
  * @example
  * ```typescript
- * const tables = await fetchList(db, 'postgres', 'tables')
+ * const tables = await fetchList(db, 'postgres', 'tables', { gate })
  * for (const table of tables) {
  *     console.log(`${table.name}: ${table.columnCount} columns`)
  * }
@@ -184,11 +230,13 @@ export async function fetchList<C extends ExploreCategory>(
     db: Kysely<unknown>,
     dialect: Dialect,
     category: C,
-    options: ExploreOptions = {},
+    options: ExploreOptions,
 ): Promise<ListMethodMap[C]> {
 
     const ops = getExploreOperations(dialect);
-    const { schema } = options;
+    const { schema, gate } = options;
+
+    assertExplore(gate);
 
     assertSchemaSupported(dialect, schema);
 
@@ -279,12 +327,12 @@ export type DetailCategory = keyof DetailTypeMap;
  * @param dialect - Database dialect
  * @param category - Object category
  * @param name - Object name
- * @param schema - Optional schema name
+ * @param options - Schema filter and the policy gate
  * @returns Full detail or null if not found
  *
  * @example
  * ```typescript
- * const table = await fetchDetail(db, 'postgres', 'tables', 'users', 'public')
+ * const table = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate })
  * if (table) {
  *     for (const col of table.columns) {
  *         console.log(`${col.name}: ${col.dataType}`)
@@ -297,8 +345,12 @@ export async function fetchDetail<C extends DetailCategory>(
     dialect: Dialect,
     category: C,
     name: string,
-    schema?: string,
+    options: Pick<ExploreOptions, 'schema' | 'gate'>,
 ): Promise<DetailTypeMap[C] | null> {
+
+    const { schema, gate } = options;
+
+    assertExplore(gate);
 
     const ops = getExploreOperations(dialect);
 
@@ -328,27 +380,6 @@ export async function fetchDetail<C extends DetailCategory>(
  * Rows a peek reads per set unless the caller sizes it itself.
  */
 export const DEFAULT_PEEK_ROWS = 10;
-
-/**
- * Policy inputs the row peek is checked against.
- *
- * Mandatory, and shaped like `SqlPolicyGate`, for the same reason: this is the
- * one explore operation that returns user data rather than catalog metadata, so
- * it is gated on `sql:read` where the rest of the module needs only `explore`.
- * A schema-only permission must not become a way to read rows.
- */
-export interface RowPeekGate {
-
-    /** Config name, which is what the policy message names. */
-    configName: string;
-
-    /** The config's per-channel access roles. */
-    access: ConfigAccess;
-
-    /** Who is driving — see `resolveChannel`. */
-    channel: Channel;
-
-}
 
 /**
  * Both ends of a table, or the one set that is honest for it.
@@ -453,7 +484,7 @@ export async function fetchRowPeek(
     db: Kysely<unknown>,
     dialect: Dialect,
     detail: TableDetail,
-    gate: RowPeekGate,
+    gate: ExploreGate,
     limit: number = DEFAULT_PEEK_ROWS,
 ): Promise<RowPeek> {
 
@@ -461,7 +492,7 @@ export async function fetchRowPeek(
     const keyColumns = namesInOrder(detail.columns.filter((column) => column.isPrimaryKey));
     const base = { table: detail.name, schema: detail.schema, keyColumns, limit };
 
-    assertPolicy(gate.channel, { name: gate.configName, access: gate.access }, 'sql:read');
+    assertGateAllows(gate, 'sql:read');
 
     const [first, headErr] = await attempt(() => readPeekRows(db, dialect, { ...base, direction: 'asc' }));
 

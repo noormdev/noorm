@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 
 import { parseConfig } from '../../../src/core/config/index.js';
-import { checkPolicy } from '../../../src/core/policy/index.js';
+import { attachPolicyContext, checkPolicy } from '../../../src/core/policy/index.js';
 import type { ConfigAccess, Permission } from '../../../src/core/policy/index.js';
 import { migrateState } from '../../../src/core/version/state/index.js';
 
@@ -31,7 +31,10 @@ function stockConfigInput(overrides: Record<string, unknown> = {}): Record<strin
 
 function stockAccess(overrides: Record<string, unknown> = {}): ConfigAccess {
 
-    return parseConfig(stockConfigInput(overrides)).access;
+    const access = parseConfig(stockConfigInput(overrides)).access;
+    attachPolicyContext(access, {});
+
+    return access;
 
 }
 

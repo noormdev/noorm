@@ -9,6 +9,7 @@ import { getPipelineRun } from '../../../src/core/pipeline/history.js';
 import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import type { NoormDatabase } from '../../../src/core/shared/tables.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
+import { withPolicy } from '../../utils/access.js';
 
 let root: string;
 let folder: string;
@@ -128,7 +129,7 @@ beforeEach(async () => {
     context = {
         db, dialect: 'sqlite', connectionConfig: { dialect: 'sqlite', database: ':memory:' },
         configName: 'alpha', identity: { name: 'Test', source: 'config' },
-        projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user',
+        projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
         pipelinesPath: './db/pipelines', cliVersion: 'test',
     };
 
@@ -270,9 +271,9 @@ describe('pipeline: boundary execution', () => {
         for (const dryRun of [false, true]) {
 
             for (const denied of [
-                { access: { user: 'viewer', agent: 'viewer' } as const, channel: 'user' as const },
-                { access: { user: 'operator', agent: 'operator' } as const, channel: 'user' as const },
-                { access: { user: 'operator', agent: 'operator' } as const, channel: 'agent' as const, yes: true },
+                { access: withPolicy({ user: 'viewer', agent: 'viewer' }), channel: 'user' as const },
+                { access: withPolicy({ user: 'operator', agent: 'operator' }), channel: 'user' as const },
+                { access: withPolicy({ user: 'operator', agent: 'operator' }), channel: 'agent' as const, yes: true },
             ]) await expect(runPipeline({ ...context, ...denied }, 'refresh', { dryRun })).rejects.toThrow();
 
         }

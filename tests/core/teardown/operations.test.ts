@@ -18,6 +18,7 @@ import {
 
 import { isNoormTable, truncateData, teardownSchema } from '../../../src/core/teardown/index.js';
 import { observer } from '../../../src/core/observer.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Helpers — mock Kysely that returns controlled table rows
@@ -800,6 +801,8 @@ describe('teardown: core-seam policy gate', () => {
 
     const viewer = { configName: 'prod', access: { user: 'viewer', agent: 'viewer' } } as const;
     const admin = { configName: 'prod', access: { user: 'admin', agent: 'admin' } } as const;
+    attachPolicyContext(viewer.access, {});
+    attachPolicyContext(admin.access, {});
 
     it('refuses a truncate the role denies', async () => {
 

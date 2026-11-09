@@ -46,7 +46,7 @@ const setCommand = defineCommand({
         }
 
         const stateManager = getStateManager(projectRoot);
-        const resolved = resolveSecretPolicy(stateManager, args.config, 'secret:write');
+        const resolved = await resolveSecretPolicy(stateManager, args.config, 'secret:write', projectRoot);
 
         if (!resolved.ok) {
 

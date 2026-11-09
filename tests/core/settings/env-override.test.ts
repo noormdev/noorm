@@ -6,6 +6,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { SettingsManager, resetSettingsManager } from '../../../src/core/settings/manager.js';
+import { getEnvConfig } from '../../../src/core/config/index.js';
+import { parseConfig } from '../../../src/core/config/schema.js';
+import { SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
+import { getConfigPermission } from '../../../src/core/policy/index.js';
 import { writeFile, readFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -27,6 +31,15 @@ describe('settings: env overrides', () => {
         'NOORM_API_KEY',
         'NOORM_FOO_BAR',
         'NOORM_BUILD_INCLUDE',
+        'NOORM_ACCESS_ROLES_ANALYST_EXTENDS',
+        'NOORM_ACCESS_USER',
+        'NOORM_ACCESS_AGENT',
+        'NOORM_ACCESS_OTHER',
+        'NOORM_STAGES_PROD_DEFAULTS_PROTECTED',
+        'NOORM_STAGES_prod_defaults.protected',
+        'NOORM_STAGES.prod.defaults.protected',
+        'NOORM_ACCESS.roles.rogue.permissions.sql:ddl',
+        'NOORM_access.roles.rogue.permissions.sql:ddl',
     ];
 
     beforeEach(async () => {
@@ -81,6 +94,56 @@ describe('settings: env overrides', () => {
         expect(settings.paths?.changes).toBe('./changes');
 
     });
+
+    it('keeps config access assignments out of settings without suppressing config env parsing', async () => {
+
+        await writeFile(
+            join(testDir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    analyst:\n      extends: viewer\n',
+        );
+        process.env['NOORM_ACCESS_USER'] = 'analyst';
+        process.env['NOORM_ACCESS_AGENT'] = 'viewer';
+        process.env['NOORM_ACCESS_OTHER'] = 'ignored';
+
+        const settings = await new SettingsManager(testDir).load();
+        expect(settings.access).toEqual({ roles: { analyst: { extends: 'viewer' } } });
+        expect(getEnvConfig().access).toMatchObject({ user: 'analyst', agent: 'viewer' });
+
+    });
+
+    it.each([
+        'NOORM_STAGES_PROD_DEFAULTS_PROTECTED',
+        'NOORM_STAGES_prod_defaults.protected',
+        'NOORM_STAGES.prod.defaults.protected',
+    ])('keeps the protected-stage ceiling under environment key %s', async (key) => {
+
+        await writeFile(join(testDir, '.noorm', 'settings.yml'),
+            'stages:\n  prod:\n    defaults:\n      protected: true\n');
+        process.env[key] = 'false';
+
+        const manager = new SettingsManager(testDir);
+        await manager.load();
+        const config = withConfigPolicy(parseConfig({
+            name: 'prod', type: 'local',
+            connection: { dialect: 'sqlite', database: ':memory:' },
+            access: { user: 'admin', agent: 'admin' },
+        }), new SettingsProvider(manager));
+        expect(getConfigPermission('agent', config, 'sql:ddl')).toBe('deny');
+        expect(getConfigPermission('user', config, 'db:destroy')).toBe('deny');
+
+    });
+
+    it.each([
+        'NOORM_ACCESS.roles.rogue.permissions.sql:ddl',
+        'NOORM_access.roles.rogue.permissions.sql:ddl',
+    ])('does not introduce role definitions through environment key %s', async (key) => {
+
+        process.env[key] = 'allow';
+        const settings = await new SettingsManager(testDir).load();
+        expect(settings.access).toBeUndefined();
+
+    });
+
 
     it('should apply env vars when no YAML file exists', async () => {
 
@@ -156,6 +219,45 @@ describe('settings: env overrides', () => {
     describe('env overlay is never persisted', () => {
 
         const settingsPath = () => join(testDir, '.noorm', 'settings.yml');
+
+        it('ignores role-definition environment overrides and preserves committed roles across writes', async () => {
+
+            await writeFile(settingsPath(), [
+                'access:',
+                '  roles:',
+                '    analyst:',
+                '      extends: viewer',
+                '      permissions:',
+                '        sql:read: allow',
+                '',
+            ].join('\n'));
+            process.env['NOORM_ACCESS_ROLES_ANALYST_EXTENDS'] = 'operator';
+
+            const manager = new SettingsManager(testDir);
+            const settings = await manager.load();
+            expect(settings.access?.roles?.['analyst']).toEqual({
+                extends: 'viewer',
+                permissions: { 'sql:read': 'allow' },
+            });
+
+            await manager.setBuild({ include: ['schema'], exclude: [] });
+            const saved = await readFile(settingsPath(), 'utf-8');
+            expect(saved).toContain('viewer');
+            expect(saved).toContain('sql:read');
+            expect(saved).not.toContain('operator');
+            expect((await manager.load()).access?.roles?.['analyst']?.extends).toBe('viewer');
+
+        });
+
+        it('does not create roles from the environment when no roles are committed', async () => {
+
+            await writeFile(settingsPath(), '{}');
+            process.env['NOORM_ACCESS_ROLES_ANALYST_EXTENDS'] = 'admin';
+
+            const manager = new SettingsManager(testDir);
+            expect((await manager.load()).access?.roles).toBeUndefined();
+
+        });
 
         it('should not write ambient NOORM_* secrets to settings.yml on save', async () => {
 

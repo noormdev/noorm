@@ -31,27 +31,38 @@ Three levels of detail:
 ## Quick Start
 
 ```typescript
-import { fetchOverview, fetchList, fetchDetail } from './core/explore'
+import { fetchOverview, fetchList, fetchDetail, userGate } from './core/explore'
+
+const gate = userGate(config)
 
 // Get counts of all object types
-const overview = await fetchOverview(db, 'postgres')
+const overview = await fetchOverview(db, 'postgres', { gate })
 console.log(`Tables: ${overview.tables}`)
 console.log(`Views: ${overview.views}`)
 
 // List all tables with summaries
-const tables = await fetchList(db, 'postgres', 'tables')
+const tables = await fetchList(db, 'postgres', 'tables', { gate })
 for (const table of tables) {
     console.log(`${table.name}: ${table.columnCount} columns`)
 }
 
 // Get full table detail
-const detail = await fetchDetail(db, 'postgres', 'tables', 'users', 'public')
+const detail = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate })
 if (detail) {
     for (const col of detail.columns) {
         console.log(`  ${col.name}: ${col.dataType}${col.isNullable ? '' : ' NOT NULL'}`)
     }
 }
 ```
+
+
+## Access gate
+
+Every explore read takes a required `gate` in its options. The gate carries the config name, its `access`, and the channel, and each fetcher checks the `explore` permission before it touches the database. A `deny` throws with the policy's reason. A `confirm` throws unless the caller runs under `withPolicyConfirmation`.
+
+`userGate(config)` builds the gate for a read the person at the keyboard drives. The user channel always reads `explore` and `sql:read` as `allow`, so that gate never blocks; only agent-channel gates can deny. `fetchRowPeek` takes the same gate as a positional argument and checks `sql:read`.
+
+`GATED_BY_CALLER` replaces the gate for the object inventory behind truncate and teardown. Those operations run their own `db:truncate` or `db:teardown` check, and that check, not `explore`, governs the read.
 
 
 ## Object Categories
@@ -79,7 +90,7 @@ Ten categories of database objects can be explored (`ExploreCategory` in `src/co
 Get counts of all object types in one call:
 
 ```typescript
-const overview = await fetchOverview(db, 'postgres')
+const overview = await fetchOverview(db, 'postgres', { gate })
 
 // {
 //     tables: 24,
@@ -100,7 +111,7 @@ Counts come from the same list calls the detail views use, so the overview can n
 By default, noorm internal tables (`__noorm_*`) are excluded from counts. Include them with:
 
 ```typescript
-const overview = await fetchOverview(db, 'postgres', { includeNoormTables: true })
+const overview = await fetchOverview(db, 'postgres', { includeNoormTables: true, gate })
 ```
 
 `includeNoormTables` only affects the prefixed `__noorm_*` names used on MySQL and SQLite. On PostgreSQL and SQL Server the tracking tables live in a dedicated `noorm` schema, which every dialect query excludes outright — the flag cannot bring them back.
@@ -108,7 +119,7 @@ const overview = await fetchOverview(db, 'postgres', { includeNoormTables: true 
 Both `fetchOverview` and `fetchList` also accept `schema` to narrow results to one schema. It reaches the generated SQL rather than filtering afterwards, and it throws on SQLite, which has no schemas.
 
 ```typescript
-const overview = await fetchOverview(db, 'postgres', { schema: 'reporting' })
+const overview = await fetchOverview(db, 'postgres', { schema: 'reporting', gate })
 ```
 
 
@@ -118,7 +129,7 @@ Fetch summary information for browsing:
 
 ```typescript
 // List all tables
-const tables = await fetchList(db, 'postgres', 'tables')
+const tables = await fetchList(db, 'postgres', 'tables', { gate })
 // [
 //     { name: 'users', schema: 'public', columnCount: 8, rowCountEstimate: 1500 },
 //     { name: 'posts', schema: 'public', columnCount: 5, rowCountEstimate: 42000 },
@@ -126,14 +137,14 @@ const tables = await fetchList(db, 'postgres', 'tables')
 // ]
 
 // List all functions
-const functions = await fetchList(db, 'postgres', 'functions')
+const functions = await fetchList(db, 'postgres', 'functions', { gate })
 // [
 //     { name: 'calculate_total', schema: 'public', parameterCount: 2, returnType: 'numeric' },
 //     ...
 // ]
 
 // List foreign keys
-const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys')
+const foreignKeys = await fetchList(db, 'postgres', 'foreignKeys', { gate })
 // [
 //     {
 //         name: 'posts_user_id_fkey',
@@ -155,7 +166,7 @@ Get full metadata for a specific object:
 
 ```typescript
 // Table detail
-const table = await fetchDetail(db, 'postgres', 'tables', 'users', 'public')
+const table = await fetchDetail(db, 'postgres', 'tables', 'users', { schema: 'public', gate })
 
 // {
 //     name: 'users',
@@ -174,7 +185,7 @@ const table = await fetchDetail(db, 'postgres', 'tables', 'users', 'public')
 // }
 
 // View detail (includes definition)
-const view = await fetchDetail(db, 'postgres', 'views', 'active_users')
+const view = await fetchDetail(db, 'postgres', 'views', 'active_users', { gate })
 
 // {
 //     name: 'active_users',
@@ -184,7 +195,7 @@ const view = await fetchDetail(db, 'postgres', 'views', 'active_users')
 // }
 
 // Function detail
-const fn = await fetchDetail(db, 'postgres', 'functions', 'calculate_total')
+const fn = await fetchDetail(db, 'postgres', 'functions', 'calculate_total', { gate })
 
 // {
 //     name: 'calculate_total',

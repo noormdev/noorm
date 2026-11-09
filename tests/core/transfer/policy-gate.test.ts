@@ -8,11 +8,14 @@
 import { describe, it, expect } from 'bun:test';
 
 import { transferData, getTransferPlan } from '../../../src/core/transfer/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { makeTestConfig } from '../../utils/db.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
 const VIEWER: ConfigAccess = { user: 'viewer', agent: false };
 const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(VIEWER, {});
+attachPolicyContext(ADMIN, {});
 
 describe('transfer: policy gate', () => {
 
@@ -53,6 +56,33 @@ describe('transfer: policy gate', () => {
         const [result, err] = await transferData(source, dest, {});
 
         expect(result).toBeNull();
+        expect(err?.message).toMatch(/db:reset/);
+
+    });
+
+    it('should let an agent write to an isTest destination whose role would deny db:reset', async () => {
+
+        const access: ConfigAccess = { user: 'viewer', agent: 'viewer' };
+        attachPolicyContext(access, { isTest: true });
+        const source = { ...makeTestConfig('source', { dialect: 'postgres', database: 'x' }), access: ADMIN };
+        const dest = { ...makeTestConfig('dest', { dialect: 'sqlite', database: 'y' }), access };
+
+        const [, err] = await transferData(source, dest, { channel: 'agent' });
+
+        // Past the policy gate, the unsupported-dialect check is what stops it.
+        expect(err?.message).toMatch(/not supported/i);
+
+    });
+
+    it('should still deny an agent writing to a destination that is not isTest', async () => {
+
+        const access: ConfigAccess = { user: 'viewer', agent: 'viewer' };
+        attachPolicyContext(access, { isTest: false });
+        const source = { ...makeTestConfig('source', { dialect: 'postgres', database: 'x' }), access: ADMIN };
+        const dest = { ...makeTestConfig('dest', { dialect: 'sqlite', database: 'y' }), access };
+
+        const [, err] = await transferData(source, dest, { channel: 'agent' });
+
         expect(err?.message).toMatch(/db:reset/);
 
     });

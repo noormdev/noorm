@@ -20,6 +20,8 @@ import type { Kysely } from 'kysely';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { v2 } from '../../../src/core/version/schema/migrations/v2.js';
 import { VaultNamespace, VaultAccessError } from '../../../src/sdk/namespaces/vault.js';
+import { getVaultKey } from '../../../src/core/vault/storage.js';
+import { getUsersWithoutVaultAccess, propagateVaultKey } from '../../../src/core/vault/propagate.js';
 import { NotConnectedError } from '../../../src/sdk/guards.js';
 import {
     generateKeyPair,
@@ -44,6 +46,7 @@ import {
 } from '../../utils/db.js';
 
 import type { ContextState } from '../../../src/sdk/state.js';
+import { getStateManager } from '../../../src/core/state/index.js';
 import type { Config } from '../../../src/core/config/types.js';
 import type { ConnectionResult, Dialect } from '../../../src/core/connection/types.js';
 
@@ -154,6 +157,7 @@ function makeState(connection: ConnectionResult | null, config: Config): Context
         identity: { name: 'tester', source: 'system' },
         options: {},
         projectRoot: '/tmp',
+        stateManager: getStateManager('/tmp'),
         changeManager: null,
     };
 
@@ -220,6 +224,35 @@ function describeVaultNamespace(dialect: Dialect): void {
             const result = await vault.get('MISSING_KEY', alice.privateKey);
 
             expect(result).toBeNull();
+
+        });
+
+        it('grants only reviewed recipients with unchanged keys across real database column types', async () => {
+
+            const vault = new VaultNamespace(makeState(conn, config));
+            const db = conn.db as Kysely<NoormDatabase>;
+            await vault.init();
+            const ownerKey = await getVaultKey(db, alice.identityHash, alice.privateKey, dialect);
+            expect(ownerKey).not.toBeNull();
+            const reviewed = await seedIdentity(conn.db, dialect, 'bob@example.com', 'Bob');
+            const changed = await seedIdentity(conn.db, dialect, 'eve@example.com', 'Eve');
+            const [recipients, error] = await getUsersWithoutVaultAccess(db, dialect);
+            expect(error).toBeNull();
+            const late = await seedIdentity(conn.db, dialect, 'carol@example.com', 'Carol');
+            const replacement = generateKeyPair();
+            await noormDb(db, dialect)
+                .updateTable(getNoormTables(dialect).identities as keyof NoormDatabase)
+                .set({ public_key: replacement.publicKey })
+                .where('identity_hash', '=', changed.identityHash)
+                .execute();
+
+            const result = await propagateVaultKey(db, ownerKey!, dialect, { reviewedRecipients: recipients! });
+
+            expect(result.propagatedTo).toEqual([reviewed.identityHash]);
+            expect(result.failed.map(recipient => recipient.identityHash)).toEqual([changed.identityHash]);
+            expect(await getVaultKey(db, reviewed.identityHash, reviewed.privateKey, dialect)).toEqual(ownerKey);
+            expect(await getVaultKey(db, changed.identityHash, replacement.privateKey, dialect)).toBeNull();
+            expect(await getVaultKey(db, late.identityHash, late.privateKey, dialect)).toBeNull();
 
         });
 

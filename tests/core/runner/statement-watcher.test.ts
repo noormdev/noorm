@@ -7,6 +7,7 @@
  * aborted run starts no further files. The server-side half (probes, blockers,
  * pg_cancel_backend) is covered in tests/integration/runner/statement-watcher.test.ts.
  */
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,9 @@ import type { NoormEvents } from '../../../src/core/observer.js';
 import type { RunContext } from '../../../src/core/runner/types.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(adminAccess, {});
 
 describe('runner: statement watcher', () => {
 
@@ -144,7 +148,7 @@ describe('runner: run cancellation', () => {
             configName: 'test',
             identity: { name: 'Test User', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access: adminAccess,
             channel: 'user',
             dialect: 'sqlite',
             signal,

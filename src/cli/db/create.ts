@@ -4,9 +4,8 @@
  * Creates the database and bootstraps noorm tracking tables.
  * Uses server-level connection so the target database need not exist yet.
  *
- * Gated by the config's `db:create` access: viewer is denied outright;
- * operator requires --yes to satisfy the matrix's confirmation requirement;
- * admin runs unconfirmed.
+ * Gated by the config's `db:create` access; a config with a trusted
+ * `isTest: true` is exempt.
  */
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';

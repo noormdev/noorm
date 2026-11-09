@@ -4,11 +4,14 @@
  * Clones an existing config entry under a new name without modifying
  * the source. Useful for deriving staging/prod configs from a base dev config.
  */
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
 import { initState, getStateManager } from '../../core/state/index.js';
-import { outputResult, outputError, sharedArgs } from '../_utils.js';
+import { ProtectedStageEscapeError, SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { getSettingsManager } from '../../core/settings/index.js';
+import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
+import { outputResult, outputError, sharedArgs, isYesMode } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
 const cpCommand = defineCommand({
@@ -19,6 +22,7 @@ const cpCommand = defineCommand({
     args: {
         src: { type: 'positional', description: 'Source config name', required: true },
         dest: { type: 'positional', description: 'Destination config name', required: true },
+        yes: sharedArgs.yes,
         json: sharedArgs.json,
     },
     async run({ args }) {
@@ -53,13 +57,52 @@ const cpCommand = defineCommand({
 
         }
 
-        const copy = { ...source, name: args.dest };
+        if (resolveChannel() !== 'user') {
 
-        const [, saveErr] = await attempt(() => stateManager.setConfig(args.dest, copy));
+            outputError(args, 'Creating configurations requires the user channel.');
+            process.exit(1);
+
+        }
+
+        const settingsManager = getSettingsManager(projectRoot);
+        const [, settingsErr] = await attempt(() => settingsManager.load());
+        if (settingsErr) {
+
+            outputError(args, `Failed to load settings: ${settingsErr.message}`);
+            process.exit(1);
+
+        }
+
+        const provider = new SettingsProvider(settingsManager);
+        const [policyConfig, policyErr] = attemptSync(() => withConfigPolicy(source, provider));
+        if (policyErr) {
+
+            outputError(args, policyErr.message);
+            process.exit(EXIT.USAGE);
+
+        }
+
+        const check = checkConfigPolicy(resolveChannel(), policyConfig, 'config:write');
+        if (!check.allowed) {
+
+            outputError(args, check.blockedReason ?? `Cannot copy config "${source.name}".`);
+            process.exit(1);
+
+        }
+        if (check.requiresConfirmation && !isYesMode(args)) {
+
+            outputError(args, `Copying config "${source.name}" requires confirmation (${check.confirmationPhrase}). Pass --yes to confirm.`);
+            process.exit(1);
+
+        }
+
+        const [, saveErr] = await attempt(() => stateManager.copyConfig(args.src, args.dest, provider));
 
         if (saveErr) {
 
-            outputError(args, `Failed to save config: ${saveErr.message}`);
+            outputError(args, saveErr instanceof ProtectedStageEscapeError
+                ? saveErr.message
+                : `Failed to save config: ${saveErr.message}`);
             process.exit(1);
 
         }

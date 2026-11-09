@@ -9,7 +9,6 @@ import type { Kysely } from 'kysely';
 
 import type { ProcessResult as TemplateResult } from '../../core/template/index.js';
 import { processFile } from '../../core/template/index.js';
-import { getStateManager } from '../../core/state/index.js';
 import { checkConfigPolicy } from '../../core/policy/index.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
@@ -66,7 +65,7 @@ export class TemplatesNamespace {
             ? filepath
             : path.join(this.#state.projectRoot, filepath);
 
-        const state = getStateManager(this.#state.projectRoot);
+        const state = this.#state.stateManager;
         const conn = this.#state.connection;
         const db = conn?.db as unknown as Kysely<NoormDatabase> | undefined;
         const vaultKey = db && conn ? await resolveVaultKey(db, conn.dialect) : null;

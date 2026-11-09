@@ -70,7 +70,7 @@ Input edits are a screen draft, not changes to `pipeline.yml`. They are not stor
 
 ## Confirm the target and mode
 
-Uppercase `D` changes the **next invocation** between execute and dry run. Press `r` to validate saved input and open the native confirmation dialog. Both modes enforce the active config's `run:dir` policy, including protected-config confirmation when required.
+Uppercase `D` changes the **next invocation** between execute and dry run. Press `r` to validate saved input and open the native confirmation dialog. Both modes enforce the active config's `pipeline:run` policy, including protected-config confirmation when required.
 
 The dialog captures the database target, mode, and input draft. A target change invalidates the confirmation and requires fresh review. Once started, the operation keeps its captured target and mode; later global mode changes do not redirect it. Duplicate starts are rejected.
 

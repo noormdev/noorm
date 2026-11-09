@@ -6,6 +6,7 @@ import { defineCommand } from 'citty';
 import type { Kysely } from 'kysely';
 
 import { fetchList } from '../../core/explore/index.js';
+import { gatedExplore } from '../../sdk/namespaces/db.js';
 import { withContext, outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -89,7 +90,7 @@ const viewsCommand = defineCommand({
 
                 // Core rather than the SDK: the SDK's list methods take no
                 // options, so --schema cannot reach the query through them.
-                return fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'views', { schema: args.schema }).then((res) => {
+                return ctx.noorm.db[gatedExplore]('views', (gate) => fetchList(ctx.kysely as Kysely<unknown>, ctx.dialect, 'views', { schema: args.schema, gate })).then((res) => {
 
                     if (!args.json) {
 

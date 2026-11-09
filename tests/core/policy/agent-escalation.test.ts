@@ -25,19 +25,22 @@
 import { describe, it, expect } from 'bun:test';
 
 import { parseConfig } from '../../../src/core/config/index.js';
-import { checkPolicy, resolveChannel } from '../../../src/core/policy/index.js';
+import { attachPolicyContext, checkPolicy, resolveChannel } from '../../../src/core/policy/index.js';
 import { MATRIX } from '../../../src/core/policy/matrix.js';
 import type { ConfigAccess, Permission } from '../../../src/core/policy/index.js';
 
 /** Access of a config exactly as it lands on disk: no `access` key written. */
 function stockAccess(): ConfigAccess {
 
-    return parseConfig({
+    const access = parseConfig({
         name: 'stock',
         type: 'local',
         isTest: true,
         connection: { dialect: 'sqlite', database: ':memory:' },
     }).access;
+    attachPolicyContext(access, {});
+
+    return access;
 
 }
 
@@ -138,6 +141,7 @@ describe('policy: agent escalation via the CLI', () => {
             access: { user: 'admin', agent: false },
             connection: { dialect: 'sqlite', database: ':memory:' },
         }).access;
+        attachPolicyContext(hidden, {});
 
         it('should deny every permission to a harnessed CLI caller', () => {
 

@@ -18,6 +18,7 @@ import { v2 } from '../../../src/core/version/schema/migrations/v2.js';
 import { v3 } from '../../../src/core/version/schema/migrations/v3.js';
 import { makeTestConfig } from '../../utils/db.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const dialects: Dialect[] = ['sqlite', 'postgres', 'mysql', 'mssql'];
 const intent: PipelineIntent = {
@@ -182,7 +183,7 @@ for (const dialect of dialects) {
                     await mkdir(folder, { recursive: true });
                     await writeFile(join(folder, 'pipeline.yml'), JSON.stringify({ transaction: 'step', steps: [{ id: 'load', sql: 'load.sql' }] }));
                     await writeFile(join(folder, 'load.sql'), 'INSERT INTO workflow_marker VALUES (2)');
-                    const context: PipelineContext = { db, dialect, connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
+                    const context: PipelineContext = { db, dialect, connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
                     const result = await runPipeline(context, 'refresh');
                     expect(result.status).toBe('success');
                     expect(result.runId).not.toBe(admitted.runId);
@@ -276,7 +277,7 @@ for (const dialect of dialects) {
                     await mkdir(folder, { recursive: true });
                     await writeFile(join(folder, 'pipeline.yml'), JSON.stringify({ transaction: 'step', singleRun: true, steps: [{ id: 'load', sql: 'load.sql' }] }));
                     await writeFile(join(folder, 'load.sql'), 'INSERT INTO workflow_marker VALUES (1)');
-                    const context: PipelineContext = { db, dialect, connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root, access: { user: 'admin', agent: 'admin' }, channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
+                    const context: PipelineContext = { db, dialect, connectionConfig: connection, configName: 'alpha', identity: { name: 'test', source: 'config' }, projectRoot: root, access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user', pipelinesPath: './db/pipelines', cliVersion: 'test' };
                     const result = await runPipeline(context, 'refresh', {});
                     if (result.dryRun) throw new Error('unexpected dry run');
                     expect(result.status).not.toBe('success');

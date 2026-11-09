@@ -24,6 +24,7 @@ import type {
     IndexSummary,
     ForeignKeySummary,
     ExploreOverview,
+    ExploreGate,
 } from '../../core/explore/index.js';
 import { fetchOverview, fetchList, fetchDetail } from '../../core/explore/index.js';
 import type { TruncateOptions, TruncateResult, TeardownOptions, TeardownResult, TeardownPreview } from '../../core/teardown/index.js';
@@ -34,9 +35,12 @@ import { checkConfigPolicy } from '../../core/policy/index.js';
 import type { Permission } from '../../core/policy/index.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection } from '../state.js';
+import { requireConnection, runGatedExplore } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { checkProtectedConfig, ProtectedConfigError } from '../guards.js';
+
+/** Internal: explore reads that need options the public methods lack (schema filter, triggers, locks, connections). */
+export const gatedExplore = Symbol('gatedExplore');
 
 // ─────────────────────────────────────────────────────────────
 // DbNamespace
@@ -54,6 +58,12 @@ export class DbNamespace {
 
     }
 
+    [gatedExplore]<T>(operation: string, run: (gate: ExploreGate) => Promise<T>): Promise<T> {
+
+        return runGatedExplore(this.#state, `explore ${operation}`, run);
+
+    }
+
     // ─────────────────────────────────────────────────────
     // Explore
     // ─────────────────────────────────────────────────────
@@ -68,7 +78,7 @@ export class DbNamespace {
      */
     async listTables(): Promise<TableSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'tables');
+        return this[gatedExplore]('tables', (gate) => fetchList(this.#kysely, this.#dialect, 'tables', { gate }));
 
     }
 
@@ -82,7 +92,7 @@ export class DbNamespace {
      */
     async describeTable(name: string, schema?: string): Promise<TableDetail | null> {
 
-        return fetchDetail(this.#kysely, this.#dialect, 'tables', name, schema);
+        return this[gatedExplore]('tables', (gate) => fetchDetail(this.#kysely, this.#dialect, 'tables', name, { schema, gate }));
 
     }
 
@@ -96,7 +106,7 @@ export class DbNamespace {
      */
     async listViews(): Promise<ViewSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'views');
+        return this[gatedExplore]('views', (gate) => fetchList(this.#kysely, this.#dialect, 'views', { gate }));
 
     }
 
@@ -110,7 +120,7 @@ export class DbNamespace {
      */
     async describeView(name: string, schema?: string): Promise<ViewDetail | null> {
 
-        return fetchDetail(this.#kysely, this.#dialect, 'views', name, schema);
+        return this[gatedExplore]('views', (gate) => fetchDetail(this.#kysely, this.#dialect, 'views', name, { schema, gate }));
 
     }
 
@@ -124,7 +134,7 @@ export class DbNamespace {
      */
     async listProcedures(): Promise<ProcedureSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'procedures');
+        return this[gatedExplore]('procedures', (gate) => fetchList(this.#kysely, this.#dialect, 'procedures', { gate }));
 
     }
 
@@ -138,7 +148,7 @@ export class DbNamespace {
      */
     async describeProcedure(name: string, schema?: string): Promise<ProcedureDetail | null> {
 
-        return fetchDetail(this.#kysely, this.#dialect, 'procedures', name, schema);
+        return this[gatedExplore]('procedures', (gate) => fetchDetail(this.#kysely, this.#dialect, 'procedures', name, { schema, gate }));
 
     }
 
@@ -152,7 +162,7 @@ export class DbNamespace {
      */
     async listFunctions(): Promise<FunctionSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'functions');
+        return this[gatedExplore]('functions', (gate) => fetchList(this.#kysely, this.#dialect, 'functions', { gate }));
 
     }
 
@@ -166,7 +176,7 @@ export class DbNamespace {
      */
     async describeFunction(name: string, schema?: string): Promise<FunctionDetail | null> {
 
-        return fetchDetail(this.#kysely, this.#dialect, 'functions', name, schema);
+        return this[gatedExplore]('functions', (gate) => fetchDetail(this.#kysely, this.#dialect, 'functions', name, { schema, gate }));
 
     }
 
@@ -180,7 +190,7 @@ export class DbNamespace {
      */
     async listTypes(): Promise<TypeSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'types');
+        return this[gatedExplore]('types', (gate) => fetchList(this.#kysely, this.#dialect, 'types', { gate }));
 
     }
 
@@ -194,7 +204,7 @@ export class DbNamespace {
      */
     async describeType(name: string, schema?: string): Promise<TypeDetail | null> {
 
-        return fetchDetail(this.#kysely, this.#dialect, 'types', name, schema);
+        return this[gatedExplore]('types', (gate) => fetchDetail(this.#kysely, this.#dialect, 'types', name, { schema, gate }));
 
     }
 
@@ -208,7 +218,7 @@ export class DbNamespace {
      */
     async listIndexes(): Promise<IndexSummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'indexes');
+        return this[gatedExplore]('indexes', (gate) => fetchList(this.#kysely, this.#dialect, 'indexes', { gate }));
 
     }
 
@@ -222,7 +232,7 @@ export class DbNamespace {
      */
     async listForeignKeys(): Promise<ForeignKeySummary[]> {
 
-        return fetchList(this.#kysely, this.#dialect, 'foreignKeys');
+        return this[gatedExplore]('foreignKeys', (gate) => fetchList(this.#kysely, this.#dialect, 'foreignKeys', { gate }));
 
     }
 
@@ -236,7 +246,7 @@ export class DbNamespace {
      */
     async overview(): Promise<ExploreOverview> {
 
-        return fetchOverview(this.#kysely, this.#dialect);
+        return this[gatedExplore]('overview', (gate) => fetchOverview(this.#kysely, this.#dialect, { gate }));
 
     }
 
@@ -253,6 +263,8 @@ export class DbNamespace {
      * ```
      */
     async previewTeardown(): Promise<TeardownPreview> {
+
+        this.#assertAllowed('db:teardown', 'preview teardown');
 
         return previewTeardown(this.#kysely, this.#dialect);
 
@@ -359,6 +371,9 @@ export class DbNamespace {
     async reset(): Promise<void> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'reset');
+
+        // isTest does not relax run:build; fail before dropping anything a rebuild could not restore.
+        if (this.#buildFn) checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'reset');
 
         // Full teardown — deliberately does NOT honor preserveTables.
         // reset() rebuilds the entire schema from sql/, so any table left

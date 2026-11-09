@@ -6,8 +6,11 @@
  */
 import { checkConfigPolicy } from '../core/policy/index.js';
 import type { Permission } from '../core/policy/index.js';
+import { bindPolicyContext, sameTarget } from '../core/config/resolver.js';
 import type { Config } from '../core/config/types.js';
+import type { Settings } from '../core/settings/index.js';
 import type { CreateContextOptions } from './types.js';
+import type { ContextState } from './state.js';
 
 // ─────────────────────────────────────────────────────────────
 // Error Classes
@@ -152,5 +155,56 @@ export function checkProtectedConfig(
         );
 
     }
+
+}
+
+/**
+ * Bind a config's policy context from SDK settings.
+ *
+ * SDK state holds raw `Settings`, not a `SettingsProvider`, so this maps
+ * `settings.stages` and `access.roles` and passes them to `bindPolicyContext`.
+ *
+ * @example
+ * ```typescript
+ * const destination = bindSdkPolicy(destConfig, settings, projectRoot)
+ * ```
+ */
+export function bindSdkPolicy<T extends { name: string; access: Config['access']; connection: Config['connection'] }>(
+    config: T,
+    settings: Settings,
+    projectRoot: string,
+    stageNames?: string[],
+    isTest?: boolean,
+): T {
+
+    return bindPolicyContext(config, {
+        roles: settings.access?.roles,
+        projectRoot,
+        stageIsProtected: (stage) => settings.stages?.[stage]?.defaults?.protected === true,
+        stageNames,
+        isTest,
+    });
+
+}
+
+/**
+ * Bind a transfer or vault destination; never trusts the caller's `isTest`.
+ *
+ * `isTest` comes from the stored config of that name while the target matches; an unstored
+ * destination keeps only an `isTest` bound for the same connection target.
+ *
+ * @example
+ * ```typescript
+ * const destination = bindSdkDestination(destConfig, this.#state)
+ * ```
+ */
+export function bindSdkDestination(config: Config, state: ContextState): Config {
+
+    const stored = state.stateManager.getConfig(config.name);
+    const isTest = stored
+        ? stored.isTest === true && sameTarget(stored.connection, config.connection)
+        : undefined;
+
+    return bindSdkPolicy(config, state.settings, state.projectRoot, undefined, isTest);
 
 }

@@ -1,234 +1,239 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ProtocolError, ResourceNotFoundError, type CallToolResult, type InputRequiredResult, type ServerContext } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { attempt, attemptSync } from '@logosdx/utils';
+import { attempt } from '@logosdx/utils';
 
+import { createContext } from '../sdk/index.js';
+import type { Context } from '../sdk/context.js';
 import type { RpcRegistry } from '../rpc/registry.js';
-import type { SessionManager } from '../rpc/session.js';
-import { checkConfigPolicy } from '../core/policy/index.js';
-import type { RpcSession } from '../rpc/types.js';
+import type { RpcCommand, RpcSession } from '../rpc/types.js';
+import { sqlPermissionsFor, isVisibleToChannel, UnknownAccessRoleError, type Permission } from '../core/policy/index.js';
+import { configNotFoundMessage } from '../core/config/resolver.js';
+import { ConfigAccessInvalidError } from '../core/state/index.js';
+import { ApprovalManager } from './approval.js';
+import { prepareCommand, resolveProjectFile } from './prepared.js';
+import { registerExploreResources } from './resources.js';
+import { registerNoormPrompts } from './prompts.js';
 
-/**
- * Create the MCP server with two tools: run_noorm_cmd and noorm_help.
- *
- * Wraps the RPC registry as an MCP transport layer. Commands are
- * discovered at runtime so the tool list stays in sync with the registry.
- */
-export function createMcpServer(registry: RpcRegistry, session: SessionManager): McpServer {
+/** Resolve policy and credentials anew per request; no preceding connect or active session. */
+async function withConfig<T>(config: string, action: (ctx: Context) => Promise<T>): Promise<T> {
 
-    const server = new McpServer({
-        name: 'noorm',
-        version: '1.0.0',
-    });
+    const [ctx, err] = await attempt(() => createContext({ config, channel: 'agent', freshState: true }));
 
-    // === run_noorm_cmd ===
+    if (err) {
 
-    const runSchema = z.object({
-        command: z.string().describe('Command name: "connect", "overview", "sql", "list_configs", etc.'),
-        config: z.string().optional().describe('Config name for session lookup (defaults to active)'),
-        payload: z.record(z.string(), z.unknown()).optional().describe('Command-specific input validated against its schema'),
-    });
+        // Role resolution runs before the visibility check. An unresolved role
+        // must not reveal whether an otherwise hidden config exists.
+        if (err instanceof ConfigAccessInvalidError || err instanceof UnknownAccessRoleError) {
 
-    server.tool(
-        'run_noorm_cmd',
-        'Execute a noorm command. Use noorm_help to discover available commands and their parameters.',
-        runSchema.shape,
-        async ({ command, config, payload }) => {
+            throw new Error(configNotFoundMessage(config), { cause: err });
 
-            const cmd = registry.get(command);
+        }
+        throw err;
 
-            if (!cmd) {
+    }
+    if (!isVisibleToChannel(ctx.noorm.config.access, 'agent')) throw new Error(configNotFoundMessage(config));
 
-                const available = registry.list().map((c) => c.name).join(', ');
+    try {
 
-                return {
-                    content: [{
-                        type: 'text' as const,
-                        text: JSON.stringify({ error: `Unknown command: "${command}". Available: ${available}` }),
-                    }],
-                    isError: true,
-                };
+        return await action(ctx);
 
-            }
+    }
+    finally {
 
-            // Merge config into payload for session commands (connect/disconnect).
-            // For other commands, config selects which active session to use.
-            const isSessionCmd = command === 'connect' || command === 'disconnect';
-            let input = payload ?? {};
+        await ctx.disconnect();
 
-            if (isSessionCmd && config) {
-
-                input = { ...input, config };
-
-            }
-
-            // Validate payload against command schema
-            const validation = cmd.inputSchema.safeParse(input);
-
-            if (!validation.success) {
-
-                return {
-                    content: [{
-                        type: 'text' as const,
-                        text: JSON.stringify({
-                            error: 'Invalid payload',
-                            details: validation.error.issues.map((i) => ({
-                                path: i.path.join('.'),
-                                message: i.message,
-                            })),
-                        }),
-                    }],
-                    isError: true,
-                };
-
-            }
-
-            // Gate config-scoped commands before the handler ever runs. `'open'`
-            // commands (list_configs, connect, disconnect) target no config and
-            // skip this — target resolution itself requires an active connection.
-            if (cmd.permission !== 'open') {
-
-                const [target, targetErr] = attemptSync(() => session.getContext(config));
-
-                if (targetErr) {
-
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({ error: targetErr.message }),
-                        }],
-                        isError: true,
-                    };
-
-                }
-
-                const check = checkConfigPolicy(session.channel, target.noorm.config, cmd.permission);
-
-                if (!check.allowed) {
-
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({ error: check.blockedReason ?? `"${cmd.permission}" is not allowed.` }),
-                        }],
-                        isError: true,
-                    };
-
-                }
-
-            }
-
-            // For non-session commands, scope the session to the requested config
-            // so handlers calling session.getContext() internally get the right connection.
-            const sessionForHandler = !isSessionCmd && config
-                ? createConfigScopedSession(session, config)
-                : session;
-
-            const [result, err] = await attempt(
-                () => cmd.handler(validation.data, sessionForHandler),
-            );
-
-            if (err) {
-
-                // Stack traces stay server-side; the MCP client only sees the message.
-                console.error(err.stack ?? err.message);
-
-                return {
-                    content: [{
-                        type: 'text' as const,
-                        text: JSON.stringify({ error: err.message }),
-                    }],
-                    isError: true,
-                };
-
-            }
-
-            return {
-                content: [{
-                    type: 'text' as const,
-                    text: JSON.stringify(result, null, 2),
-                }],
-            };
-
-        },
-    );
-
-    // === noorm_help ===
-
-    const helpSchema = z.object({
-        command: z.string().optional().describe('Command name for detailed help. Omit to list all commands.'),
-    });
-
-    server.tool(
-        'noorm_help',
-        'Get help for noorm commands. Lists all available commands or shows detailed help for a specific command including parameters and examples.',
-        helpSchema.shape,
-        async ({ command }) => {
-
-            if (command) {
-
-                const help = registry.getHelp(command);
-
-                if (!help) {
-
-                    const available = registry.list().map((c) => c.name).join(', ');
-
-                    return {
-                        content: [{
-                            type: 'text' as const,
-                            text: JSON.stringify({ error: `Unknown command: "${command}". Available: ${available}` }),
-                        }],
-                        isError: true,
-                    };
-
-                }
-
-                return {
-                    content: [{ type: 'text' as const, text: help }],
-                };
-
-            }
-
-            // List all commands
-            const commands = registry.list();
-            const lines = [
-                '# noorm Commands',
-                '',
-                ...commands.map((c) => `- **${c.name}** — ${c.description}`),
-                '',
-                'Use noorm_help({ command: "<name>" }) for detailed help on a specific command.',
-            ];
-
-            return {
-                content: [{ type: 'text' as const, text: lines.join('\n') }],
-            };
-
-        },
-    );
-
-    return server;
+    }
 
 }
 
-/**
- * Create a session proxy that scopes getContext() to a specific config.
- *
- * When the MCP envelope includes `config`, non-session commands should
- * use that config for session lookup without the command needing to know.
- */
-function createConfigScopedSession(session: SessionManager, config: string): RpcSession {
+/** Adapter for transport-independent RPC handlers, scoped to this request's explicit target. */
+function requestSession(ctx?: Context, signal?: AbortSignal): RpcSession {
 
-    return new Proxy(session, {
-        get(target, prop, receiver) {
+    const context = (config?: string): Context => {
 
-            if (prop === 'getContext') {
+        if (!ctx || (config && config !== ctx.noorm.config.name)) throw new Error('An explicit config is required');
 
-                return () => target.getContext(config);
+        return ctx;
+
+    };
+
+    return {
+        channel: 'agent',
+        signal,
+        getContext: context,
+    };
+
+}
+
+function toolError(message: string): CallToolResult {
+
+    return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
+
+}
+
+/** Stateless individual tools, cookbook prompts, and resources over the 2026-07-28 protocol. */
+export function createMcpServer(registry: RpcRegistry): McpServer {
+
+    const approvals = new ApprovalManager();
+    const server = new McpServer({ name: 'noorm', version: '1.0.0' }, {
+        supportedProtocolVersions: ['2026-07-28'],
+        capabilities: { tools: {}, resources: {}, prompts: {} },
+        instructions: 'Use list_configs to discover targets, then call individual tools with config and their documented arguments. Database operations require an explicit config; no connect call is required. Cookbook prompts provide workflow guidance. Permission confirmations require human approval through MCP elicitation.',
+        requestState: { verify: approvals.verify },
+        cacheHints: {
+            'tools/list': { ttlMs: 300000, cacheScope: 'public' },
+            'prompts/list': { ttlMs: 300000, cacheScope: 'public' },
+            'server/discover': { ttlMs: 300000, cacheScope: 'public' },
+            'resources/list': { ttlMs: 0, cacheScope: 'private' },
+            'resources/templates/list': { ttlMs: 300000, cacheScope: 'public' },
+            'resources/read': { ttlMs: 0, cacheScope: 'private' },
+        },
+    });
+
+    const tools = new Map<string, { command: RpcCommand; inputSchema: z.ZodObject }>();
+    const runCommand = async (
+        cmd: RpcCommand,
+        config: string | undefined,
+        payload: unknown,
+        request: ServerContext,
+    ): Promise<CallToolResult | InputRequiredResult> => {
+
+        const command = cmd.name;
+        const { permission } = cmd;
+
+        const [result, err] = await attempt(async () => {
+
+            if (permission === 'open') {
+
+                if (request.mcpReq.requestState() !== undefined || request.mcpReq.inputResponses !== undefined) throw new Error('This command does not accept approval state');
+
+                return { content: [{ type: 'text' as const, text: JSON.stringify(await cmd.handler(payload, requestSession()), null, 2) }] };
 
             }
 
-            return Reflect.get(target, prop, receiver);
+            if (!config) throw new Error('An explicit config is required for database operations');
 
-        },
+            return withConfig(config, async (ctx) => {
+
+                if (command === 'run_file') {
+
+                    const args = z.object({ path: z.string() }).parse(payload);
+                    payload = { ...z.record(z.string(), z.unknown()).parse(payload),
+                        path: await resolveProjectFile(ctx.projectRoot, args.path) };
+
+                }
+                let permissions: Permission[] = command === 'change_ff' ? [permission, 'change:run'] : [permission];
+                if (command === 'sql') {
+
+                    const { query } = z.object({ query: z.string() }).parse(payload);
+                    permissions = sqlPermissionsFor(query, ctx.dialect);
+
+                }
+
+                const assertLive = () => {
+
+                    if (request.mcpReq.signal.aborted) throw new Error('Request cancelled');
+
+                };
+
+                return approvals.run(ctx, request, { command, config, payload }, permissions,
+                    async () => {
+
+                        const prepared = await prepareCommand(command, payload, ctx);
+                        assertLive();
+
+                        return prepared;
+
+                    },
+                    async () => {
+
+                        await ctx.connect();
+                        assertLive();
+                        const output = await cmd.handler(payload, requestSession(ctx, request.mcpReq.signal));
+
+                        return { content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }] };
+
+                    });
+
+            });
+
+        });
+        if (err) {
+
+            if (err instanceof ProtocolError) throw err;
+            console.error(err.message);
+
+            return toolError(err.message);
+
+        }
+
+        return result;
+
+    };
+
+    const invokeTool = async (name: string, args: unknown, request: ServerContext) => {
+
+        const tool = tools.get(name);
+        if (!tool) throw new ProtocolError(-32602, `Unknown tool: ${name}`);
+        const parsed = tool.inputSchema.safeParse(args ?? {});
+        if (!parsed.success) throw new ProtocolError(-32602, `Invalid arguments for tool "${name}"`, { issues: parsed.error.issues });
+        const { config, ...payload } = parsed.data;
+
+        return runCommand(tool.command, typeof config === 'string' ? config : undefined, payload, request);
+
+    };
+
+    for (const { name } of registry.list()) {
+
+        const command = registry.get(name);
+        if (!command) continue;
+        if (!(command.inputSchema instanceof z.ZodObject)) throw new Error(`MCP tool "${name}" requires an object input schema`);
+        const inputSchema = (command.permission === 'open'
+            ? command.inputSchema
+            : command.inputSchema.safeExtend({ config: z.string().min(1).describe('Target database configuration name') })).strict();
+        tools.set(name, { command, inputSchema });
+        server.registerTool(name, {
+            description: command.description,
+            inputSchema,
+            ...(command.permission === 'open' || command.permission === 'explore' ? { annotations: { readOnlyHint: true } } : {}),
+        }, (args, request) => invokeTool(name, args, request));
+
+    }
+
+    // Preserve JSON-RPC capability errors instead of the SDK's high-level tool-error flattening.
+    server.server.setRequestHandler('tools/call', ({ params }, request) => invokeTool(params.name, params.arguments, request));
+    registerNoormPrompts(server);
+
+    registerExploreResources(server, async (config, action, request, uri) => {
+
+        const [result, err] = await attempt(() => withConfig(config, async (ctx) => {
+
+            return approvals.run(ctx, request, { uri }, ['explore'], async () => ({
+                summary: `Read database metadata resource: ${uri}`,
+                run: async (read) => read(),
+            }), async () => {
+
+                await ctx.connect();
+                if (request.mcpReq.signal.aborted) throw new Error('Request cancelled');
+
+                return action(ctx);
+
+            });
+
+        }));
+
+        if (err) {
+
+            // resolveConfig and this file throw a plain Error for a missing config.
+            if (err.message === configNotFoundMessage(config)) throw new ResourceNotFoundError(uri, 'Resource not found');
+            throw err;
+
+        }
+
+        return result;
+
     });
+
+    return server;
 
 }

@@ -9,6 +9,7 @@ import { getPipelineRun } from '../../../src/core/pipeline/history.js';
 import type { PipelineContext } from '../../../src/core/pipeline/types.js';
 import { bootstrapSchema } from '../../../src/core/version/schema/index.js';
 import { withPipelineDatabase } from '../../utils/pipeline-db.js';
+import { withPolicy } from '../../utils/access.js';
 
 const labels = ['refresh', 'Refresh', 'refresh ', '刷新😀', '刷新😀 '];
 const paths = ['first.sql', 'second.sql', 'third.sql', '数据.sql', '数据二.sql'];
@@ -53,7 +54,7 @@ for (const dialect of ['sqlite', 'postgres', 'mysql', 'mssql'] as Dialect[]) {
                     const context: PipelineContext = {
                         db, dialect, connectionConfig: connection, configName: 'identity-test',
                         identity: { name: executedBy, source: 'config' }, projectRoot: root,
-                        access: { user: 'admin', agent: 'admin' }, channel: 'user',
+                        access: withPolicy({ user: 'admin', agent: 'admin' }), channel: 'user',
                         pipelinesPath: './db/pipelines', cliVersion: 'test',
                     };
                     const result = await runPipeline(context, slug);

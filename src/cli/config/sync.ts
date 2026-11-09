@@ -2,8 +2,10 @@ import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 import { parseConfig } from '../../core/config/schema.js';
+import { SettingsProvider, validateAccessRoles, withConfigPolicy } from '../../core/config/resolver.js';
 import { stageFields } from '../../core/config/stage.js';
-import { checkConfigPolicy, clampToCeiling, PROTECTED_STAGE_CEILING, resolveChannel } from '../../core/policy/index.js';
+import { checkConfigPolicy, compareCells, getConfigPermission, MATRIX, resolveChannel } from '../../core/policy/index.js';
+import type { Channel, Permission } from '../../core/policy/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
@@ -43,7 +45,9 @@ export default defineCommand({
 
             }
 
-            const policy = checkConfigPolicy(resolveChannel(), existing, 'config:write');
+            const provider = new SettingsProvider(settings);
+            const boundExisting = withConfigPolicy(existing, provider);
+            const policy = checkConfigPolicy(resolveChannel(), boundExisting, 'config:write');
 
             if (!policy.allowed) {
 
@@ -59,12 +63,35 @@ export default defineCommand({
 
             }
 
+            if (defaults.protected && name !== args.stage) {
+
+                throw new Error('A protected stage must use its stage name as the config name');
+
+            }
+
             const fields = stageFields(defaults);
-            let access = fields.access ? clampToCeiling(existing.access, fields.access) : existing.access;
+            const access = { ...existing.access };
+            if (fields.access) {
 
-            if (defaults.protected) {
+                validateAccessRoles(fields.access, settings.settings.access?.roles);
+                const candidate = withConfigPolicy({ ...existing, access: fields.access }, provider);
+                const permissions = Object.keys(MATRIX) as Permission[];
+                for (const channel of ['user', 'agent'] as Channel[]) {
 
-                access = clampToCeiling(access, PROTECTED_STAGE_CEILING);
+                    const noLooser = permissions.every((permission) =>
+                        compareCells(
+                            getConfigPermission(channel, candidate, permission),
+                            getConfigPermission(channel, boundExisting, permission),
+                        ) <= 0);
+                    if (!noLooser) continue;
+                    if (channel === 'user') access.user = fields.access.user;
+                    else if (existing.access.agent !== false || fields.access.agent === false) {
+
+                        access.agent = fields.access.agent;
+
+                    }
+
+                }
 
             }
 

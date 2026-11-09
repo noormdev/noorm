@@ -10,28 +10,75 @@ tags: [sql-execution, core]
 
 Runs `.sql` and `.sql.tmpl` files against a Kysely connection with checksum-based change detection, so a build command run twice only re-executes what changed. `runBuild`, `runFile`, `runDir`, `runFiles`, `preview`, and `checkFilesStatus` in [`src/core/runner/runner.ts`](../../src/core/runner/runner.ts) are the policy-gated entrypoints. It also renders `.sql.tmpl` files through an Eta-based template engine before execution, and watches every file's SQL for how long it runs, so a slow `CREATE INDEX` and a file stuck behind another session's lock read differently to the caller instead of both looking like "still running."
 
+The name covers more than [`src/core/runner`](../../src/core/runner). The domain also owns [`src/core/template`](../../src/core/template) (the renderer, which core-change imports too), [`src/core/pipeline`](../../src/core/pipeline), [`src/cli/run`](../../src/cli/run) (the Citty group behind `noorm run <build|dir|exec|file|files|inspect|preview>`), and [`src/cli/pipeline`](../../src/cli/pipeline).
+
 Named SQL pipelines execute repeatable business workflows against one resolved database. `runPipeline` uses the same template and SQL-body primitives as the runner, but each admitted invocation starts fresh and has independent history.
 
 ## How it works
 
 ### Execution and change detection
 
-`executeFiles` renders and hashes every file once, reads prior outcomes in one query, and decides the whole batch in memory. Only files that need a run touch the database again.
+`executeFiles` renders and hashes every file once, reads prior outcomes in one query, and decides the whole batch in memory before any tracking write.
+
+The batch decides every file first, and writes an operation row only when something will run:
 
 ```mermaid
 flowchart TD
-    %% source: src/core/runner/runner.ts, src/core/runner/tracker.ts
-    A["prepareFiles"] --> B["Tracker.latestExecutions"]
-    B --> C{"decideNeedsRun"}
-    C -->|"unchanged"| E["skipFile<br/>no tracking write"]
-    C -->|"run required"| F["createOperation<br/>createFileRecords<br/>run set only"]
-    F --> D["runWatched<br/>executeSqlBody"]
-    D --> G["Tracker<br/>updateFileExecution"]
+    %% source: src/core/runner/runner.ts, tracker.ts
+    A["prepareFiles<br/>render, then hash"] --> X{"isChange?"}
+    X -->|yes| H
+    X -->|no| B{"opts.force?"}
+    B -->|yes| F{"run set empty?"}
+    B -->|no| C["Tracker.latestExecutions<br/>one query"]
+    C --> D["decideNeedsRun<br/>every file, in memory"]
+    D --> F
+    F -->|yes| G["return BatchResult<br/>no changeId, no rows"]
+    F -->|no| H["createOperation once<br/>createFileRecords<br/>run set only"]
+    H --> I["walk gated files<br/>in discovery order"]
 ```
 
-`prepareFiles` ([`src/core/runner/runner.ts`](../../src/core/runner/runner.ts)) loads and renders each file once and hashes the rendered content, because comparing raw `.sql.tmpl` bytes would re-execute every template on every build. The rendered SQL is kept and run as-is later. `Tracker.latestExecutions` ([`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts)) fetches the latest outcome per file in one query, and the pure `decideNeedsRun` (applied by `applyRunGate`) compares it to the new checksum. A legacy `skipped` row with `skip_reason: 'unchanged'` still counts as a prior outcome; any other `skipped` row (a cascade skip after an earlier failure, or a cancelled run) and any `pending` row re-runs with `reason: 'new'`.
+A change batch (`execOptions.changeType === 'change'`, so `isChange`) skips `applyRunGate` and the all-skipped early return, so it always gets `createOperation`. A forced build never reaches `decideNeedsRun`: `applyRunGate` returns the prepared list before `latestExecutions`, and passes `force=false` to the decision function otherwise. `createOperation` runs once per batch, after every file is decided.
 
-Skipped files write no rows. If every file skips, no operation row is written and `changeId` is `undefined`. Otherwise `createOperation` and `createFileRecords` cover the run set only, and `executeSingleFileWithUpdate(context, entry, tracker, operationId, watcher)` walks it sequentially. `runFile` routes through `executeFiles`, and `checkFilesStatus` uses the same batched lookup.
+The walk over the gated list emits each skip as it reaches it and runs everything else one file at a time:
+
+```mermaid
+flowchart TD
+    %% source: src/core/runner/runner.ts (executeFiles loop)
+    A{"entry.skipReason?"} -->|yes| B["skipFile<br/>file:skip, no row"]
+    A -->|no| C{"signal aborted?"}
+    C -->|yes| D["skipRemaining<br/>stop walk"]
+    C -->|no| E["executeSingleFileWithUpdate<br/>runWatched<br/>StatementWatcher.run"]
+    E -->|"!result, NOT_STARTED"| D
+    E --> F["updateFileExecution"]
+    F --> G{"cancelled, or failed<br/>with abortOnError?"}
+    G -->|yes| D
+    G -->|no| H["next entry"]
+    B --> H
+```
+
+`prepareFiles` ([`src/core/runner/runner.ts`](../../src/core/runner/runner.ts)) loads and renders each file once and hashes the rendered content, because comparing raw `.sql.tmpl` bytes would re-execute every template on every build. The rendered SQL is kept and run as-is later. `Tracker.latestExecutions` ([`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts)) fetches the latest outcome per file in one query, and the pure `decideNeedsRun` (applied by `applyRunGate`) compares it to the new checksum. A legacy `skipped` row with `skip_reason: 'unchanged'` still counts as a prior outcome; any other `skipped` row (a cascade skip after an earlier failure, or a cancelled run) and any `pending` row re-runs with `reason: 'new'`. A file that failed to load never skips, so its error surfaces at its turn in the walk.
+
+Skipped files write no rows. If every file skips, no operation row is written and `changeId` is `undefined`. `runFile` routes through `executeFiles`, and `checkFilesStatus` uses the same batched lookup.
+
+### Template rendering
+
+A `.sql.tmpl` file becomes plain SQL before it is hashed, so the checksum and the executed text are the same string:
+
+```mermaid
+flowchart TD
+    %% source: src/core/template/engine.ts, context.ts, helpers.ts; src/core/runner/runner.ts
+    A["loadAndRenderFile"] --> S{"approvedSql<br/>snapshot?"}
+    S -->|yes| G["prepareFiles<br/>hash and keep SQL"]
+    S -->|no| B{"isTemplate?"}
+    B -->|no| H["readFile"]
+    B -->|yes| P["processFile"]
+    P --> C["buildContext<br/>loaders, loadHelpers<br/>$.secrets, include()"]
+    C --> F["renderTemplate<br/>strip -- prefix, Eta"]
+    F --> G
+    H --> G
+```
+
+`loadHelpers` merges one `$helpers` file per directory (the first of `.ts`/`.js`/`.mjs`, per `findHelperInDir`) from the project root down to the template's directory, so a leaf helper overrides a root one, and data-file keys override helpers. The directive strip in `renderTemplate` removes the `-- ` prefix and the line's newline and leaves the bare `{% %}` tag for Eta, so the file stays valid SQL in an editor and the directive line leaves no blank line in output.
 
 ### Long-running statement detection
 
@@ -119,7 +166,7 @@ flowchart TD
 
 Callers build a `PipelineContext` with `buildPipelineContext` ([`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts)), which runs `ensureSchemaVersion` first so the pipeline history tables exist before any pipeline call, checks `signal.throwIfAborted()`, and only then calls `buildRunContext` to resolve the vault key and secrets. The SDK `pipelines` namespace and the TUI pipeline hook build their context this way. Only the TUI passes its abort signal, so only a TUI abort during migration rejects before any secret is read; an SDK abort reaches the executor and records an interrupted run.
 
-`runPipeline` then runs in phases: load the definition, prepare, preflight the SQL, admit, execute, release the owned connection, and finalize. It first rejects a caller-owned transaction (`context.db.isTransaction`). `preparePipeline` checks `run:dir` policy, validates declared inputs, and renders each SQL body once with `$.input`; `assertManagedPipelineSql` then preflights each rendered body. A dry run returns the prepared metadata without admitting a run or executing workflow SQL.
+`runPipeline` then runs in phases: load the definition, prepare, preflight the SQL, admit, execute, release the owned connection, and finalize. It first rejects a caller-owned transaction (`context.db.isTransaction`). `preparePipeline` checks `pipeline:run` policy, validates declared inputs, and renders each SQL body once with `$.input`; `assertManagedPipelineSql` then preflights each rendered body. A dry run returns the prepared metadata without admitting a run or executing workflow SQL.
 
 Pipeline `$.quote` selects target-specific string literals through `PIPELINE_QUOTES` in [`src/core/template/context.ts`](../../src/core/template/context.ts), so a literal never depends on a session mode:
 
@@ -274,18 +321,19 @@ flowchart TD
 | [`tests/core/pipeline/`](../../tests/core/pipeline), [`tests/integration/pipeline/`](../../tests/integration/pipeline) | Pipeline unit and integration coverage. |
 | [`docs/guide/pipeline-recovery.md`](../guide/pipeline-recovery.md) | Administrator reconciliation SQL for an abandoned guard after independently established settlement. |
 | [`src/core/runner/runner.ts`](../../src/core/runner/runner.ts) | `runBuild`/`runFile`/`runDir`/`runFiles`/`preview`/`checkFilesStatus`/`discoverFiles`/`executeFiles`; all except `discoverFiles`/`executeFiles` are gated. `createWatcher` builds one `StatementWatcher` per run and routes every file's SQL through `runWatched`. |
-| [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) | `StatementWatcher` class: pins a file's connection, reads its session id, times the 10s delay and 10s report interval via `#report`/`#poll`, checks out and holds the side connection via `#sideConnection`, sends the cancel on abort via `#cancel`. |
+| [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) | `StatementWatcher` class: pins a file's connection, reads its session id, sets the 10s delay in `#watch` and the 10s report interval in `#report`, runs the probe in `#poll`; `#sideConnection` is the accessor that waits up to `SIDE_CONNECTION_WAIT_MS` for the side connection and `#checkoutSide` checks it out and holds it; sends the cancel on abort via `#cancel`. |
 | [`src/core/runner/statement-probes.ts`](../../src/core/runner/statement-probes.ts) | `STATEMENT_PROBES` (postgres/mssql/mysql `StatementProbe` functions) and the `StatementStatus`/`BlockingSession`/`OperationProgress` shapes a probe returns. |
-| [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts) | `Tracker` class: `latestExecutions`, `needsRunByName`, `createOperation`, `createFileRecords`, `updateFileExecution`, `finalizeOperation`, `skipRemainingFiles`, `priorSuccessfulExecutions`. |
+| [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts) | `Tracker` class and the pure `decideNeedsRun`: `latestExecutions`, `needsRunByName`, `createOperation`, `createFileRecords`, `updateFileExecution`, `finalizeOperation`, `skipRemainingFiles`, `priorSuccessfulExecutions`. |
 | [`src/core/runner/checksum.ts`](../../src/core/runner/checksum.ts) | `computeChecksum`, `computeChecksumFromContent`, `computeCombinedChecksum` (SHA-256). |
 | [`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts) | `executeSqlBody` (dialect dispatch: mssql splits on line-only `GO`, sqlite splits on statement boundaries, postgres/mysql execute the body whole), `splitMssqlBatches`. |
 | [`src/core/runner/sqlite-statements.ts`](../../src/core/runner/sqlite-statements.ts) | `splitSqliteStatements`, a boundary scanner (not a SQL parser) tracking string/identifier quoting, comments, and `BEGIN`/`CASE`…`END` trigger bodies. |
 | [`src/core/runner/types.ts`](../../src/core/runner/types.ts) | `RunOptions`, `RunContext` (including `signal?: AbortSignal`), `FileResult`, `BatchResult`, `NeedsRunResult`, `FileInput`, `ExecuteFilesOptions`, `FilesStatusResult`, `DEFAULT_RUN_OPTIONS`. |
 | [`src/core/runner/context.ts`](../../src/core/runner/context.ts) | `buildRunContext`: resolves the vault key and both secret tiers into a `user`-channel `RunContext`. |
-| [`src/core/runner/index.ts`](../../src/core/runner/index.ts) | Public export surface for the domain, including `buildRunContext`. |
+| [`src/core/runner/index.ts`](../../src/core/runner/index.ts) | Exports the runner entrypoints, `buildRunContext`, `Tracker`, `decideNeedsRun`, the checksum functions, `splitMssqlBatches`, types, and `OperationProgress`. It does not export `StatementWatcher`, `executeSqlBody`, or `splitSqliteStatements`; core-change and [`src/core/pipeline`](../../src/core/pipeline) import them by direct path. |
+| [`src/core/template/index.ts`](../../src/core/template/index.ts) | Export surface for the template engine, `buildContext`, helper and data loaders, and utilities. |
 | [`src/core/template/engine.ts`](../../src/core/template/engine.ts) | `processFile`, `processFiles`, `renderTemplate`, `isTemplate`; owns the configured `Eta` instance (custom `{% %}` tags, `$` varName, `autoEscape: false`) and the `-- {% %}` directive-line stripping convention. |
 | [`src/core/template/context.ts`](../../src/core/template/context.ts) | `buildContext` assembles the `$` template context, selecting pipeline `quote`/`escape` when `pipelineDialect` is set; `MissingSecretError` and the `$.secrets` proxy that throws on an unresolved key. |
-| [`src/core/template/helpers.ts`](../../src/core/template/helpers.ts) | `findHelperFiles`/`loadHelpers` walk from a template's directory up to `projectRoot`, merging `$helpers.{ts,js,mjs}` files root-to-leaf. |
+| [`src/core/template/helpers.ts`](../../src/core/template/helpers.ts) | `findHelperFiles`/`loadHelpers` walk from a template's directory up to `projectRoot`, merging one `$helpers` file per directory (first of `.ts`/`.js`/`.mjs`, via `findHelperInDir`) root-to-leaf. |
 | [`src/core/template/loaders/`](../../src/core/template/loaders) | Per-extension data loaders: `json5.ts`, `yaml.ts`, `csv.ts`, `js.ts` (dynamic import, `Bun.build()` bundling for compiled binaries), `sql.ts`, `dt.ts` (`.dt`/`.dtz`). `loaders/index.ts` registers extensions and marks `.js`/`.mjs`/`.ts` as `isExecutableExtension`. |
 | [`src/core/template/utils.ts`](../../src/core/template/utils.ts) | `toContextKey`, `sqlEscape`, `sqlQuote` (throws `UndefinedSqlValueError` on `undefined`), `isWithinRoot` (segment-aware path containment), `generateUuid`, `isoNow`. |
 | [`src/core/template/types.ts`](../../src/core/template/types.ts) | `TemplateContext`, `BuiltInHelpers`, `RenderOptions`, `ProcessResult`, `Loader`/`LoaderRegistry`, `DATA_EXTENSIONS`, `TEMPLATE_EXTENSION` (`.tmpl`), `HELPER_FILENAME` (`$helpers`), `HELPER_EXTENSIONS`. |
@@ -295,25 +343,24 @@ flowchart TD
 | [`src/cli/run/exec.ts`](../../src/cli/run/exec.ts) | `run exec <path>`; a directory delegates to `discoverFiles`, a glob expands via `Bun.Glob` or Node's `fs/promises.glob`. |
 | [`src/cli/run/file.ts`](../../src/cli/run/file.ts) | `run file <path>`; executes a single file via `ctx.noorm.run.file`. |
 | [`src/cli/run/files.ts`](../../src/cli/run/files.ts) | `run files --paths <a,b,...>`; comma-separated file list via `ctx.noorm.run.files`. |
-| [`src/cli/run/inspect.ts`](../../src/cli/run/inspect.ts) | `run inspect <path>`; builds the template `$` context without rendering, categorizes entries, reports helper load errors and secret counts. |
-| [`src/cli/run/preview.ts`](../../src/cli/run/preview.ts) | `run preview <path>`; renders a `.sql.tmpl` and writes raw SQL to stdout or `--json`, without executing. |
+| [`src/cli/run/inspect.ts`](../../src/cli/run/inspect.ts) | `run inspect <path>`; builds the template `$` context without rendering, categorizes entries, reports helper load errors and secret counts. Gates on `run:file` through `checkConfigPolicy` and, when confirmation is required, needs `--yes`. |
+| [`src/cli/run/preview.ts`](../../src/cli/run/preview.ts) | `run preview <path>`; renders a `.sql.tmpl` and writes raw SQL to stdout or `--json`, without executing. Gates on `run:file` through `checkConfigPolicy`; only a denial blocks, user-channel confirmation does not apply to rendering. |
 | [`src/cli/run/_render-secrets.ts`](../../src/cli/run/_render-secrets.ts) | `resolveRenderSecrets` shared by `preview`/`inspect`: probes the vault tier with retry disabled so an offline render degrades to local-only secrets instead of hanging. |
-| [`docs/dev/runner.md`](../dev/runner.md) | Runner design notes, including "Long-Running Statements". |
-| [`docs/guide/sql-files/execution.md`](../guide/sql-files/execution.md) | End-user execution/change-detection and long-running-file guide. |
-| [`tests/core/runner/`](../../tests/core/runner), [`tests/core/template/`](../../tests/core/template), [`tests/integration/runner/`](../../tests/integration/runner) | Unit and integration coverage, including the `StatementWatcher` tests. |
+| [`tests/core/runner/`](../../tests/core/runner), [`tests/core/template/`](../../tests/core/template) | Unit coverage, including the `StatementWatcher` tests. |
 
 ## Constraints
 
-- Reading `latestExecutions` after `createFileRecords` makes every file read as "new" forever, since the batch's own `pending` rows would be the latest record. Read prior outcomes first.
+- `latestExecutions` must be read before `createFileRecords`: afterwards the batch's own `pending` rows are the latest record, so every file reads as "new" forever and nothing ever skips.
 - Comparing raw `.sql.tmpl` bytes instead of the rendered checksum re-executes every template on every build.
-- Skipping `StatementWatcher.close()` leaks any side connection checked out during the run; it never returns to the pool.
-- With `connection.pool.max: 1`, the side connection checkout waits `SIDE_CONNECTION_WAIT_MS` (5s) then the watcher gives it up for the rest of the run: reports carry elapsed time only, and cancel can only act between files.
-- Behind a transaction-mode pooler (PgBouncer `pool_mode = transaction`, RDS Proxy, Supabase port 6543), the session-id read and the file's SQL can land on different backends, so a report or a cancel can target another client's session. Point noorm at the database directly, or at a session-mode pooler.
+- `StatementWatcher.close()` is called once per run in a `finally`; a run that skips it leaks any side connection checked out during the run, which never returns to the pool.
+- With `connection.pool.max: 1`, the side connection checkout waits `SIDE_CONNECTION_WAIT_MS` (5s); when the file outlasts the wait, the watcher gives it up for the rest of the run: reports carry elapsed time only, and cancel can only act between files.
+- Behind a transaction-mode pooler (PgBouncer `pool_mode = transaction`, RDS Proxy, Supabase port 6543), the session-id read and the file's SQL can land on different backends, so a report or a cancel can target another client's session. A direct connection or a session-mode pooler keeps both on one backend.
 - `include()` and the `$helpers` directory walk enforce project-root containment via `isWithinRoot` (segment-aware, not `startsWith`), so a sibling directory like `<root>-evil` cannot be traversed into.
-- `$.secrets` is a `Proxy` that throws `MissingSecretError` on an unresolved key instead of resolving to `undefined`; `sqlQuote(undefined)` throws `UndefinedSqlValueError` rather than stringifying to the literal text `undefined`.
-- Data-file auto-loading in `buildContext` skips executable `.js`/`.mjs`/`.ts` side-cars unless the template source textually references the resulting context key. This gate does not make `preview`/`inspect`/`--dry-run` free of arbitrary code execution: inherited `$helpers` modules still load through `loadHelpers` and `loadJs`, even without a template reference.
-- MSSQL batch splitting and SQLite statement splitting are line/boundary scanners, not SQL parsers: a `GO` alone on a line inside a string literal or `/* */` block splits the MSSQL batch there ([`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts)), so the file fails or runs a truncated statement. Postgres and mysql receive the full file body via `sql.raw(...)` with no splitting.
-- Dry-run output writes rendered SQL, including every resolved secret in plaintext, to `<projectRoot>/tmp/`; files and created directories are owner-only (`0o600`/`0o700`), and `tmp/` is not gitignored by `noorm init`.
+- `$.secrets` is a `Proxy` that throws `MissingSecretError` on an unresolved key instead of resolving to `undefined`, and `sqlQuote(undefined)` throws `UndefinedSqlValueError`. Without those throws, an unresolved secret or `undefined` value renders the literal text `undefined` into the SQL that gets executed.
+- Data-file auto-loading in `buildContext` skips executable `.js`/`.mjs`/`.ts` side-cars unless the template source textually references the resulting context key. `$helpers` files on the template-to-root path always execute, preview and inspect included (`loadHelpers` calls `loadJs`; `inspect.ts` calls `loadHelpers`).
+- MSSQL batch splitting and SQLite statement splitting are line/boundary scanners, not SQL parsers. A misread SQLite boundary splits a statement or trigger body, and a `GO` alone on a line inside a string literal or `/* */` block splits the MSSQL batch there ([`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts)), so the file fails or runs a truncated statement. Postgres and mysql receive the full file body via `sql.raw(...)` with no splitting.
+- Dry-run output writes rendered SQL, including every resolved secret in plaintext, to `<projectRoot>/tmp/`; files and created directories are owner-only (`0o600`/`0o700`), and `tmp/` is not gitignored by `noorm init`, so the rendered secrets get committed unless the project ignores `tmp/` itself.
+- Inside a `withApprovedContent` scope, `loadAndRenderFile` and `computeChecksum` return the approved snapshot instead of reading disk, and throw `File was not included in the approved plan` for any path outside it. Without the snapshot, an MCP-approved run would execute disk contents edited after approval. `prepareFiles` hashes `approvedSql` through `computeChecksumFromContent`, so the gate never consults `approvedChecksum`; that function is reached only through `computeChecksum`. `runBuild` throws `Build file plan changed since approval` when discovered files differ from the approved list.
 - Pipeline checksums record provenance, not applied state. Using the runner's checksum gate for pipelines would skip fresh business invocations and omit their independent history.
 - Releasing `active_key` while workflow activity is uncertain admits overlapping protected work. `releasePipelineAdmission` requires settled activity and compares the run ID, key, and exact config; an unknown outcome alone does not prevent release.
 - Inferring execution from pending history loses buffered work: pending steps can already have run, and a crash or uncertain activity can leave intent unfinalized. History contains no physical workflow session IDs and provides no TTL or automatic guard stealing.
@@ -329,13 +376,15 @@ flowchart TD
 - **cli and sdk**: Pipeline commands and `ctx.noorm.pipelines.run/history/getRun` consume the core pipeline functions. The CLI derives exit codes from `PipelineCodedError.code` in `pipelineFailure`; other CLI output belongs to [`docs/wiki/cli.md`](cli.md); core execution status `success` alone does not establish a caller-facing guarantee of known effects. SDK invocation values remain typed. Pipelines have no MCP entrypoint.
 - **Pipeline templates**: `preparePipeline` passes validated input and the target dialect to `processFile` in [`src/core/template/engine.ts`](../../src/core/template/engine.ts). `buildContext` supplies reserved `$.input`, dialect-specific `$.quote`, and a throwing `$.escape` to steps and includes.
 
-- **core-db**: `SESSION_ID_SQL`, `SERVER_CANCEL`, `readSessionId` in [`src/core/connection/session.ts`](../../src/core/connection/session.ts) are imported by the runner's `StatementWatcher`; `hasServerSideCancel` from the same file is used by [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) (`runCancelMessage`) and the SQL terminal ([`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts)).
-- **core-change**: [`src/core/change/executor.ts`](../../src/core/change/executor.ts) builds its own `StatementWatcher` (one per change) rather than sharing the runner's, and defines a private, same-named `executeFiles` with an unrelated signature; it also imports `processFile`/`isTemplate` from [`src/core/template/`](../../src/core/template). It shares `computeChecksum`, `computeCombinedChecksum`, and the `Tracker` base class with the runner. The change watcher gets no `signal` (`src/core/change/executor.ts:477`): progress reporting only, no cancel.
-- **core-policy**: `runBuild` gates on `run:build`; `runFile`, `preview`, and `checkFilesStatus` gate on `run:file`; `runDir` and `runFiles` gate on `run:dir`. `discoverFiles`/`executeFiles` do not gate.
+- **core-db**: `SESSION_ID_SQL`, `SERVER_CANCEL`, `readSessionId` in [`src/core/connection/session.ts`](../../src/core/connection/session.ts) are imported by the runner's `StatementWatcher`; `hasServerSideCancel` from the same file is used by [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) (`runCancelMessage`) and the SQL terminal ([`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts)). `readSessionId` only accepts a positive integer, which keeps the mysql `KILL QUERY ${id}` interpolation (not preparable) safe from an unexpected driver value. Integration coverage of the runner lives in [`tests/integration/runner/`](../../tests/integration/runner).
+- **core-change**: [`src/core/change/executor.ts`](../../src/core/change/executor.ts) builds its own `StatementWatcher` (one per change) rather than sharing the runner's, calls `executeSqlBody` from [`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts), and defines a private, same-named `executeFiles` with an unrelated signature; it also imports `processFile`/`isTemplate` from [`src/core/template/`](../../src/core/template). It shares `computeChecksum`, `computeCombinedChecksum`, and the `Tracker` base class with the runner (`ChangeTracker extends Tracker` in [`src/core/change/tracker.ts`](../../src/core/change/tracker.ts)). The change watcher gets no `signal`: progress reporting only, no cancel.
+- **core-policy**: `runBuild` gates on `run:build`; `runFile`, `preview`, and `checkFilesStatus` gate on `run:file`; `runDir` and `runFiles` gate on `run:dir`. `discoverFiles`/`executeFiles` do not gate. [`src/cli/run/inspect.ts`](../../src/cli/run/inspect.ts) and `preview.ts` call `checkConfigPolicy(..., 'run:file')` themselves. Pipelines gate on their own `pipeline:run` permission in `preparePipeline`, not `run:dir`.
 - **core-state**: `file:progress` (and `build:start`/`build:complete`, `run:file`/`run:dir`/`run:files`, `file:before`/`file:after`/`file:skip`/`file:dry-run`, `template:*`, `error`) are typed on the shared observer at [`src/core/observer.ts`](../../src/core/observer.ts).
 - **core-state**: Owns pipeline metadata table definitions, schema lifecycle, and settings types. `history.ts` and `admission.ts` consume those tables without projecting pipeline status into generic change or execution history. Schema v3 creates them; `buildPipelineContext` applies it through `ensureSchemaVersion`.
 - **core-identity**: `formatIdentity` stamps `executedBy` on every tracked operation.
 - **sdk**: [`src/sdk/namespaces/run.ts`](../../src/sdk/namespaces/run.ts) wraps `runBuild`, `runFile`, `runDir`, `runFiles`, `preview`, and `discoverFiles`; it passes no `signal`, so SDK runs cannot be cancelled.
-- **tui**: `src/tui/screens/run/*.tsx` and [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) consume the same runner/template functions as the CLI and SDK, and are the only callers that set `RunContext.signal` (`RunBuildScreen.tsx:164`, `RunExecScreen.tsx:159`). `StatementProgress` renders `file:progress` reports across both the run screens and the change screens. The TUI calls `checkFilesStatus` directly.
+- **tui**: `src/tui/screens/run/*.tsx` and [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) consume the same runner/template functions as the CLI and SDK, and are the only callers that set `RunContext.signal` (`RunBuildScreen.tsx`, `RunExecScreen.tsx`). `StatementProgress` renders `file:progress` reports across both the run screens and the change screens. The TUI calls `checkFilesStatus` directly.
 - **tui pipelines**: Native pipeline screens call `runPipeline` and the independent history queries. [`docs/wiki/tui.md`](tui.md) owns review, input editing, confirmation, stop/result presentation, and retained caller-connection ownership. These screens consume the pipeline settlement contract above, not `StatementWatcher` progress or server-side cancellation.
-- **mcp-rpc**: [`src/rpc/commands/run.ts`](../../src/rpc/commands/run.ts) calls `ctx.noorm.run.build`/`ctx.noorm.run.file`, so MCP runs pass no `signal` and cannot be cancelled.
+- **cli**: `src/cli/run/*` depends on the shared CLI args and helpers in [`src/cli/_utils.ts`](../../src/cli/_utils.ts) (`withContext`, `outputResult`, `sharedArgs`) and the `EXIT` codes in [`src/cli/_exit.ts`](../../src/cli/_exit.ts). The agent skill [`skills/noorm/SKILL.md`](../../skills/noorm/SKILL.md) with [`skills/noorm/references/templates.md`](../../skills/noorm/references/templates.md), [`skills/noorm/references/cli.md`](../../skills/noorm/references/cli.md), [`skills/noorm/references/schema-files.md`](../../skills/noorm/references/schema-files.md), and [`skills/noorm/references/config.md`](../../skills/noorm/references/config.md) documents template syntax and `noorm run` for agents, and changes in lockstep with the template context and the run subcommands.
+- **mcp-rpc**: [`src/mcp/prepared.ts`](../../src/mcp/prepared.ts) is the only place that establishes `withApprovedContent` (from [`src/core/shared/approved-content.ts`](../../src/core/shared/approved-content.ts), an `AsyncLocalStorage` scope read by the runner through `approvedSql`, `approvedChecksum`, and `assertApprovedBuild`), so the runner executes the SQL and checksums the user approved. [`src/rpc/commands/run.ts`](../../src/rpc/commands/run.ts) calls `ctx.noorm.run.build`/`ctx.noorm.run.file`, so MCP runs pass no `signal` and cannot be cancelled.
+- **infra**: the runner design notes ([`docs/dev/runner.md`](../dev/runner.md), including "Long-Running Statements") and the end-user guide ([`docs/guide/sql-files/execution.md`](../guide/sql-files/execution.md)) are owned by infra and change with the behavior described here.

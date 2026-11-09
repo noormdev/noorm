@@ -21,12 +21,14 @@ import type { Dialect } from '../../../src/core/connection/types.js';
 import type { TableDetail } from '../../../src/core/explore/types.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
-import { fetchDetail, fetchRowPeek } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER, fetchDetail, fetchRowPeek } from '../../../src/core/explore/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { renderRowDocument } from '../../../src/tui/components/terminal/rowDocument.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
 
 /** Access that lets `sql:read` through, so a denial in a test is never incidental. */
 const OPEN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(OPEN, {});
 
 const GATE = { configName: 'noorm_test', access: OPEN, channel: 'user' } as const;
 
@@ -267,7 +269,7 @@ for (const dialect of ['postgres', 'mysql', 'mssql', 'sqlite'] as const) {
          */
         const detailFor = async (table: string): Promise<TableDetail> => {
 
-            const detail = await fetchDetail(db, dialect, 'tables', table);
+            const detail = await fetchDetail(db, dialect, 'tables', table, { gate: GATED_BY_CALLER });
 
             expect(detail).not.toBeNull();
 

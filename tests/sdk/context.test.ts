@@ -20,6 +20,8 @@ import type { TvpValue } from '../../src/sdk/tvp.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
 import type { Identity } from '../../src/core/identity/types.js';
+import { ProtectedConfigError } from '../../src/sdk/guards.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Test Fixtures
@@ -591,6 +593,67 @@ describe('sdk: Context proc/func runtime', () => {
             expect(result).toEqual([]);
 
         });
+
+    });
+
+});
+
+describe('sdk: Context protected-stage ceiling', () => {
+
+    const settings: Settings = {
+        stages: {
+            prod: { defaults: { protected: true } },
+            dev: { defaults: {} },
+        },
+    };
+
+    function contextFor(configName: string, options: { stage?: string }) {
+
+        return new Context(
+            { ...createMockConfig('postgres'), name: configName },
+            settings,
+            mockIdentity,
+            options,
+            '/tmp/test-project',
+        );
+
+    }
+
+    it('should apply the ceiling of the config\'s own stage when the caller selects another stage', async () => {
+
+        const ctx = contextFor('prod', { stage: 'dev' });
+
+        await expect(ctx.noorm.db.reset()).rejects.toThrow(ProtectedConfigError);
+
+    });
+
+    it('should apply the ceiling when the caller selects a protected stage for an unprotected config', async () => {
+
+        const ctx = contextFor('dev', { stage: 'prod' });
+
+        await expect(ctx.noorm.db.reset()).rejects.toThrow(ProtectedConfigError);
+
+    });
+
+    it('should keep the ceiling the resolver bound when the config name is not a protected stage', async () => {
+
+        const bound = createMockConfig('postgres');
+        bound.name = '__inline__';
+        attachPolicyContext(bound.access, { protectedStage: true });
+        const ctx = new Context(bound, settings, mockIdentity, {}, '/tmp/test-project');
+
+        await expect(ctx.noorm.db.reset()).rejects.toThrow(ProtectedConfigError);
+
+    });
+
+    it('should keep the ceiling the resolver bound when the config name is an unprotected stage', async () => {
+
+        const bound = createMockConfig('postgres');
+        bound.name = 'dev';
+        attachPolicyContext(bound.access, { protectedStage: true });
+        const ctx = new Context(bound, settings, mockIdentity, {}, '/tmp/test-project');
+
+        await expect(ctx.noorm.db.reset()).rejects.toThrow(ProtectedConfigError);
 
     });
 

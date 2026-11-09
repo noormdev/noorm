@@ -21,6 +21,7 @@ import { attempt } from '@logosdx/utils';
 import { runFile as coreRunFile } from '../../../src/core/runner/index.js';
 import type { RunContext } from '../../../src/core/runner/index.js';
 import { migrateSchema } from '../../../src/core/version/schema/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/tables.js';
 
 import {
@@ -187,12 +188,15 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await writeFile(filepath, sqlContent, 'utf-8');
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         const context: RunContext = {
             db: db as Kysely<NoormDatabase>,
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'mssql',
         };
@@ -240,12 +244,15 @@ describe('integration: mssql runner GO batch splitter', () => {
 
         await writeFile(filepath, sqlContent, 'utf-8');
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         const context: RunContext = {
             db: db as Kysely<NoormDatabase>,
             configName: 'integration-test',
             identity: { name: 'test', email: 'test@example.com', source: 'config' },
             projectRoot: tempDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'mssql',
         };

@@ -25,7 +25,7 @@ export async function preparePipeline(
     options: PreparePipelineOptions = {},
 ): Promise<PreparedPipeline> {
 
-    const policy = checkConfigPolicy(context.channel, { name: context.configName, access: context.access }, 'run:dir');
+    const policy = checkConfigPolicy(context.channel, { name: context.configName, access: context.access }, 'pipeline:run');
     if (!policy.allowed) throw new PipelineCodedError('PIPELINE_POLICY_BLOCKED', policy.blockedReason ?? 'Pipeline execution is not allowed');
     if (policy.requiresConfirmation && !options.yes) throw new PipelineCodedError('PIPELINE_CONFIRMATION_REQUIRED', 'Pipeline execution requires confirmation');
 

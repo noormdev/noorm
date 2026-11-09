@@ -22,6 +22,8 @@ noorm solves this with settings. A single `.noorm/settings.yml` file defines pro
 
 > **How is settings.yml found?** noorm walks up the directory tree to find the project root. See [Project Discovery](./project-discovery.md) for details.
 
+In `noorm ui`, **Settings** displays aligned **Section**, **Purpose**, and **Current value** columns. Narrow terminals hide the purpose column to preserve readable names and values; long values truncate within their column, and `Enter` opens the selected section's editor to inspect or change them.
+
 
 ## Quick Start
 
@@ -303,6 +305,49 @@ for (const path of include) {
 ```
 
 
+## Access Roles
+
+Project settings can override built-in role cells and define custom roles:
+
+```yaml
+access:
+    roles:
+        operator:
+            permissions:
+                sql:write: confirm
+        deployer:
+            extends: operator
+            permissions:
+                run:build: allow
+```
+
+Built-in overrides retain unspecified defaults. Custom roles inherit their parent's effective project policy; without a parent, unspecified cells deny. Invalid permission names or values, unknown parents, and inheritance cycles are rejected. Assign role names to a config's user or agent access in the TUI or an imported config. Unknown assigned roles fail closed.
+
+The environment overlay excludes `NOORM_ACCESS_*` and `NOORM_STAGES_*_DEFAULTS_PROTECTED`, so these policy definitions and protected-stage ceilings come from the settings document. Channel and connection environment variables remain process-controlled; this is not a security boundary against a process that can alter its environment or use database credentials directly.
+
+Agent CLI calls cannot satisfy `confirm`, even with yes-mode. MCP can mediate human approval through a supporting client; denial is never bypassed. See [Access roles](/guide/environments/configs#access-roles).
+
+### Edit roles in the TUI
+
+Open **Settings → Access Roles** to edit the project policy. Changes are saved to `.noorm/settings.yml` and affect every config assigned that role, including roles that inherit from it.
+
+| Control | Result |
+|---------|--------|
+| `a` | Create a custom role and choose an optional parent |
+| `Enter` or `e` on a role | Open its permission editor |
+| `Enter` on a permission | Cycle default/inherited, `allow`, `confirm`, and `deny` |
+| `m` in a custom role editor | Change its parent without renaming the role |
+| `s` | Validate and save the complete role definition |
+| `Esc` | Cancel without saving |
+| `d` on a custom role | Confirm deletion; blocked while configs or other roles reference it |
+| `d` on a built-in role | Confirm resetting its overrides to built-in defaults |
+
+The permission editor shows the effective cell and the protected-stage user and agent ceilings for the selected permission. Removing an override restores the inherited or built-in cell; it does not explicitly deny the permission. Built-in roles cannot inherit from another role. Invalid inheritance is rejected without saving the draft.
+
+Assign the saved role through **Config → Add/Edit → User Role / Agent Role**. Definitions stay in project settings; config exports carry only the role names.
+
+
+
 ## Stages
 
 Stages are team-defined config templates. They provide defaults, enforce constraints, and define required secrets. When a developer creates a config from a stage, they get consistent baseline settings.
@@ -347,7 +392,7 @@ Defaults provide initial values when creating a config. Users can override most 
 
 | Default | Behavior |
 |---------|----------|
-| `protected: true` | Enforced as an access **ceiling** at config resolution (`resolveConfig`), not a value check here: resolved `access` is clamped to at most `{ user: 'operator', agent: 'viewer' }` no matter what the config or the TUI sets |
+| `protected: true` | Caps each effective permission at the original operator matrix for users and viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the cap and role names stay unchanged |
 | `isTest: true` | Cannot be overridden to false |
 | `dialect` | Cannot be changed after creation |
 
@@ -356,10 +401,9 @@ Defaults provide initial values when creating a config. Users can override most 
 const defaults = settings.getStageDefaults('prod')
 // { dialect: 'postgres', protected: true }
 
-// Read the protected default directly — the ceiling itself is applied later,
-// by resolveConfig. There is no stageEnforcesProtected() helper.
+// Policy checks apply the ceiling per permission when this is true.
 if (defaults.protected === true) {
-    // This stage's configs get clamped to at most operator/viewer access
+    // User cells are capped by the original operator matrix; agent cells by viewer.
 }
 
 // The isTest constraint does have a helper
@@ -608,6 +652,16 @@ await settings.load()
 if (!settings.isLoaded) {
     throw new Error('Settings not loaded')
 }
+```
+
+`settings.projectRoot` identifies the project used for policy binding. Role definitions are a map keyed by role name:
+
+```typescript
+const roles = settings.getAccessRoles()
+await settings.setAccessRole('deployer', {
+    extends: 'operator',
+    permissions: { 'run:build': 'allow' },
+})
 ```
 
 

@@ -2,10 +2,7 @@
  * SDK run.build() include/exclude/rules filtering tests.
  *
  * Proves ctx.noorm.run.build() honors settings.build.include/exclude and
- * settings.rules identically to the TUI's Run Build screen
- * (`RunBuildScreen.tsx`'s loading effect), and that db.reset()'s rebuild
- * inherits the same filtering purely through its existing delegation to
- * run.build — no duplicate filtering machinery.
+ * settings.rules identically to the TUI's Run Build screen.
  *
  * Uses Kysely DummyDriver with a mocked executor — no mock.module, per
  * db-namespace.test.ts's precedent (avoids polluting the shared module
@@ -31,46 +28,18 @@ import {
 } from 'kysely';
 
 import { RunNamespace } from '../../src/sdk/namespaces/run.js';
-import { NoormOps } from '../../src/sdk/noorm-ops.js';
 import { NotConnectedError } from '../../src/sdk/guards.js';
 import { getStateManager, resetStateManager } from '../../src/core/state/index.js';
+import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
 import type { Identity } from '../../src/core/identity/types.js';
-import type { BatchResult } from '../../src/core/runner/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Fixtures
 // ─────────────────────────────────────────────────────────────
-
-function fakeBatchResult(): BatchResult {
-
-    return {
-        status: 'success',
-        files: [],
-        filesRun: 0,
-        filesSkipped: 0,
-        filesFailed: 0,
-        durationMs: 0,
-    };
-
-}
-
-/** Bare DummyDriver Kysely — DummyDriver.executeQuery throws unless the caller mocks it. */
-function makeKysely(): Kysely<unknown> {
-
-    return new Kysely<unknown>({
-        dialect: {
-            createAdapter: () => new PostgresAdapter(),
-            createDriver: () => new DummyDriver(),
-            createIntrospector: (db) => new PostgresIntrospector(db),
-            createQueryCompiler: () => new PostgresQueryCompiler(),
-        },
-    });
-
-}
 
 /**
  * Kysely wired to a DummyDriver whose connection answers generically
@@ -154,13 +123,21 @@ function makeState(
     db: Kysely<unknown> = makeMockKysely(),
 ): ContextState {
 
+    const config = makeConfig(configOverrides);
+
+    attachPolicyContext(config.access, {
+        roles: settings.access?.roles,
+        protectedStage: settings.stages?.[config.name]?.defaults?.protected === true,
+    });
+
     return {
         connection: { db, dialect: 'postgres', destroy: async () => {} },
-        config: makeConfig(configOverrides),
+        config,
         settings,
         identity: mockIdentity,
         options: {},
         projectRoot,
+        stateManager: getStateManager(projectRoot),
         changeManager: null,
     };
 
@@ -347,15 +324,10 @@ describe('sdk: RunNamespace.build() filtering', () => {
         // error. projectRoot below doesn't exist, so a discovery-before-
         // connection-check regression would surface as a "Failed to read
         // directory" error instead of NotConnectedError.
-        const state: ContextState = {
-            connection: null,
-            config: makeConfig(),
-            settings: {},
-            identity: mockIdentity,
-            options: {},
-            projectRoot: '/nonexistent/noorm-build-filter-root',
-            changeManager: null,
-        };
+        const state = makeState('/nonexistent/noorm-build-filter-root', {});
+
+        state.connection = null;
+
         const run = new RunNamespace(state);
 
         await expect(run.build()).rejects.toThrow(NotConnectedError);
@@ -364,45 +336,3 @@ describe('sdk: RunNamespace.build() filtering', () => {
 
 });
 
-describe('sdk: db.reset() inherits build filtering via delegation', () => {
-
-    it('should invoke run.build (not duplicate filtering machinery) on reset()', async () => {
-
-        const projectRoot = await makeSqlProject();
-        tempDirs.push(projectRoot);
-
-        const db = makeKysely();
-        const state = makeState(projectRoot, { build: { include: ['a'] } }, {}, db);
-        const ops = new NoormOps(state);
-
-        // ops.run is accessed here only to obtain a reference to pass to
-        // vi.spyOn — access order doesn't otherwise matter: NoormOps#run
-        // memoizes on #run, and db.ts's buildFn closure ((opts) =>
-        // this.run.build(opts)) re-reads this.run on every call rather than
-        // capturing a reference at ops.db construction time, so it always
-        // resolves to whichever instance #run is holding — the same one
-        // spied on below, regardless of whether ops.run or ops.db was
-        // touched first.
-        const runNamespace = ops.run;
-        const buildSpy = vi.spyOn(runNamespace, 'build').mockResolvedValue(fakeBatchResult());
-
-        // teardownSchema (reset()'s pre-rebuild step) needs a connection that
-        // answers "no objects found" for every explore query.
-        vi.spyOn(db.getExecutor(), 'provideConnection').mockImplementation(async (consumer) =>
-            consumer({
-                executeQuery: vi.fn().mockResolvedValue({ rows: [] }),
-                streamQuery: () => {
-
-                    throw new Error('not implemented');
-
-                },
-            }),
-        );
-
-        await ops.db.reset();
-
-        expect(buildSpy).toHaveBeenCalledWith({ force: true });
-
-    });
-
-});

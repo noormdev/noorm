@@ -74,6 +74,8 @@ import {
 } from './screens/db/index.js';
 import {
     SettingsListScreen,
+    SettingsAccessListScreen,
+    SettingsAccessEditScreen,
     SettingsInitScreen,
     SettingsBuildScreen,
     SettingsPathsScreen,
@@ -369,6 +371,18 @@ const SCREENS: ScreenRegistry = {
     settings: {
         component: SettingsListScreen,
         label: 'Settings',
+    },
+    'settings/access': {
+        component: SettingsAccessListScreen,
+        label: 'Access Roles',
+    },
+    'settings/access/add': {
+        component: SettingsAccessEditScreen,
+        label: 'Add Role',
+    },
+    'settings/access/edit': {
+        component: SettingsAccessEditScreen,
+        label: 'Edit Role',
     },
     'settings/init': {
         component: SettingsInitScreen,

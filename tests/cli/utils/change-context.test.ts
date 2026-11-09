@@ -27,6 +27,7 @@ import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { Config } from '../../../src/core/config/types.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { ChangeContext } from '../../../src/core/change/types.js';
 
 // `ChangeManager` stores its context in a true private (`#context`) field,
@@ -76,7 +77,7 @@ describe('tui: createChangeManager', () => {
      */
     function buildActiveConfig(): Config {
 
-        return {
+        const config: Config = {
             name: 'test',
             type: 'local',
             isTest: true,
@@ -86,6 +87,9 @@ describe('tui: createChangeManager', () => {
                 database: ':memory:',
             },
         };
+        attachPolicyContext(config.access, { roles: {} });
+
+        return config;
 
     }
 

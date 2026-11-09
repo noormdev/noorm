@@ -92,7 +92,7 @@ A cross-dialect transfer treats `update` and `replace` as `skip`.
 |---|---|
 | Destination tables | Present, with compatible columns. A missing one warns `Table "x" exists in source but not destination`, then fails |
 | Saved configs | `--to` names the destination. The source is the active config, or `-c` |
-| Destination role | `db:reset`: `viewer` denied, `operator` needs `--yes` or `NOORM_YES=1`, `admin` allowed. `--dry-run` needs `transfer:plan`, which `operator` has |
+| Destination role | `db:reset`: `viewer` denied, `operator` needs `--yes` or `NOORM_YES=1`, `admin` allowed; an `isTest` destination is allowed for every role ([access roles](/guide/environments/configs#access-roles)). `--dry-run` needs `transfer:plan`, which `operator` has |
 | Dialect | PostgreSQL, MySQL, or MSSQL, in any pairing. SQLite is refused |
 
 noorm's own tracking tables never transfer. Two MySQL or two MSSQL configs on one host and port copy each table with one `INSERT ... SELECT`, but only with `--on-conflict fail`. Everything else, PostgreSQL included, copies in batches of `--batch-size` rows.
@@ -111,6 +111,8 @@ noorm db transfer -c qa --import ./backup/party.dt
 | `.dt` | line-delimited JSON5 | the default |
 | `.dtz` | the same, gzipped | `--compress` |
 | `.dtzx` | gzipped and AES-256-GCM encrypted | `--passphrase`, 12 characters or more |
+
+Exporting without `--tables` lists every table first, so an agent needs the `explore` permission for it. A person at the keyboard is never blocked by `explore`.
 
 One table writes to the path you give. Several write one file each into that directory. A path ending in `.dtzx` prompts for the passphrase on a terminal. The format is in [Data transfer internals](/dev/transfer#file-export-import).
 

@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { attempt } from '@logosdx/utils';
+import { approvedChecksum } from '../shared/approved-content.js';
 
 /**
  * Compute SHA-256 checksum of a file.
@@ -34,6 +35,9 @@ import { attempt } from '@logosdx/utils';
  * ```
  */
 export async function computeChecksum(filepath: string): Promise<string> {
+
+    const snapshot = approvedChecksum(filepath);
+    if (snapshot !== undefined) return snapshot;
 
     const [content, err] = await attempt(() => readFile(filepath, 'utf-8'));
 

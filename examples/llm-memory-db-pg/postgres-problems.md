@@ -1,5 +1,9 @@
 # Phase 1 — STOP report: noorm SDK bugs blocking the PG example
 
+
+> This report predates the current MCP surface. The server no longer has `noorm_help`, `run_noorm_cmd`, or `connect`; each command is its own tool and takes an explicit config.
+
+
 Generated while building `examples/llm-memory-db-pg/` per `tmp/instructions-postgres.md`. Phase 1 progressed cleanly through schema, change-system, SDK typecheck, and test-file authoring, then hit a hard wall at `bun test`. Two compounding bugs in the noorm SDK's PG procedure-call generator prevent any `ctx.proc(...)` call from succeeding against PG.
 
 ---

@@ -1,6 +1,5 @@
 import type { RpcRegistry } from '../registry.js';
 
-import { sessionCommands } from './session.js';
 import { configCommands } from './config.js';
 import { exploreCommands } from './explore.js';
 import { queryCommands } from './query.js';
@@ -13,7 +12,6 @@ import { runCommands } from './run.js';
 export function registerAllCommands(registry: RpcRegistry): void {
 
     const allCommands = [
-        ...sessionCommands,
         ...configCommands,
         ...exploreCommands,
         ...queryCommands,

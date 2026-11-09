@@ -1,6 +1,9 @@
 # llm-memory-db-mssql — Phase 1 + Phase 2 Report
 
 
+> This report predates the current MCP surface. The server no longer has `noorm_help`, `run_noorm_cmd`, or `connect`; each command is its own tool and takes an explicit config.
+
+
 An end-to-end noorm example built against SQL Server 2022 to exercise the SDK over MSSQL-specific surfaces. Phase 1 stood up the schema, the per-domain SDK, and the first 194 tests under CLI control. Phase 2 verified everything via the noorm MCP, ran a per-test-file review loop, and added the meta-test that proves the MCP itself works.
 
 This report assumes the reader has already skimmed `README.md`. Counts here come from live MCP queries (`overview`, `list category=types`) and from the test runner.

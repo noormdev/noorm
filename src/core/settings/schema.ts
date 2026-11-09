@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
 import { AccessSchema } from '../config/schema.js';
+import { isBuiltinRole, MATRIX } from '../policy/matrix.js';
 import { DEFAULT_UI_MOUSE } from './defaults.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -189,6 +190,83 @@ export const UiConfigSchema = z.object({
     mouse: z.boolean().default(DEFAULT_UI_MOUSE),
 });
 
+const RoleDefinitionSchema = z.object({
+    extends: z.string().min(1).optional(),
+    permissions: z.record(z.string(), z.enum(['allow', 'confirm', 'deny'])).optional(),
+}).strict().superRefine((role, ctx) => {
+
+    for (const permission of Object.keys(role.permissions ?? {})) {
+
+        if (!Object.hasOwn(MATRIX, permission)) {
+
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['permissions', permission],
+                message: `Unknown permission "${permission}"`,
+            });
+
+        }
+
+    }
+
+});
+
+const AccessSettingsSchema = z.object({
+    roles: z.record(z.string().min(1), RoleDefinitionSchema).optional(),
+}).strict().superRefine((access, ctx) => {
+
+    const roles = access.roles ?? {};
+
+    for (const [name, role] of Object.entries(roles)) {
+
+        if (isBuiltinRole(name) && role.extends) {
+
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['roles', name, 'extends'],
+                message: `Built-in role "${name}" cannot extend another role`,
+            });
+
+        }
+        if (role.extends && !Object.hasOwn(roles, role.extends) && !isBuiltinRole(role.extends)) {
+
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['roles', name, 'extends'],
+                message: `Unknown role "${role.extends}"`,
+            });
+
+        }
+
+    }
+
+    const visited = new Set<string>();
+    for (const name of Object.keys(roles)) {
+
+        const path = new Set<string>();
+        let current: string | undefined = name;
+        while (current && Object.hasOwn(roles, current) && !visited.has(current)) {
+
+            if (path.has(current)) {
+
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['roles', current, 'extends'],
+                    message: `Role inheritance cycle involving "${current}"`,
+                });
+                break;
+
+            }
+            path.add(current);
+            current = roles[current]?.extends;
+
+        }
+        for (const role of path) visited.add(role);
+
+    }
+
+});
+
 // Main Settings Schema
 // ─────────────────────────────────────────────────────────────
 
@@ -205,6 +283,7 @@ export const SettingsSchema = z.object({
     secrets: z.array(StageSecretSchema).optional(),
     teardown: TeardownConfigSchema.optional(),
     ui: UiConfigSchema.optional(),
+    access: AccessSettingsSchema.optional(),
 });
 
 // ─────────────────────────────────────────────────────────────

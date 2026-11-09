@@ -30,7 +30,7 @@ Database Overview
 • log    status: text (not null)
 ```
 
-The explorer is read-only and every role may use it. The TUI path is Home, `d` for Database, `x` for Explore.
+The explorer is read-only. On the `user` channel (you, in the CLI or TUI) it is always available. On the `agent` channel it needs the `explore` permission, which every built-in role has. The TUI path is Home, `d` for Database, `x` for Explore.
 
 
 ## What can I look at?

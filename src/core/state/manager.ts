@@ -10,10 +10,10 @@ import { chmodSync, existsSync, mkdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { attemptSync, attempt, clone, equals } from '@logosdx/utils';
 import type { Config } from '../config/types.js';
-import { assertCanDeleteConfig, type SettingsProvider } from '../config/resolver.js';
+import { assertCanDeleteConfig, assertCanMoveProtectedConfig, validateAccessRoles, type SettingsProvider } from '../config/resolver.js';
 import type { KnownUser } from '../identity/types.js';
 import { loadPrivateKey } from '../identity/storage.js';
-import { repairConfigAccess } from './access.js';
+import { resolveStateConfigAccess } from './access.js';
 import {
     migrateState as migrateSchemaVersion,
     needsStateMigration,
@@ -227,30 +227,17 @@ export class StateManager {
             needsStateMigration(stateRecord);
         this.#state = migrateState(schemaMigratedState, currentVersion);
 
-        // Raw-data-boundary invariant: migrations above guarantee every
-        // config carries a well-formed `access`, but a hand-edited or
-        // corrupted state file can still reach this point without one. This
-        // is the single place that repairs it, so no downstream consumer
-        // (setConfig/listConfigs/guarded) needs its own fallback. Tracking
-        // whether it actually mutated anything (below) feeds the persist
-        // decision, so a config repaired at an already-current schema
-        // version still lands on disk instead of being re-healed forever.
-        //
-        // `config` is typed `Config`, but the object underneath is untyped
-        // JSON that reached the current schema version without ever passing
-        // through `parseConfig` (e.g. a legacy-shaped config saved directly
-        // via `setConfig`, bypassing the zod path). It can carry a stray
-        // legacy `protected` key the type doesn't declare, or an `access`
-        // of any shape at all, so both are read as untrusted input.
+        // Preserve malformed entries verbatim; accessors refuse to resolve them.
         let backfilledAccess = false;
 
         for (const config of Object.values(this.#state.configs)) {
 
             const rawConfig: unknown = config;
             const legacyProtected = isRecord(rawConfig) ? rawConfig['protected'] : undefined;
-
-            const repaired = repairConfigAccess(config.access, legacyProtected);
-
+            const [repaired, accessError] = attemptSync(() =>
+                resolveStateConfigAccess(config.access, legacyProtected),
+            );
+            if (accessError || !repaired) continue;
             if (!config.access || !equals(config.access, repaired)) {
 
                 backfilledAccess = true;
@@ -440,16 +427,89 @@ export class StateManager {
 
         const state = this.#getState();
 
+        const error = this.getConfigAccessError(name);
+        if (error) throw new ConfigAccessInvalidError(name, error);
+
         return state.configs[name] ?? null;
+
+    }
+    /** Create a detached user-policy candidate from a recognizable stored user role. */
+    getConfigRecoveryCandidate(name: string): Config | null {
+
+        const config = this.#getState().configs[name];
+        if (!config) return null;
+        const access: unknown = config.access;
+        if (typeof access !== 'object' || access === null || Array.isArray(access)) return null;
+        const user = (access as Record<string, unknown>)['user'];
+        if (typeof user !== 'string' || !user.trim()) return null;
+
+        return { ...config, access: { user, agent: false } };
+
+    }
+
+
+    /** Return an actionable diagnostic for malformed stored access, if any. */
+    getConfigAccessError(name: string): string | null {
+
+        const config = this.#getState().configs[name];
+        if (!config) return null;
+
+        const [, error] = attemptSync(() => resolveStateConfigAccess(config.access, undefined));
+
+        return error
+            ? `Config "${name}": ${error.message}. A user can repair it with `
+                + `noorm config repair-access "${name}" --user <role> --agent <role|false> --yes `
+                + `or remove it with noorm config rm "${name}" --yes (removal also deletes its secrets).`
+            : null;
+
+    }
+
+    /** List malformed access entries without exposing their raw values. */
+    listAccessErrors(): { name: string; message: string }[] {
+
+        return Object.keys(this.#getState().configs).flatMap((name) => {
+
+            const message = this.getConfigAccessError(name);
+
+            return message ? [{ name, message }] : [];
+
+        });
+
+    }
+
+    /** Replace invalid access without changing the config's other data or secrets. */
+    async repairConfigAccess(name: string, access: Config['access'], roles?: Record<string, unknown>): Promise<void> {
+
+        const state = this.#getState();
+        const config = state.configs[name];
+        if (!config) throw new Error(`Config "${name}" does not exist.`);
+        const [, roleError] = roles && !this.getConfigAccessError(name)
+            ? attemptSync(() => validateAccessRoles(config.access, roles))
+            : [undefined, null];
+        if (!this.getConfigAccessError(name) && !roleError) {
+
+            throw new Error(`Config "${name}" does not have invalid access.`);
+
+        }
+        const resolved = resolveStateConfigAccess(access, undefined);
+        if (roles) validateAccessRoles(resolved, roles);
+        config.access = resolved;
+        await this.#persist();
 
     }
 
     /**
      * Set (create or update) a config.
+     *
+     * @throws ConfigAccessInvalidError
      */
     async setConfig(name: string, config: Config): Promise<void> {
 
         const state = this.#getState();
+        const accessError = this.getConfigAccessError(name);
+        if (accessError) throw new ConfigAccessInvalidError(name, `Refusing to overwrite: ${accessError}`);
+        if (config.access !== undefined) resolveStateConfigAccess(config.access, undefined);
+
         const isNew = !state.configs[name];
 
         state.configs[name] = { ...config };
@@ -459,6 +519,64 @@ export class StateManager {
             name,
             fields: Object.keys(config),
         });
+
+    }
+
+    /** Copy a config under a new name. @throws ProtectedStageEscapeError */
+    async copyConfig(source: string, destination: string, settings: SettingsProvider): Promise<void> {
+
+        const config = this.getConfig(source);
+
+        if (!config) {
+
+            throw new Error(`Config "${source}" does not exist.`);
+
+        }
+
+        assertCanMoveProtectedConfig('copy', source, destination, settings);
+
+        await this.setConfig(destination, { ...config, name: destination });
+
+    }
+
+    /** Move config, secrets and active flag to `renamed.name` in one persist. Throws if `oldName` is missing or `renamed.name` is taken. */
+    async renameConfig(oldName: string, renamed: Config, settings: SettingsProvider): Promise<void> {
+
+        const state = this.#getState();
+
+        if (!state.configs[oldName]) {
+
+            throw new Error(`Config "${oldName}" does not exist.`);
+
+        }
+
+        if (renamed.name !== oldName && state.configs[renamed.name]) {
+
+            throw new Error(`Config "${renamed.name}" already exists.`);
+
+        }
+
+        const wasActive = state.activeConfig === oldName;
+        const secrets = state.secrets[oldName];
+
+        assertCanMoveProtectedConfig('rename', oldName, renamed.name, settings);
+        assertCanDeleteConfig(oldName, settings);
+
+        if (renamed.access !== undefined) resolveStateConfigAccess(renamed.access, undefined);
+
+        delete state.configs[oldName];
+        delete state.secrets[oldName];
+        state.configs[renamed.name] = { ...renamed };
+
+        if (secrets) state.secrets[renamed.name] = secrets;
+        if (wasActive) state.activeConfig = renamed.name;
+
+        await this.#persist();
+
+        observer.emit('config:deleted', { name: oldName });
+        observer.emit('config:created', { name: renamed.name });
+
+        if (wasActive) observer.emit('config:activated', { name: renamed.name, previous: oldName });
 
     }
 
@@ -493,7 +611,7 @@ export class StateManager {
 
         const state = this.#getState();
 
-        return Object.entries(state.configs).map(([name, config]) => ({
+        return Object.entries(state.configs).filter(([name]) => !this.getConfigAccessError(name)).map(([name, config]) => ({
             name,
             type: config.type,
             isTest: config.isTest,
@@ -513,7 +631,7 @@ export class StateManager {
         const state = this.#getState();
         if (!state.activeConfig) return null;
 
-        return state.configs[state.activeConfig] ?? null;
+        return this.getConfig(state.activeConfig);
 
     }
 
@@ -539,6 +657,9 @@ export class StateManager {
             throw new Error(`Config "${name}" does not exist.`);
 
         }
+
+        const error = this.getConfigAccessError(name);
+        if (error) throw new ConfigAccessInvalidError(name, error);
 
         const previous = state.activeConfig;
         state.activeConfig = name;
@@ -909,6 +1030,30 @@ export class StateManager {
 export function isValidSecretKey(key: string): boolean {
 
     return /^[A-Za-z][A-Za-z0-9_]*$/.test(key);
+
+}
+
+/**
+ * Thrown when a config's stored access is malformed, on read and on write.
+ * `message` carries the diagnostic.
+ *
+ * @example
+ * ```typescript
+ * throw new ConfigAccessInvalidError('prod', message)
+ * ```
+ */
+export class ConfigAccessInvalidError extends Error {
+
+    override readonly name = 'ConfigAccessInvalidError' as const;
+
+    constructor(
+        public readonly configName: string,
+        message: string,
+    ) {
+
+        super(message);
+
+    }
 
 }
 

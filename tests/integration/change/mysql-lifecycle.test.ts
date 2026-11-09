@@ -26,6 +26,7 @@ import { ChangeManager } from '../../../src/core/change/manager.js';
 import { migrateSchema } from '../../../src/core/version/schema/index.js';
 import { getNoormTables, noormDb } from '../../../src/core/shared/index.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { ConnectionResult } from '../../../src/core/connection/types.js';
 import type { ChangeContext } from '../../../src/core/change/types.js';
@@ -116,6 +117,9 @@ describe('change: lifecycle on live mysql', () => {
 
     function buildContext(): ChangeContext {
 
+        const access = { user: 'admin', agent: 'admin' };
+        attachPolicyContext(access, {});
+
         return {
             db: conn!.db as unknown as Kysely<NoormDatabase>,
             configName: CONFIG_NAME,
@@ -123,7 +127,7 @@ describe('change: lifecycle on live mysql', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir,
-            access: { user: 'admin', agent: 'admin' },
+            access,
             channel: 'user',
             dialect: 'mysql',
         };

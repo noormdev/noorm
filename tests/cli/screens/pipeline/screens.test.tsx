@@ -19,6 +19,7 @@ import { PipelineHistoryDetailScreen } from '../../../../src/tui/screens/pipelin
 import { PipelineListScreen } from '../../../../src/tui/screens/pipeline/PipelineListScreen.js';
 import * as appContext from '../../../../src/tui/app-context.js';
 import * as pipelineOperations from '../../../../src/tui/hooks/usePipelineOperations.js';
+import { withPolicy } from '../../../utils/access.js';
 
 const actualAppContext = { ...appContext };
 const actualPipelineOperations = { ...pipelineOperations };
@@ -459,7 +460,7 @@ const app = {
     projectRoot: '',
     settings: { paths: { pipelines: 'db/pipelines' } },
     activeConfigName: 'test',
-    activeConfig: { name: 'test', access: { user: 'admin', agent: 'viewer' }, connection: { dialect: 'sqlite' } },
+    activeConfig: { name: 'test', access: withPolicy({ user: 'admin', agent: 'viewer' }), connection: { dialect: 'sqlite' } },
 };
 const modes = { dryRun: false, force: false };
 let operationTarget = {};
@@ -860,7 +861,7 @@ describe('pipeline screen keyboard behavior', () => {
 
     });
 
-    it('denies execution under run:dir policy even in dry run and force mode', async () => {
+    it('denies execution under pipeline:run policy even in dry run and force mode', async () => {
 
         await workflow();
         app.activeConfig.access.user = 'viewer';
@@ -872,6 +873,30 @@ describe('pipeline screen keyboard behavior', () => {
         await until(() => view.lastFrame()?.includes('not allowed by the active configuration policy') === true);
         expect(view.lastFrame()).not.toContain('Confirm');
         view.unmount();
+
+    });
+
+    it('runs under a custom role that allows pipeline:run and denies run:dir', async () => {
+
+        await workflow();
+        const permissions = { 'pipeline:run': 'allow', 'run:dir': 'deny' } as const;
+        withPolicy(app.activeConfig.access, { roles: { pipeliner: { permissions } } });
+        app.activeConfig.access.user = 'pipeliner';
+        const view = render(<RunView />);
+        try {
+
+            await until(() => view.lastFrame()?.includes('No declared inputs') === true);
+            await press(view, 'r');
+            await until(() => view.lastFrame()?.includes('Run workflow on test?') === true);
+            expect(view.lastFrame()).not.toContain('not allowed by the active configuration policy');
+
+        }
+        finally {
+
+            withPolicy(app.activeConfig.access);
+            view.unmount();
+
+        }
 
     });
 

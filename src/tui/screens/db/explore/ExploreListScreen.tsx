@@ -28,12 +28,11 @@ import { useFocusScope } from '../../../focus.js';
 import { useAppContext, useExploreFilters, useSettings } from '../../../app-context.js';
 import { Panel, Spinner, SearchableList } from '../../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
-import { fetchList, formatSummaryDescription } from '../../../../core/explore/index.js';
+import { fetchList, formatSummaryDescription, userGate } from '../../../../core/explore/index.js';
 
 import type { SelectListItem, SearchableListFilterState } from '../../../components/index.js';
 import type {
     ExploreCategory,
-    ExploreOptions,
     TableSummary,
     ViewSummary,
     ProcedureSummary,
@@ -172,7 +171,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     const meta = ROUTE_TO_CATEGORY[route];
 
     // Include noorm tables only in verbose mode
-    const exploreOptions: ExploreOptions = {
+    const exploreOptions = {
         includeNoormTables: settings?.logging?.level === 'verbose',
     };
 
@@ -185,7 +184,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
     // Load items when connection is ready
     useAsyncEffect(async (isCancelled) => {
 
-        if (!db || !dialect || !meta) {
+        if (!db || !dialect || !meta || !activeConfig) {
 
             if (!connLoading && !connError) setIsLoading(false);
 
@@ -198,7 +197,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
 
         const [result, err] = await attempt(async () => {
 
-            return await fetchList(db as Kysely<unknown>, dialect, meta.category, exploreOptions);
+            return await fetchList(db as Kysely<unknown>, dialect, meta.category, { ...exploreOptions, gate: userGate(activeConfig) });
 
         });
 

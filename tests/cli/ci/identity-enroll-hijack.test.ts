@@ -18,11 +18,12 @@
  * ran before the propagation that then failed.
  */
 import { describe, it, expect, afterEach } from 'bun:test';
-import { spawnSync } from 'node:child_process';
-import { mkdir, rm } from 'node:fs/promises';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { Kysely } from 'kysely';
+import { sql, type Kysely } from 'kysely';
 
 import { createConnection } from '../../../src/core/connection/factory.js';
 import { bootstrapSchema } from '../../../src/core/version/index.js';
@@ -56,6 +57,7 @@ interface EnrollFixture {
     attackerPublicKey: string;
     /** The real bot key the operator is told to enroll */
     botPublicKey: string;
+    botPrivateKey: string;
     /** Hash both parties compute — derived from the published bot public key */
     botIdentityHash: string;
 }
@@ -143,6 +145,7 @@ async function setupEnrollFixture(
         attackerPrivateKey: attacker.privateKey,
         attackerPublicKey: attacker.publicKey,
         botPublicKey,
+        botPrivateKey: bot.privateKey,
         botIdentityHash,
         env: {
             NOORM_IDENTITY_PRIVATE_KEY: operator.privateKey,
@@ -219,6 +222,47 @@ function runEnroll(fx: EnrollFixture, extra: string[]) {
 
 }
 
+describe('cli: vault propagation recipient review', () => {
+
+    let fx: EnrollFixture | undefined;
+
+    afterEach(async () => {
+
+        if (fx) await rm(fx.dir, { recursive: true, force: true });
+        fx = undefined;
+
+    });
+
+    it('requires human recipient review even when the role allows propagation', async () => {
+
+        fx = await setupEnrollFixture();
+        await writeFile(join(fx.dir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    admin:\n      permissions:\n        vault:propagate: allow\n');
+        await plantRow(fx, fx.botPublicKey);
+        const invoke = (channel: string, yes: boolean) => spawnSync(
+            'node',
+            [CLI, 'vault', 'propagate', '--config', CONFIG_NAME, '--json', ...(yes ? ['--yes'] : [])],
+            { cwd: fx!.dir, encoding: 'utf-8', env: { ...process.env, ...fx!.env, NOORM_CHANNEL: channel, NOORM_YES: '' } },
+        );
+
+        const preview = invoke('user', false);
+        expect(preview.status).not.toBe(0);
+        expect(preview.stdout + preview.stderr).toContain('Recipient review is required even when policy allows propagation');
+        expect((await readRow(fx, fx.botIdentityHash))?.encrypted_vault_key).toBeNull();
+
+        const agent = invoke('agent', true);
+        expect(agent.status).not.toBe(0);
+        expect(agent.stdout + agent.stderr).toContain('Recipient review requires a human');
+        expect((await readRow(fx, fx.botIdentityHash))?.encrypted_vault_key).toBeNull();
+
+        const grant = invoke('user', true);
+        expect(grant.status).toBe(0);
+        expect((await readRow(fx, fx.botIdentityHash))?.encrypted_vault_key).not.toBeNull();
+
+    });
+
+});
+
 describe('cli: ci identity enroll — pre-planted key hijack (a08 F1)', () => {
 
     let fx: EnrollFixture | undefined;
@@ -284,6 +328,61 @@ describe('cli: ci identity enroll — pre-planted key hijack (a08 F1)', () => {
 
         expect(row!.encrypted_vault_key).toBeTruthy();
 
+        const encrypted = JSON.parse(row!.encrypted_vault_key as string) as EncryptedVaultKey;
+        expect(decryptVaultKey(encrypted, fx.botPrivateKey)).not.toBeNull();
+        expect(decryptVaultKey(encrypted, fx.attackerPrivateKey)).toBeNull();
+
+    });
+
+    it('rejects a replacement key introduced after the supplied key was validated', async () => {
+
+        fx = await setupEnrollFixture();
+        const conn = await createConnection({ dialect: 'sqlite', database: fx.dbPath }, CONFIG_NAME);
+        const db = conn.db as Kysely<NoormDatabase>;
+        const table = getNoormTables('sqlite').identities;
+        // This runs after enrollment inserts the validated recipient but before
+        // it executes the grant, deterministically modeling the key race.
+        await sql`
+            CREATE TRIGGER replace_enrollment_key AFTER INSERT ON ${sql.raw(table)}
+            FOR EACH ROW WHEN NEW.identity_hash = ${sql.lit(fx.botIdentityHash)}
+            BEGIN
+                UPDATE ${sql.raw(table)} SET public_key = ${sql.lit(fx.attackerPublicKey)}
+                WHERE identity_hash = NEW.identity_hash;
+            END;
+        `.execute(db);
+        await conn.destroy();
+
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+        expect(result.status).not.toBe(0);
+        const row = await readRow(fx, fx.botIdentityHash);
+        expect(row?.public_key).toBe(fx.attackerPublicKey);
+        expect(row?.encrypted_vault_key).toBeNull();
+        if (row?.encrypted_vault_key) {
+
+            expect(decryptVaultKey(JSON.parse(row.encrypted_vault_key as string), fx.attackerPrivateKey)).toBeNull();
+
+        }
+
+    });
+
+    it('concurrent retries grant only the exact reviewed key', async () => {
+
+        fx = await setupEnrollFixture();
+        await plantRow(fx, fx.botPublicKey);
+        const fixture = fx;
+        const children = [0, 1].map(() => spawn('node', [
+            CLI, 'ci', 'identity', 'enroll', '--config', CONFIG_NAME,
+            '--name', BOT_NAME, '--email', BOT_EMAIL,
+            '--public-key', fixture.botPublicKey, '--yes', '--json',
+        ], { cwd: fixture.dir, env: { ...process.env, ...fixture.env }, stdio: 'ignore' }));
+        const results = await Promise.all(children.map(async (child) => (await once(child, 'close'))[0]));
+        expect(results).toEqual([0, 0]);
+        const row = await readRow(fixture, fixture.botIdentityHash);
+        expect(row?.public_key).toBe(fixture.botPublicKey);
+        const encrypted = JSON.parse(row!.encrypted_vault_key as string) as EncryptedVaultKey;
+        expect(decryptVaultKey(encrypted, fixture.botPrivateKey)).not.toBeNull();
+        expect(decryptVaultKey(encrypted, fixture.attackerPrivateKey)).toBeNull();
+
     });
 
 });
@@ -326,6 +425,35 @@ describe('cli: ci identity enroll — vault:propagate authorization', () => {
         expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
 
     });
+    it('denies enrollment before reading the vault when vault:read is denied', async () => {
+
+        fx = await setupEnrollFixture({ user: 'enroller', agent: 'viewer' });
+        await writeFile(join(fx.dir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    enroller:\n      extends: admin\n      permissions:\n        vault:read: deny\n');
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout + result.stderr).toContain('vault:read');
+        expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
+
+    });
+
+    it('requires human confirmation before reading the vault', async () => {
+
+        fx = await setupEnrollFixture({ user: 'enroller', agent: 'enroller' });
+        await writeFile(join(fx.dir, '.noorm', 'settings.yml'),
+            'access:\n  roles:\n    enroller:\n      extends: admin\n      permissions:\n        vault:read: confirm\n        vault:propagate: allow\n');
+        const unconfirmed = runEnroll(fx, ['--public-key', fx.botPublicKey]);
+        expect(unconfirmed.status).not.toBe(0);
+        expect(unconfirmed.stdout + unconfirmed.stderr).toContain('Reading the vault requires confirmation');
+        expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
+        fx.env['NOORM_CHANNEL'] = 'agent';
+        expect(runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']).status).not.toBe(0);
+        expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
+        delete fx.env['NOORM_CHANNEL'];
+        expect(runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']).status).toBe(0);
+
+    });
+
 
     it('requires confirmation before granting, even as admin', async () => {
 
@@ -335,6 +463,16 @@ describe('cli: ci identity enroll — vault:propagate authorization', () => {
 
         expect(result.status).not.toBe(0);
         expect(`${result.stdout}${result.stderr}`).toMatch(/--yes/);
+
+    });
+
+    it('does not let an agent use --yes to approve a grant', async () => {
+
+        fx = await setupEnrollFixture({ user: 'admin', agent: 'admin' });
+        fx.env['NOORM_CHANNEL'] = 'agent';
+        const result = runEnroll(fx, ['--public-key', fx.botPublicKey, '--yes']);
+        expect(result.status).not.toBe(0);
+        expect(await readRow(fx, fx.botIdentityHash)).toBeNull();
 
     });
 

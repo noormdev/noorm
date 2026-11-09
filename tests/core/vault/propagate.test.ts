@@ -12,8 +12,8 @@ import { Kysely, SqliteDialect, sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
 
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
-import { initializeVault, getVaultStatus, setVaultSecret } from '../../../src/core/vault/storage.js';
-import { propagateVaultKey, getUsersWithoutVaultAccess } from '../../../src/core/vault/propagate.js';
+import { initializeVault, getVaultStatus, getVaultKey, setVaultSecret } from '../../../src/core/vault/storage.js';
+import { propagateVaultKey, propagateVaultKeyTo, getUsersWithoutVaultAccess } from '../../../src/core/vault/propagate.js';
 import { observer } from '../../../src/core/observer.js';
 import {
     NOORM_TABLES,
@@ -155,6 +155,73 @@ describe('vault: propagation', () => {
             .executeTakeFirst();
 
         expect(rogue?.encrypted_vault_key).toBeNull();
+
+    });
+
+    it('grants only the reviewed key material and reports changed recipients', async () => {
+
+        const bob = await seedIdentity(db, 'bob@example.com', 'Bob');
+        const carol = await seedIdentity(db, 'carol@example.com', 'Carol');
+        const [reviewed, reviewErr] = await getUsersWithoutVaultAccess(db, 'sqlite');
+        expect(reviewErr).toBeNull();
+        const mallory = await seedIdentity(db, 'mallory@example.com', 'Mallory');
+        const replacement = generateKeyPair();
+        await db.updateTable(NOORM_TABLES.identities)
+            .set({ public_key: replacement.publicKey })
+            .where('identity_hash', '=', carol.identityHash)
+            .execute();
+
+        const result = await propagateVaultKey(db, vaultKey, 'sqlite', { reviewedRecipients: reviewed! });
+
+        expect(result.propagatedTo).toEqual([bob.identityHash]);
+        expect(result.failed.map((failure) => failure.identityHash)).toEqual([carol.identityHash]);
+        expect(result.alreadyHadAccess).toBe(1);
+        expect(await getVaultKey(db, bob.identityHash, bob.privateKey, 'sqlite')).toEqual(vaultKey);
+        const rows = await db.selectFrom(NOORM_TABLES.identities)
+            .select(['identity_hash', 'encrypted_vault_key'])
+            .where('identity_hash', 'in', [carol.identityHash, mallory.identityHash])
+            .execute();
+        expect(rows.every((row) => row.encrypted_vault_key === null)).toBe(true);
+
+    });
+
+    it('does not grant a replacement key on concurrent reviewed retries', async () => {
+
+        const bob = await seedIdentity(db, 'bob@example.com', 'Bob');
+        const replacement = generateKeyPair();
+        const reviewedRecipients = [{
+            identityHash: bob.identityHash, publicKey: bob.publicKey,
+            name: 'Bob', email: 'bob@example.com',
+        }];
+        await db.updateTable(NOORM_TABLES.identities)
+            .set({ public_key: replacement.publicKey })
+            .where('identity_hash', '=', bob.identityHash)
+            .execute();
+
+        const results = await Promise.all([
+            propagateVaultKey(db, vaultKey, 'sqlite', { reviewedRecipients }),
+            propagateVaultKey(db, vaultKey, 'sqlite', { reviewedRecipients }),
+        ]);
+        expect(results.every((result) => result.propagatedTo.length === 0 && result.failed.length === 1)).toBe(true);
+        expect(await getVaultKey(db, bob.identityHash, replacement.privateKey, 'sqlite')).toBeNull();
+        const row = await db.selectFrom(NOORM_TABLES.identities)
+            .select('encrypted_vault_key')
+            .where('identity_hash', '=', bob.identityHash)
+            .executeTakeFirst();
+        expect(row?.encrypted_vault_key).toBeNull();
+
+    });
+
+    it('preserves already-had-access success for single-recipient concurrent grants', async () => {
+
+        const bob = await seedIdentity(db, 'bob@example.com', 'Bob');
+        const results = await Promise.all([
+            propagateVaultKeyTo(db, vaultKey, bob.identityHash, 'sqlite'),
+            propagateVaultKeyTo(db, vaultKey, bob.identityHash, 'sqlite'),
+        ]);
+        expect(results).toEqual([true, true]);
+        expect(await propagateVaultKeyTo(db, vaultKey, bob.identityHash, 'sqlite')).toBe(true);
+        expect(await getVaultKey(db, bob.identityHash, bob.privateKey, 'sqlite')).toEqual(vaultKey);
 
     });
 

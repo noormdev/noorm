@@ -121,6 +121,9 @@ export type Route =
     // Settings
     | 'settings'
     | 'settings/build'
+    | 'settings/access'
+    | 'settings/access/add'
+    | 'settings/access/edit'
     | 'settings/init'
     | 'settings/logging'
     | 'settings/paths'

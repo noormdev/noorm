@@ -8,9 +8,9 @@ import { attempt } from '@logosdx/utils';
 import type { Kysely, QueryResult } from 'kysely';
 
 import { observer } from '../observer.js';
-import { assertPolicy, classifyStatements } from '../policy/index.js';
+import { checkConfigPolicy, sqlPermissionsFor } from '../policy/index.js';
 import { OperationAbortedError, raceAbort } from '../shared/abort.js';
-import type { Channel, ConfigAccess, Permission, SqlClass } from '../policy/index.js';
+import type { Channel, ConfigAccess } from '../policy/index.js';
 import { SERVER_CANCEL, SESSION_ID_SQL, hasServerSideCancel, readSessionId } from '../connection/session.js';
 import type { ServerCancel } from '../connection/session.js';
 import type { Dialect } from '../connection/types.js';
@@ -18,12 +18,6 @@ import type { SqlExecutionResult } from './types.js';
 
 export { hasServerSideCancel };
 
-/** Maps a classified statement to the permission it's gated by. */
-const CLASS_PERMISSION: Record<SqlClass, Permission> = {
-    read: 'sql:read',
-    write: 'sql:write',
-    ddl: 'sql:ddl',
-};
 
 /** Message for an abort that reached the server. */
 const SERVER_CANCEL_MESSAGE = 'Cancelled. The server was asked to stop the query.';
@@ -325,9 +319,27 @@ export async function executeRawSql(
     signal?: AbortSignal,
 ): Promise<SqlExecutionResult> {
 
-    const statementClass = classifyStatements(query, gate.dialect);
+    const target = { name: configName, access: gate.access };
+    const permissions = sqlPermissionsFor(query, gate.dialect);
+    const checks = permissions.map((permission) => ({ permission, check: checkConfigPolicy(gate.channel, target, permission) }));
+    for (const { permission, check } of checks) {
 
-    assertPolicy(gate.channel, { name: configName, access: gate.access }, CLASS_PERMISSION[statementClass]);
+        if (!check.allowed) {
+
+            throw new Error(check.blockedReason ?? `"${permission}" is not allowed on config "${configName}".`);
+
+        }
+
+    }
+    for (const { permission, check } of checks) {
+
+        if (check.requiresConfirmation) {
+
+            throw new Error(`"${permission}" on config "${configName}" requires confirmation (${check.confirmationPhrase}).`);
+
+        }
+
+    }
 
     return executeRawSqlUnchecked(db, query, configName, { signal, dialect: gate.dialect });
 

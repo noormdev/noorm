@@ -3,8 +3,7 @@
  *
  * Destructive operation that drops the database associated with the
  * active (or specified) configuration. Gated by the config's `db:destroy`
- * access: viewer/operator are denied outright; admin requires --yes to
- * satisfy the matrix's confirmation requirement.
+ * access; a config with a trusted `isTest: true` is exempt.
  */
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';

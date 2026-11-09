@@ -6,7 +6,7 @@
 import type { Config } from '../../core/config/types.js';
 import type { TransferOptions, TransferResult, TransferPlan } from '../../core/transfer/types.js';
 import { transferData, getTransferPlan } from '../../core/transfer/index.js';
-import { checkProtectedConfig } from '../guards.js';
+import { bindSdkDestination, checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
 
@@ -21,6 +21,12 @@ export class TransferNamespace {
     constructor(state: ContextState) {
 
         this.#state = state;
+
+    }
+
+    #destination(config: Config): Config {
+
+        return bindSdkDestination(config, this.#state);
 
     }
 
@@ -39,6 +45,8 @@ export class TransferNamespace {
         destConfig: Config,
         options?: TransferOptions,
     ): Promise<TransferResult> {
+
+        destConfig = this.#destination(destConfig);
 
         // Gated against destConfig (the write target), not the source — the
         // SDK has no interactive prompt, so a `db:reset` confirm cell blocks
@@ -72,6 +80,8 @@ export class TransferNamespace {
         destConfig: Config,
         options?: TransferOptions,
     ): Promise<TransferPlan> {
+
+        destConfig = this.#destination(destConfig);
 
         // Same channel injection as to(): getTransferPlan gates on
         // options.channel ?? 'user', so without this an agent-channel context

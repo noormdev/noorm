@@ -14,11 +14,15 @@ import { attempt } from '@logosdx/utils';
 
 import { createDb, destroyDb } from '../../../src/core/db/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import type { ConfigAccess } from '../../../src/core/policy/index.js';
 
 const VIEWER: ConfigAccess = { user: 'viewer', agent: 'viewer' };
 const OPERATOR: ConfigAccess = { user: 'operator', agent: 'operator' };
 const ADMIN: ConfigAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(VIEWER, {});
+attachPolicyContext(OPERATOR, {});
+attachPolicyContext(ADMIN, {});
 
 describe('db: lifecycle operations', () => {
 

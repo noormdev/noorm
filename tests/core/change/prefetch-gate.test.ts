@@ -1,5 +1,6 @@
 // A skipped change file must leave no execution row and cost no per-file
 // query (docs/spec/prefetch-run-gate.md).
+import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,6 +14,9 @@ import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
 import { resetLockManager } from '../../../src/core/lock/index.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { Change, ChangeContext, ChangeFile, FileExecutionRecord } from '../../../src/core/change/types.js';
+
+const adminAccess = { user: 'admin', agent: 'admin' };
+attachPolicyContext(adminAccess, {});
 
 describe('change: decideNeedsRunFile', () => {
 
@@ -86,7 +90,7 @@ describe('change: prefetch run gate', () => {
             projectRoot: tempDir,
             changesDir,
             sqlDir: join(tempDir, 'sql'),
-            access: { user: 'admin', agent: 'admin' },
+            access: adminAccess,
             channel: 'user',
             dialect: 'sqlite',
         };

@@ -12,6 +12,7 @@ import {
     fetchList,
     fetchDetail,
 } from '../../../src/core/explore/index.js';
+import { GATED_BY_CALLER } from '../../../src/core/explore/index.js';
 import type {
     TableSummary,
     ViewSummary,
@@ -71,7 +72,7 @@ describe('integration: mysql explore', () => {
 
         it('should return correct counts for all object types', async () => {
 
-            const overview = await fetchOverview(db, 'mysql');
+            const overview = await fetchOverview(db, 'mysql', { gate: GATED_BY_CALLER });
 
             expect(overview.tables).toBe(3);
             expect(overview.views).toBe(3);
@@ -83,7 +84,7 @@ describe('integration: mysql explore', () => {
 
         it('should exclude noorm tables by default', async () => {
 
-            const overview = await fetchOverview(db, 'mysql');
+            const overview = await fetchOverview(db, 'mysql', { gate: GATED_BY_CALLER });
 
             // Should only count user tables, not __noorm_* tables
             expect(overview.tables).toBe(3);
@@ -92,7 +93,7 @@ describe('integration: mysql explore', () => {
 
         it('should include noorm tables when option is set', async () => {
 
-            const overview = await fetchOverview(db, 'mysql', {
+            const overview = await fetchOverview(db, 'mysql', { gate: GATED_BY_CALLER,
                 includeNoormTables: true,
             });
 
@@ -109,7 +110,7 @@ describe('integration: mysql explore', () => {
 
             it('should return all 3 tables', async () => {
 
-                const tables = await fetchList(db, 'mysql', 'tables');
+                const tables = await fetchList(db, 'mysql', 'tables', { gate: GATED_BY_CALLER });
 
                 expect(tables).toHaveLength(3);
 
@@ -120,7 +121,7 @@ describe('integration: mysql explore', () => {
 
             it('should include column count for each table', async () => {
 
-                const tables = await fetchList(db, 'mysql', 'tables');
+                const tables = await fetchList(db, 'mysql', 'tables', { gate: GATED_BY_CALLER });
 
                 const usersTable = tables.find((t: TableSummary) => t.name === 'users');
                 expect(usersTable).toBeDefined();
@@ -138,7 +139,7 @@ describe('integration: mysql explore', () => {
 
             it('should exclude noorm tables by default', async () => {
 
-                const tables = await fetchList(db, 'mysql', 'tables');
+                const tables = await fetchList(db, 'mysql', 'tables', { gate: GATED_BY_CALLER });
 
                 const noormTables = tables.filter((t: TableSummary) =>
                     t.name.startsWith('__noorm_'),
@@ -153,7 +154,7 @@ describe('integration: mysql explore', () => {
 
             it('should return all 3 views', async () => {
 
-                const views = await fetchList(db, 'mysql', 'views');
+                const views = await fetchList(db, 'mysql', 'views', { gate: GATED_BY_CALLER });
 
                 expect(views).toHaveLength(3);
 
@@ -168,7 +169,7 @@ describe('integration: mysql explore', () => {
 
             it('should include column count for each view', async () => {
 
-                const views = await fetchList(db, 'mysql', 'views');
+                const views = await fetchList(db, 'mysql', 'views', { gate: GATED_BY_CALLER });
 
                 for (const view of views) {
 
@@ -184,7 +185,7 @@ describe('integration: mysql explore', () => {
 
             it('should return all 16 procedures', async () => {
 
-                const procedures = await fetchList(db, 'mysql', 'procedures');
+                const procedures = await fetchList(db, 'mysql', 'procedures', { gate: GATED_BY_CALLER });
 
                 // MySQL test schema has 16 procedures (not functions)
                 expect(procedures.length).toBe(16);
@@ -193,7 +194,7 @@ describe('integration: mysql explore', () => {
 
             it('should include procedure names from fixture', async () => {
 
-                const procedures = await fetchList(db, 'mysql', 'procedures');
+                const procedures = await fetchList(db, 'mysql', 'procedures', { gate: GATED_BY_CALLER });
 
                 const procNames = procedures.map((p: ProcedureSummary) => p.name);
 
@@ -210,7 +211,7 @@ describe('integration: mysql explore', () => {
 
             it('should include parameter count for procedures', async () => {
 
-                const procedures = await fetchList(db, 'mysql', 'procedures');
+                const procedures = await fetchList(db, 'mysql', 'procedures', { gate: GATED_BY_CALLER });
 
                 const createUser = procedures.find(
                     (p: ProcedureSummary) => p.name === 'create_user',
@@ -232,7 +233,7 @@ describe('integration: mysql explore', () => {
 
             it('should return 0 functions (MySQL uses procedures)', async () => {
 
-                const functions = await fetchList(db, 'mysql', 'functions');
+                const functions = await fetchList(db, 'mysql', 'functions', { gate: GATED_BY_CALLER });
 
                 expect(functions).toHaveLength(0);
 
@@ -244,7 +245,7 @@ describe('integration: mysql explore', () => {
 
             it('should return indexes for all tables', async () => {
 
-                const indexes = await fetchList(db, 'mysql', 'indexes');
+                const indexes = await fetchList(db, 'mysql', 'indexes', { gate: GATED_BY_CALLER });
 
                 // Should have multiple indexes (primary keys + named indexes)
                 expect(indexes.length).toBeGreaterThan(0);
@@ -253,7 +254,7 @@ describe('integration: mysql explore', () => {
 
             it('should identify primary key indexes', async () => {
 
-                const indexes = await fetchList(db, 'mysql', 'indexes');
+                const indexes = await fetchList(db, 'mysql', 'indexes', { gate: GATED_BY_CALLER });
 
                 const primaryIndexes = indexes.filter((i) => i.isPrimary);
                 expect(primaryIndexes.length).toBeGreaterThanOrEqual(3);
@@ -266,7 +267,7 @@ describe('integration: mysql explore', () => {
 
             it('should return foreign key relationships', async () => {
 
-                const foreignKeys = await fetchList(db, 'mysql', 'foreignKeys');
+                const foreignKeys = await fetchList(db, 'mysql', 'foreignKeys', { gate: GATED_BY_CALLER });
 
                 // todo_lists -> users, todo_items -> todo_lists
                 expect(foreignKeys.length).toBeGreaterThanOrEqual(2);
@@ -275,7 +276,7 @@ describe('integration: mysql explore', () => {
 
             it('should identify correct table references', async () => {
 
-                const foreignKeys = await fetchList(db, 'mysql', 'foreignKeys');
+                const foreignKeys = await fetchList(db, 'mysql', 'foreignKeys', { gate: GATED_BY_CALLER });
 
                 const todoListsFk = foreignKeys.find((fk) =>
                     fk.tableName === 'todo_lists' && fk.referencedTable === 'users',
@@ -299,7 +300,7 @@ describe('integration: mysql explore', () => {
 
             it('should return full detail for users table', async () => {
 
-                const detail = await fetchDetail(db, 'mysql', 'tables', 'users');
+                const detail = await fetchDetail(db, 'mysql', 'tables', 'users', { gate: GATED_BY_CALLER });
 
                 expect(detail).not.toBeNull();
                 expect(detail!.name).toBe('users');
@@ -309,8 +310,7 @@ describe('integration: mysql explore', () => {
             it('should include columns with correct types', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'tables', 'users',
-                ) as TableDetail;
+                    db, 'mysql', 'tables', 'users', { gate: GATED_BY_CALLER }) as TableDetail;
 
                 expect(detail.columns).toBeDefined();
                 expect(detail.columns.length).toBeGreaterThanOrEqual(8);
@@ -328,8 +328,7 @@ describe('integration: mysql explore', () => {
             it('should include indexes for table', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'tables', 'users',
-                ) as TableDetail;
+                    db, 'mysql', 'tables', 'users', { gate: GATED_BY_CALLER }) as TableDetail;
 
                 expect(detail.indexes).toBeDefined();
                 expect(detail.indexes.length).toBeGreaterThan(0);
@@ -343,8 +342,7 @@ describe('integration: mysql explore', () => {
             it('should include foreign keys for table', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'tables', 'todo_lists',
-                ) as TableDetail;
+                    db, 'mysql', 'tables', 'todo_lists', { gate: GATED_BY_CALLER }) as TableDetail;
 
                 expect(detail.foreignKeys).toBeDefined();
                 expect(detail.foreignKeys.length).toBeGreaterThanOrEqual(1);
@@ -359,8 +357,7 @@ describe('integration: mysql explore', () => {
             it('should return null for non-existent table', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'tables', 'nonexistent_table',
-                );
+                    db, 'mysql', 'tables', 'nonexistent_table', { gate: GATED_BY_CALLER });
 
                 expect(detail).toBeNull();
 
@@ -373,8 +370,7 @@ describe('integration: mysql explore', () => {
             it('should return full detail for view', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'views', 'v_active_users',
-                ) as ViewDetail;
+                    db, 'mysql', 'views', 'v_active_users', { gate: GATED_BY_CALLER }) as ViewDetail;
 
                 expect(detail).not.toBeNull();
                 expect(detail.name).toBe('v_active_users');
@@ -386,8 +382,7 @@ describe('integration: mysql explore', () => {
             it('should include view definition when available', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'views', 'v_active_users',
-                ) as ViewDetail;
+                    db, 'mysql', 'views', 'v_active_users', { gate: GATED_BY_CALLER }) as ViewDetail;
 
                 // MySQL should provide view definition
                 if (detail.definition) {
@@ -401,8 +396,7 @@ describe('integration: mysql explore', () => {
             it('should return null for non-existent view', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'views', 'nonexistent_view',
-                );
+                    db, 'mysql', 'views', 'nonexistent_view', { gate: GATED_BY_CALLER });
 
                 expect(detail).toBeNull();
 
@@ -415,8 +409,7 @@ describe('integration: mysql explore', () => {
             it('should return full detail for procedure', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'procedures', 'create_user',
-                ) as ProcedureDetail;
+                    db, 'mysql', 'procedures', 'create_user', { gate: GATED_BY_CALLER }) as ProcedureDetail;
 
                 expect(detail).not.toBeNull();
                 expect(detail.name).toBe('create_user');
@@ -426,8 +419,7 @@ describe('integration: mysql explore', () => {
             it('should include parameters with correct details', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'procedures', 'create_user',
-                ) as ProcedureDetail;
+                    db, 'mysql', 'procedures', 'create_user', { gate: GATED_BY_CALLER }) as ProcedureDetail;
 
                 expect(detail.parameters).toBeDefined();
                 expect(detail.parameters.length).toBe(5);
@@ -442,8 +434,7 @@ describe('integration: mysql explore', () => {
             it('should include procedure definition when available', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'procedures', 'create_user',
-                ) as ProcedureDetail;
+                    db, 'mysql', 'procedures', 'create_user', { gate: GATED_BY_CALLER }) as ProcedureDetail;
 
                 // MySQL should provide procedure definition
                 if (detail.definition) {
@@ -457,8 +448,7 @@ describe('integration: mysql explore', () => {
             it('should return null for non-existent procedure', async () => {
 
                 const detail = await fetchDetail(
-                    db, 'mysql', 'procedures', 'nonexistent_proc',
-                );
+                    db, 'mysql', 'procedures', 'nonexistent_proc', { gate: GATED_BY_CALLER });
 
                 expect(detail).toBeNull();
 
