@@ -8,6 +8,9 @@
  * to avoid polluting the module cache for other test files.
  */
 import { describe, it, expect, vi } from 'bun:test';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
     Kysely,
@@ -21,6 +24,7 @@ import { DbNamespace } from '../../src/sdk/namespaces/db.js';
 import { attachPolicyContext } from '../../src/core/policy/index.js';
 
 import type { ContextState } from '../../src/sdk/state.js';
+import type { BatchResult } from '../../src/core/runner/index.js';
 import { getStateManager } from '../../src/core/state/index.js';
 import type { Config } from '../../src/core/config/types.js';
 import type { Settings } from '../../src/core/settings/types.js';
@@ -289,12 +293,18 @@ describe('sdk: DbNamespace', () => {
                 {},
                 [tableRow('users')],
             );
-            const buildFnStub = vi.fn().mockResolvedValue(undefined);
+            const built: BatchResult = { status: 'success', files: [], filesRun: 0, filesSkipped: 0, filesFailed: 0, durationMs: 0 };
+            const buildFnStub = vi.fn().mockResolvedValue(built);
             const db = new DbNamespace(state, buildFnStub);
+            // reset() refuses before teardown when it cannot read the schema directory.
+            state.projectRoot = await mkdtemp(join(tmpdir(), 'noorm-db-namespace-'));
+            await mkdir(join(state.projectRoot, 'db', 'sql'), { recursive: true });
 
-            await db.reset();
+            const result = await db.reset();
+            await rm(state.projectRoot, { recursive: true });
 
             expect(buildFnStub).toHaveBeenCalledWith({ force: true });
+            expect(result).toBe(built);
 
         });
 

@@ -6,7 +6,6 @@
  * - `db/AGENTS.md` and `db/CLAUDE.md` agent steering, when absent
  * - `.noorm/`, `.noorm/state/`, `.noorm/.gitignore`
  * - `settings.yml` via SettingsManager
- * - `state.enc` via StateManager
  * - Appends `# noorm` block to project `.gitignore` if missing
  *
  * Identity is created/updated only when `identityInfo` is supplied.
@@ -22,14 +21,7 @@ import {
 } from 'node:fs';
 import { join, posix } from 'node:path';
 
-import { attempt } from '@logosdx/utils';
-
-import {
-    createCryptoIdentity,
-    createIdentityForExistingKeys,
-    hasKeyFiles,
-    loadIdentityMetadata,
-} from './identity/index.js';
+import { ensureIdentity } from './identity/index.js';
 import { SettingsManager } from './settings/manager.js';
 import {
     DEFAULT_CHANGES_PATH,
@@ -104,8 +96,13 @@ export function scaffoldDbLayout(projectRoot: string, paths: PathConfig): string
 
         const relativeDir = posix.normalize(dir);
 
+        const keep = join(projectRoot, relativeDir, '.gitkeep');
+
         mkdirSync(join(projectRoot, relativeDir), { recursive: true });
-        writeFileSync(join(projectRoot, relativeDir, '.gitkeep'), '', { flag: 'a' });
+
+        if (existsSync(keep)) continue;
+
+        writeFileSync(keep, '');
         created.push(`${relativeDir}/.gitkeep`);
 
     }
@@ -152,37 +149,19 @@ export async function performProjectInit(
 
     }
 
-    const keysExist = await hasKeyFiles();
-    const existingMetadata = await loadIdentityMetadata();
-
     let privateKey: string | undefined;
     let createdIdentity = false;
 
     if (identityInfo) {
 
-        if (!keysExist) {
+        const ensured = await ensureIdentity(identityInfo);
 
-            const [result, err] = await attempt(() =>
-                createCryptoIdentity({
-                    name: identityInfo.name,
-                    email: identityInfo.email,
-                    machine: identityInfo.machine,
-                }),
-            );
-            if (err) throw err;
-            privateKey = result!.keypair.privateKey;
-            createdIdentity = true;
+        privateKey = ensured.privateKey;
+        createdIdentity = ensured.createdKeys || ensured.createdMetadata;
+
+        if (ensured.createdKeys) {
+
             created.push('~/.noorm/identity.key', '~/.noorm/identity.pub');
-
-        }
-        else if (!existingMetadata) {
-
-            await createIdentityForExistingKeys({
-                name: identityInfo.name,
-                email: identityInfo.email,
-                machine: identityInfo.machine,
-            });
-            createdIdentity = true;
 
         }
 
@@ -197,7 +176,6 @@ export async function performProjectInit(
 
     const stateManager = new StateManager(projectRoot, { privateKey });
     await stateManager.load();
-    created.push('.noorm/state/state.enc');
 
     const singleton = getStateManager(projectRoot);
     await singleton.reloadPrivateKey();

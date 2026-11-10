@@ -205,6 +205,23 @@ Adding a config is interactive only. `noorm config add` points here, and `noorm 
 
 ![The add-config form](/image/tui/config-add.png)
 
+| Key | Action on the add and edit forms |
+|-----|--------|
+| `Enter` on the submit button | Test the server connection, then save |
+| `Ctrl+S` | Save without testing the connection |
+
+`Ctrl+S` works while the cursor moves between fields. While a field is in edit mode it does nothing and types nothing; press `Enter` or `Tab` to leave edit mode first. It runs the same field validation as the submit button. The hint row shows it as `ctrl+s save without verifying`. A failed test prints its error under the hint row, then `Press Ctrl+S to save without verifying.` on a row of its own, which is hidden while a field is in edit mode. Use it for a database that is unreachable now, such as one behind a tunnel that is down.
+
+Saving a config needs an identity, because the private key encrypts `.noorm/state/state.enc`. When none exists, Add (`a`) and Import (`i` under More) show identity setup first:
+
+```
+Saving a config needs an identity. Set it up once to continue.
+```
+
+Name and email are filled in from `git config user.name` and `git config user.email`; the name falls back to the OS username. Machine is filled in from the hostname. Submitting creates the identity and continues to the form you opened. `Esc` goes back and creates nothing.
+
+Setup never replaces an existing `~/.noorm/identity.key`. With a key and no `identity.pub`, it derives the public key from the private one; with a key and `identity.json` already there, it asks nothing. When the key file exists but cannot be loaded, the screen shows the reason instead of the form, for example `Insecure permissions on private key file (...). Fix with: chmod 600 ...`.
+
 `User Role` covers a human on the CLI, TUI, or SDK. `Agent Role` covers an AI agent over MCP and the CLI. They are independent. [Configs](/guide/environments/configs#access-roles) lists what each role permits.
 
 
@@ -423,7 +440,7 @@ Eight groups: Build, Paths, Stages, Rules, Strict, Logging, Secrets, and Access 
 
 ![The identity screen](/image/tui/identity.png)
 
-`e` edit, `x` export your public key, `r` regenerate, `u` known users. The identity lives in `~/.noorm/` and names who ran each change in the [history](/guide/changes/history). The CLI equivalent is [`noorm identity`](/cli/identity).
+`e` edit, `x` export your public key, `r` regenerate, `u` known users. Regenerating makes existing state on the machine unreadable, so it first copies the identity files to `<file>.bak-<timestamp>` in `~/.noorm/` and shows the paths; see the [warning on `identity init`](/cli/identity). The identity lives in `~/.noorm/` and names who ran each change in the [history](/guide/changes/history). The CLI equivalent is [`noorm identity`](/cli/identity).
 
 
 ### Vault
@@ -449,6 +466,8 @@ The vault holds team-shared encrypted secrets in the database. It starts uniniti
 
 noorm locks the database around writes, so two people building one environment do not interleave. On the lock menu, `s` or `1` shows status, `a` or `2` acquires, `r` or `3` releases, and `f` or `4` force-breaks a stale lock. The status screen also has `x` to extend. See [Locking](/dev/lock).
 
+Acquire and release need the `lock:acquire` permission, and force needs `lock:force`. A role the permission denies sees the policy refusal, and the screen opens no connection. Where the role's cell is `confirm`, the screen asks you to type `yes-<config>` before it acts.
+
 
 ### Update
 
@@ -456,6 +475,23 @@ noorm locks the database around writes, so two people building one environment d
 `u` from Home checks GitHub releases for a newer noorm. `i` installs it, `r` checks again, and `Esc` goes back.
 
 A binary install reports its download as `42.0 / 73.0 MB (57%)` with a progress bar. Without a `Content-Length` it shows `9.0 MB received` and no bar. A stalled download resumes from the bytes on disk and shows `download stalled — no data for 30s — resuming (attempt N/5)...`. An npm install runs the package manager and shows none of this.
+
+
+## What does a role that cannot write see?
+
+
+Opening a screen as a role that can write creates noorm's tracking tables, or migrates older ones. A role denied every command that records to them, such as `viewer`, creates and migrates nothing. Activating a config follows the same rule, and registers no identity in the database for such a role. Its screens show:
+
+| Screen | On a database with no tracking tables |
+|---|---|
+| Home | Connected, every change on disk counted as pending, lock free, no recent activity |
+| Changes, change history | Every change pending, no history |
+| Lock status, lock list | Unlocked |
+| Lock acquire, release, force | The policy refusal. No connection is opened |
+| Pipeline history, run lookup | No runs |
+| Vault | The policy refusal, on the list, add and delete screens. No connection is opened |
+
+When the tables need a migration, such a role sees the error the CLI prints: `tracking tables are at schema version <n> and this version needs <m>. The role on config "<name>" cannot migrate them: a role that can write must run a command once first.`
 
 
 ## Next

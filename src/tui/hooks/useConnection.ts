@@ -5,7 +5,7 @@
  * Connection is created on first use, reused across screens, and
  * destroyed on config change or unmount.
  *
- * For screens that need schema version tables (vault, lock), use
+ * For screens that touch the tracking tables (vault, lock), use
  * `ensureSchema: true`. For screens that need post-connect setup,
  * use the `onReady` callback.
  *
@@ -14,7 +14,7 @@
  * // Simple read-only screen
  * const { db, dialect, loading, error } = useConnection();
  *
- * // Vault/lock screen needing schema
+ * // Vault/lock screen reading or writing the tracking tables
  * const { db, loading, error } = useConnection({ ensureSchema: true });
  *
  * // Screen needing post-connect setup
@@ -34,7 +34,8 @@ import type { Dialect } from '../../core/connection/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
 
 import { useConnectionContext } from '../providers/ConnectionProvider.js';
-import { ensureSchemaVersion } from '../../core/version/index.js';
+import { useAppContext } from '../app-context.js';
+import { prepareTrackingSchema } from '../../core/version/index.js';
 
 
 /**
@@ -65,8 +66,9 @@ export interface UseConnectionOptions {
 
 
     /**
-     * Run ensureSchemaVersion after connecting.
-     * Required for screens that access vault/lock tables.
+     * Prepare the tracking tables after connecting: created or migrated for a
+     * role that can write, version-checked only for one that cannot. Screens
+     * that read them must treat missing tables as empty.
      */
     ensureSchema?: boolean;
 
@@ -89,6 +91,7 @@ export interface UseConnectionOptions {
 export function useConnection(options?: UseConnectionOptions): ConnectionState {
 
     const { requestConnection, state: providerState } = useConnectionContext();
+    const { activeConfig } = useAppContext();
 
     const [localState, setLocalState] = useState<{
         schemaEnsured: boolean;
@@ -135,7 +138,7 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
             return;
 
         }
-        if (!providerState.db || !providerState.dialect) return;
+        if (!providerState.db || !providerState.dialect || !activeConfig) return;
         if (localState.readyDone || localState.readyLoading) return;
 
         const needsSchema = options?.ensureSchema && !localState.schemaEnsured;
@@ -152,11 +155,10 @@ export function useConnection(options?: UseConnectionOptions): ConnectionState {
             const db = providerState.db!;
             const dialect = providerState.dialect!;
 
-            // Ensure schema if requested
             if (options?.ensureSchema && !localState.schemaEnsured) {
 
                 const [, schemaErr] = await attempt(() =>
-                    ensureSchemaVersion(db, dialect),
+                    prepareTrackingSchema(db, dialect, { channel: 'user', config: activeConfig }),
                 );
 
                 if (cancelled) return;

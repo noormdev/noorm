@@ -186,7 +186,7 @@ export async function connect(options: CreateContextOptions = {}) {
 }
 ```
 
-`reset()` tears the schema down and rebuilds it from `db/sql/`. `truncate()` empties every table and keeps the schema.
+`reset()` tears the schema down and rebuilds it from `db/sql/`. It works on a database noorm has never touched, and it throws when the rebuild fails. `truncate()` empties every table and keeps the schema.
 
 
 ## Test against a real database

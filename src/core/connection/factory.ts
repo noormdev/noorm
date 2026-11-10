@@ -15,6 +15,7 @@ import { OperationAbortedError, raceAbort, throwIfAborted } from '../shared/abor
 import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
 import { DatabaseConnectionError, explainConnectionError } from './errors.js';
+import { PasswordCallbackRejection } from './login.js';
 
 type DialectFactory = (
     config: ConnectionConfig,
@@ -144,6 +145,39 @@ export async function discardConnection(
 
 }
 
+/** What the password callback last threw. A flag, because the value itself may be `undefined`. */
+interface CallbackFailure {
+    threw: boolean;
+    value?: unknown;
+}
+
+/**
+ * Record what the password callback throws, so the caller gets it back
+ * untouched while a driver failure on the same path is still explained.
+ */
+function trackCallbackFailure(
+    runtime: RuntimeConnectionOptions | undefined,
+    failure: CallbackFailure,
+): RuntimeConnectionOptions | undefined {
+
+    const password = runtime?.password;
+
+    if (!password) return runtime;
+
+    return {
+        ...runtime,
+        password: () => Promise.resolve().then(password).then(undefined, (reason: unknown) => {
+
+            failure.threw = true;
+            failure.value = reason;
+
+            throw reason;
+
+        }),
+    };
+
+}
+
 /**
  * Open a connection, retrying transient failures.
  *
@@ -161,6 +195,8 @@ async function openConnection(
 
     const { retries = 3, delay = 1000, backoff = 2 } = retryOptions;
     const connectTimeout = connectTimeoutFor(config);
+    const callbackFailure: CallbackFailure = { threw: false };
+    const trackedRuntime = trackCallbackFailure(runtime, callbackFailure);
 
     const [conn, err] = await attempt(() =>
         retry(
@@ -185,7 +221,7 @@ async function openConnection(
 
                 }
 
-                const conn = await createFn!(config, runtime, configName);
+                const conn = await createFn!(config, trackedRuntime, configName);
 
                 // The driver can hand back a live pool after the caller gave
                 // up. Nothing else holds it at this point, so close it here.
@@ -243,8 +279,7 @@ async function openConnection(
                     // hold the pool open for another two rounds of backoff.
                     if (err instanceof OperationAbortedError) return false;
 
-                    // Callback errors are indistinguishable from driver errors
-                    // when the callback is passed directly to the driver.
+                    // A retry would ask the callback to issue another credential.
                     if (runtime?.password) return false;
 
                     const msg = err.message.toLowerCase();
@@ -274,9 +309,19 @@ async function openConnection(
 
     if (err) {
 
-        // Native callbacks cannot tag their errors; preserve their identity
-        // even when the issuer uses a database-like error code.
-        const explained = runtime?.password ? err : explainConnectionError(err, config);
+        const thrown: unknown = err instanceof PasswordCallbackRejection ? err.cause : err;
+
+        // The callback's error can carry the issuer's secrets, so it is
+        // neither reworded nor copied into the event.
+        if (callbackFailure.threw && thrown === callbackFailure.value) {
+
+            observer.emit('connection:error', { configName, error: 'Runtime credential connection failed' });
+
+            throw thrown;
+
+        }
+
+        const explained = explainConnectionError(err, config);
         const server = !runtime?.password && explained instanceof DatabaseConnectionError
             ? { serverCode: explained.serverCode, serverMessage: explained.serverMessage }
             : {};
@@ -307,6 +352,7 @@ async function openConnection(
         db: conn!.db,
         dialect: conn!.dialect,
         destroy: wrappedDestroy,
+        withConnection: conn!.withConnection,
     };
 
     // host/port/database remove the "which database was I actually talking
@@ -361,6 +407,12 @@ export async function createConnection(
     if (config.dialect === 'sqlite' && runtime?.password) {
 
         throw new Error('Dynamic passwords are not supported for SQLite');
+
+    }
+
+    if (config.dialect === 'sqlite' && runtime?.driver) {
+
+        throw new Error('Driver options are not supported for SQLite');
 
     }
 

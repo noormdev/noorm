@@ -74,6 +74,14 @@ describe('connection: factory', () => {
 
         });
 
+        it('should reject driver options on SQLite, which has no driver options to merge them into', async () => {
+
+            const opening = createConnection({ dialect: 'sqlite', database: ':memory:' }, '__test__', {}, undefined, { driver: { readonly: true } });
+
+            await expect(opening).rejects.toThrow('Driver options are not supported for SQLite');
+
+        });
+
         it('should throw for unsupported dialect', async () => {
 
             const config = {

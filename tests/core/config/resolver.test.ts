@@ -12,6 +12,7 @@ import {
 } from '../../../src/core/config/index.js';
 import { SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
 import type { Config } from '../../../src/core/config/index.js';
+import type { ConfigInput } from '../../../src/core/config/types.js';
 import { getConfigPermission, guarded, UnknownAccessRoleError } from '../../../src/core/policy/index.js';
 import type { SettingsManager, Stage } from '../../../src/core/settings/index.js';
 
@@ -1263,18 +1264,6 @@ describe('config: resolver', () => {
 
         });
 
-        it('should ignore env isTest when a stored config of that name is not isTest', () => {
-
-            dbEnv();
-            process.env['NOORM_NAME'] = 'prod';
-            process.env['NOORM_isTest'] = 'true';
-            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
-            const config = resolveConfig(state, { settings: createMockSettings() })!;
-
-            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
-
-        });
-
         it('should ignore env isTest when the stage declares isTest: false', () => {
 
             dbEnv();
@@ -1468,7 +1457,7 @@ describe('config: resolver', () => {
 
         });
 
-        it('should relax an env-only sqlite config whose same-named stored isTest config has the same target', () => {
+        it('should relax a named env-only sqlite config when the stored isTest config it displaces has the same target', () => {
 
             process.env['NOORM_NAME'] = 'test';
             process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
@@ -1479,7 +1468,8 @@ describe('config: resolver', () => {
                     test: createConfig({ name: 'test', isTest: true, connection: { dialect: 'sqlite', database: '/tmp/stored.db' } }),
                 },
             });
-            const config = resolveConfig(state, { settings: createMockSettings() })!;
+            const config = resolveConfig(state, { unstoredName: 'scratch', settings: createMockSettings() })!;
+
             expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
 
         });
@@ -1587,6 +1577,445 @@ describe('config: resolver', () => {
 
             const config = withConfigPolicy(createConfig({ isTest: true }), createMockSettings());
 
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+    });
+
+    // Secrets, vault lookups and tracking records are keyed by name, so an env-only context must not borrow a stored one.
+    describe('env-only name of a stored config', () => {
+
+        const inline = { connection: { dialect: 'sqlite' as const, database: ':memory:' } };
+        const prodStored = () => createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+
+        it('should refuse a NOORM_NAME that a stored config has', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:';
+
+            const [config, err] = attemptSync(() => resolveConfig(prodStored()));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain('a stored config is named "prod"');
+            expect(err?.message).toContain('NOORM_CONFIG=prod');
+
+        });
+
+        it('should refuse a flags name that a stored config has', () => {
+
+            const [config, err] = attemptSync(() => resolveConfig(prodStored(), { flags: { name: 'prod', ...inline } }));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain('a stored config is named "prod"');
+
+        });
+
+        it('should refuse a generated name that a stored config has', () => {
+
+            const state = createMockState({ configs: { __inline__: createConfig({ name: '__inline__' }) } });
+
+            const [, err] = attemptSync(() => resolveConfig(state, { flags: inline }));
+
+            expect(err?.message).toContain('a stored config is named "__inline__"');
+
+        });
+
+        it('should accept a NOORM_NAME no stored config has', () => {
+
+            process.env['NOORM_NAME'] = 'ci';
+
+            const config = resolveConfig(prodStored(), { flags: inline })!;
+
+            expect(config.name).toBe('ci');
+
+        });
+
+        it('should still select the stored config through NOORM_CONFIG', () => {
+
+            process.env['NOORM_CONFIG'] = 'prod';
+
+            const config = resolveConfig(prodStored())!;
+
+            expect(config.name).toBe('prod');
+            expect(config.connection.database).toBe(createConfig().connection.database);
+
+        });
+
+        // Flags outrank env in the merge, so the name that is checked must be the one the config ends up with.
+        it('should name the context from flags over NOORM_NAME', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+
+            const config = resolveConfig(prodStored(), { flags: { name: 'ci', ...inline } })!;
+
+            expect(config.name).toBe('ci');
+
+        });
+
+        it('should take stage defaults from the flags name, not from NOORM_NAME', () => {
+
+            process.env['NOORM_NAME'] = 'dev';
+            const settings = createMockSettings({
+                staging: { defaults: { host: 'staging-host' } } as Stage,
+                dev: { defaults: { host: 'dev-host' } } as Stage,
+            });
+
+            const config = resolveConfig(createMockState(), {
+                flags: { name: 'staging', connection: { dialect: 'postgres', database: 'app' } },
+                settings,
+            })!;
+
+            expect(config.name).toBe('staging');
+            expect(config.connection.host).toBe('staging-host');
+
+        });
+
+        it('should refuse a flags name of a stored config even when NOORM_NAME is free', () => {
+
+            process.env['NOORM_NAME'] = 'ci';
+
+            const [, err] = attemptSync(() => resolveConfig(prodStored(), { flags: { name: 'prod', ...inline } }));
+
+            expect(err?.message).toContain('a stored config is named "prod"');
+
+        });
+
+    });
+
+    // The SDK keys secrets, vault lookups and tracking records by the merged name, so an overlay must not land on another stored config's.
+    describe('renaming a selected stored config', () => {
+
+        const devAndProd = () => createMockState({
+            configs: { dev: createConfig({ name: 'dev' }), prod: createConfig({ name: 'prod' }) },
+        });
+        const refusal = 'cannot rename config "dev" to the name of stored config "prod"';
+
+        it('should refuse a NOORM_NAME that another stored config has', () => {
+
+            process.env['NOORM_CONFIG'] = 'dev';
+            process.env['NOORM_NAME'] = 'prod';
+
+            const [config, err] = attemptSync(() => resolveConfig(devAndProd()));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain(refusal);
+
+        });
+
+        it('should refuse a flags name that another stored config has', () => {
+
+            const [config, err] = attemptSync(() => resolveConfig(devAndProd(), { name: 'dev', flags: { name: 'prod' } }));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain(refusal);
+
+        });
+
+        it('should accept an overlay that repeats the selected name', () => {
+
+            process.env['NOORM_NAME'] = 'dev';
+
+            expect(resolveConfig(devAndProd(), { name: 'dev' })!.name).toBe('dev');
+
+        });
+
+        it('should keep the protected ceiling when renamed to a name no stored config has', () => {
+
+            process.env['NOORM_NAME'] = 'scratch';
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } });
+
+            const config = resolveConfig(state, { name: 'prod', settings })!;
+
+            expect(config.name).toBe('scratch');
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+    });
+
+    describe('unstoredName', () => {
+
+        const inline = { connection: { dialect: 'sqlite' as const, database: ':memory:' } };
+        const protectedProd = () => createMockSettings({
+            prod: { defaults: { protected: true } },
+            dev: { defaults: {} },
+        });
+
+        // NOORM_NAME is process-wide, so it cannot tell two contexts in one process apart.
+        it('should win over NOORM_NAME', () => {
+
+            process.env['NOORM_NAME'] = 'from-env';
+            const config = resolveConfig(createMockState(), { unstoredName: 'reporting', flags: inline })!;
+
+            expect(config.name).toBe('reporting');
+
+        });
+
+        it('should name an env-only config that has no inline connection', () => {
+
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:';
+            const config = resolveConfig(createMockState(), { unstoredName: 'reporting' })!;
+
+            expect(config.name).toBe('reporting');
+
+        });
+
+        // Renaming a stored config would change which stage and protected-stage ceiling apply to it.
+        it.each(['option', 'environment', 'active'] as const)('should refuse to rename a stored config selected by %s', (selector) => {
+
+            const state = createMockState({
+                configs: { dev: createConfig({ name: 'dev' }) },
+                activeConfig: selector === 'active' ? 'dev' : null,
+            });
+            if (selector === 'environment') process.env['NOORM_CONFIG'] = 'dev';
+
+            const [config, err] = attemptSync(() => resolveConfig(state, {
+                name: selector === 'option' ? 'dev' : undefined,
+                unstoredName: 'reporting',
+            }));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain('stored config "dev"');
+
+        });
+
+        it('should apply the ceiling of a protected stage the config is named after', () => {
+
+            const config = resolveConfig(createMockState(), { unstoredName: 'prod', settings: protectedProd(), flags: inline })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should keep the ceiling of a protected stage option under an unrelated name', () => {
+
+            const config = resolveConfig(createMockState(), {
+                unstoredName: 'scratch', stage: 'prod', settings: protectedProd(), flags: inline,
+            })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        it('should keep the ceiling of the protected NOORM_NAME stage it displaces', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            const config = resolveConfig(createMockState(), { unstoredName: 'scratch', settings: protectedProd(), flags: inline })!;
+
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        // Local secrets, vault lookups and history are keyed by name, so the name would reach the stored config's.
+        // A stored config is the saved record; resolving with overlays must never change what the next save writes.
+        it('should leave a stored config unchanged when an inline overlay is resolved on top of it', () => {
+
+            const stored = createConfig({ name: 'app', access: { user: 'operator', agent: 'viewer' } });
+            stored.connection.ssl = { rejectUnauthorized: true };
+            const state = createMockState({ configs: { app: stored } });
+
+            const resolved = resolveConfig(state, {
+                name: 'app',
+                flags: { connection: { ssl: { rejectUnauthorized: false } }, access: { user: 'admin', agent: 'admin' } } as ConfigInput,
+            });
+
+            expect(resolved?.connection.ssl).toEqual({ rejectUnauthorized: false });
+            expect(stored.connection.ssl).toEqual({ rejectUnauthorized: true });
+            expect(stored.access).toEqual({ user: 'operator', agent: 'viewer' });
+
+        });
+
+        it('should refuse the name of a stored config', () => {
+
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+
+            const [config, err] = attemptSync(() => resolveConfig(state, { name: false, unstoredName: 'prod', flags: inline }));
+
+            expect(config).toBeNull();
+            expect(err?.message).toContain('a stored config is named "prod"');
+
+        });
+
+        it('should not take the defaults of a stage it is named after', () => {
+
+            const settings = createMockSettings({
+                dev: { defaults: { user: 'stage-user', password: 'stage-pw', ssl: false, isTest: true, access: { user: 'admin', agent: 'admin' } } } as Stage,
+            });
+            const config = resolveConfig(createMockState(), { unstoredName: 'dev', settings, flags: inline })!;
+
+            expect(config.connection.user).toBeUndefined();
+            expect(config.connection.password).toBeUndefined();
+            expect(config.connection.ssl).toBeUndefined();
+            expect(config.isTest).toBe(false);
+            expect({ ...config.access }).toEqual({ user: 'admin', agent: 'viewer' });
+
+        });
+
+        // Passing a name must not shed what NOORM_NAME's stage already imposed.
+        it('should keep the defaults of the NOORM_NAME stage it displaces', () => {
+
+            process.env['NOORM_NAME'] = 'staging';
+            const settings = createMockSettings({ staging: { defaults: { access: { user: 'viewer', agent: false } } } as Stage });
+            const config = resolveConfig(createMockState(), { unstoredName: 'reporting', settings, flags: inline })!;
+
+            expect({ ...config.access }).toEqual({ user: 'viewer', agent: false });
+
+        });
+
+        it('should take stage defaults from an explicit stage option', () => {
+
+            const settings = createMockSettings({ ci: { defaults: { user: 'stage-user', isTest: true } } as Stage });
+            const config = resolveConfig(createMockState(), { unstoredName: 'scratch', stage: 'ci', settings, flags: inline })!;
+
+            expect(config.connection.user).toBe('stage-user');
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+        // Trusted isTest outranks the ceiling, so the displaced protected stage has to refuse the flag itself.
+        it('should not trust env isTest by displacing a NOORM_NAME that names a protected stage', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { unstoredName: 'scratch', settings: protectedProd(), flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not trust env isTest when the displaced NOORM_NAME has a stored isTest config with another target', () => {
+
+            process.env['NOORM_NAME'] = 'test';
+            process.env['NOORM_isTest'] = 'true';
+            const stored = createConfig({ name: 'test', isTest: true, connection: { dialect: 'sqlite', database: '/tmp/stored.db' } });
+            const state = createMockState({ configs: { test: stored } });
+            const config = resolveConfig(state, { unstoredName: 'scratch', settings: createMockSettings(), flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not trust env isTest when named after a protected stage', () => {
+
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { unstoredName: 'prod', settings: protectedProd(), flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not trust env isTest by displacing a NOORM_NAME whose stored config is not isTest', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
+            const config = resolveConfig(state, { unstoredName: 'scratch', settings: createMockSettings(), flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        it('should not trust env isTest by displacing a NOORM_NAME whose stage declares isTest: false', () => {
+
+            process.env['NOORM_NAME'] = 'prod';
+            process.env['NOORM_isTest'] = 'true';
+            const settings = createMockSettings({ prod: { defaults: { isTest: false } } as Stage });
+            const config = resolveConfig(createMockState(), { unstoredName: 'scratch', settings, flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        // The harness path of spec item 6a must survive a name: the caller supplies its own target.
+        it('should still trust env isTest under a name no stage or stored config restricts', () => {
+
+            process.env['NOORM_isTest'] = 'true';
+            const config = resolveConfig(createMockState(), { unstoredName: 'scratch', settings: createMockSettings(), flags: inline })!;
+
+            expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+    });
+
+    describe('name: false', () => {
+
+        const inline = { connection: { dialect: 'sqlite' as const, database: '/tmp/inline.db' } };
+
+        // A process can inherit NOORM_CONFIG for a stored config its checkout does not have.
+        it('should ignore NOORM_CONFIG and resolve from the inline connection', () => {
+
+            process.env['NOORM_CONFIG'] = 'dev';
+            const config = resolveConfig(createMockState(), { name: false, flags: inline })!;
+
+            expect(config.name).toBe('__inline__');
+            expect(config.connection.database).toBe('/tmp/inline.db');
+
+        });
+
+        it('should ignore the active config when only environment fields supply the connection', () => {
+
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = '/tmp/env.db';
+            const state = createMockState({ configs: { test: createConfig() }, activeConfig: 'test' });
+            const config = resolveConfig(state, { name: false })!;
+
+            expect(config.name).toBe('__env__');
+            expect(config.connection.database).toBe('/tmp/env.db');
+
+        });
+
+        it('should return null instead of falling back to the active config when no connection is supplied', () => {
+
+            const state = createMockState({ configs: { test: createConfig() }, activeConfig: 'test' });
+
+            expect(resolveConfig(state, { name: false })).toBeNull();
+
+        });
+
+        it('should not merge the stored config NOORM_CONFIG names when env supplies the target', () => {
+
+            process.env['NOORM_CONFIG'] = 'test';
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = '/tmp/env.db';
+            const stored = createConfig({ connection: { dialect: 'sqlite', database: '/tmp/stored.db', user: 'stored-user' } });
+            const config = resolveConfig(createMockState({ configs: { test: stored } }), { name: false, settings: createMockSettings() })!;
+
+            expect(config.name).toBe('__env__');
+            expect(config.connection.database).toBe('/tmp/env.db');
+            expect(config.connection.user).toBeUndefined();
+            expect(getConfigPermission('agent', config, 'db:destroy')).not.toBe('allow');
+
+        });
+
+        // "No stored config" is not "no settings": a stage the caller asks for still supplies defaults and its ceiling.
+        it('should still apply the defaults and ceiling of an explicit stage', () => {
+
+            const settings = createMockSettings({ prod: { defaults: { user: 'stage-user', protected: true } } as Stage });
+            const config = resolveConfig(createMockState(), { name: false, stage: 'prod', settings, flags: inline })!;
+
+            expect(config.connection.user).toBe('stage-user');
+            expect(getConfigPermission('user', config, 'sql:ddl')).toBe('deny');
+
+        });
+
+        // Without the opt-out, NOORM_CONFIG plus an inline connection means "stored base, inline on top".
+        it('should keep NOORM_CONFIG as the base, with trusted isTest, when the opt-out is not used', () => {
+
+            process.env['NOORM_CONFIG'] = 'test';
+            const stored = createConfig({ connection: { dialect: 'sqlite', database: '/tmp/stored.db', user: 'stored-user' } });
+            const state = createMockState({ configs: { test: stored } });
+            const config = resolveConfig(state, {
+                settings: createMockSettings(),
+                flags: { connection: { dialect: 'sqlite', database: '/tmp/stored.db' } },
+            })!;
+
+            expect(config.name).toBe('test');
+            expect(config.connection.user).toBe('stored-user');
             expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
 
         });

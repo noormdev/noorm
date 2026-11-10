@@ -26,6 +26,10 @@ The bracket tag marks a test config, or roles that differ from the default (`use
 
 Use the TUI wizard: run `noorm ui`, press `c` for configs, then `a`. Before it saves, the wizard connects to the server's system database, so the target database does not have to exist yet. MySQL has no system database to fall back to, so on MySQL [create the database first](/guide/database/create#what-bites).
 
+To save a config whose server is unreachable now, press `Ctrl+S` instead of submitting. It saves without testing the connection, and `noorm config validate <name>` tests it later. `Ctrl+S` works while the cursor moves between fields, not while a field is being edited.
+
+A config is saved encrypted with your identity key. If you have no identity yet, the wizard shows identity setup first, filled in from `git config user.name` and `user.email`, then continues to the form.
+
 | Field | Notes |
 |---|---|
 | Config Name | Letters, numbers, hyphens, underscores. A name that matches a [stage](/guide/environments/stages) links the config to it |
@@ -141,7 +145,7 @@ The table shows the **built-in defaults**, defined in `src/core/policy/matrix.ts
 | `run:build`, `run:file`, `run:dir`, `pipeline:run`, `change:run`, `change:ff`, `change:revert`, `db:create`, `db:reset` | deny | confirm | allow |
 | `db:truncate`, `change:rm`, `config:rm`, `config:write`, `vault:propagate`, `lock:force` | deny | confirm | confirm |
 | `db:destroy` (`db drop`), `db:teardown` | deny | deny | confirm |
-| `vault:read`, `secret:read`, `transfer:plan` | deny | allow | allow |
+| `vault:read`, `secret:read`, `transfer:plan`, `lock:acquire` | deny | allow | allow |
 | `vault:write`, `secret:write` | deny | confirm | allow |
 | `debug:read` | allow | allow | allow |
 | `debug:write` | deny | deny | confirm |
@@ -177,8 +181,9 @@ The flag counts only from a source the caller cannot overlay:
 | Stored config | Its own `isTest` is `true` and env, flags, or an inline `connection` leave the target alone |
 | Stage default that declares a database | The stage says `isTest: true` and the resolved target is the stage's |
 | Env-only config (no stored config of that name) | `NOORM_isTest=true`, no stage sets `isTest: false`, no stage in play is protected, and env or flags supply the database (and the host, on server dialects) |
+| SDK context with a `name` | The rules above, checked under both the `name` and the name it displaced (`NOORM_NAME`, `__inline__`, or `__env__`). A stored config under the displaced name must have `isTest: true` and the same target |
 
-The target is dialect, host, database, and file; a port counts only when the source declares one, so an env port on a stage that declares none is not a retarget. Changing only the user or password keeps the flag. Anywhere else the env value is ignored: `NOORM_isTest=true noorm --config prod db drop` and `NOORM_NAME=prod NOORM_isTest=true` against a protected `prod` stage are still refused. An agent that sets `NOORM_isTest=true` on an env-only config whose target it supplies is the harness path, and it is allowed.
+The target is dialect, host, database, and file; a port counts only when the source declares one, so an env port on a stage that declares none is not a retarget. Changing only the user or password keeps the flag. Anywhere else the env value is ignored: `NOORM_isTest=true noorm db drop --config prod` and `NOORM_NAME=prod NOORM_isTest=true` against a protected `prod` stage are still refused. An agent that sets `NOORM_isTest=true` on an env-only config whose target it supplies is the harness path, and it is allowed. An env-only config cannot take a stored config's name: `NOORM_NAME=prod` with a stored `prod` is refused, and `NOORM_CONFIG=prod` selects the stored config instead.
 
 The TUI also stores `user: operator, agent: viewer` on a config it creates for a protected stage. The ceiling does not depend on that stored value; it is the starting point you can see and edit.
 

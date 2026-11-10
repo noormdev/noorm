@@ -19,6 +19,7 @@ import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.j
 import { useVaultConnection } from '../../hooks/index.js';
 import { loadPrivateKey } from '../../../core/identity/storage.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { vaultEditConfirmation, vaultEditRefusal, VaultEditRefused, type VaultEditPermission } from './edit-policy.js';
 import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../../core/vault/index.js';
 
 
@@ -34,12 +35,14 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
     const { activeConfig, activeConfigName, identity } = useAppContext();
     const { showToast } = useToast();
 
-    const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection();
+    const denied = vaultEditRefusal(activeConfig);
+
+    const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection({ enabled: !denied });
     const phase = basePhase as Phase;
     const setPhase = setBasePhase as (p: Phase) => void;
 
     const secretKey = params.name;
-    const [pendingPolicy, setPendingPolicy] = useState<'vault:read' | 'vault:write' | null>(null);
+    const [pendingPolicy, setPendingPolicy] = useState<VaultEditPermission | null>(null);
     const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
 
     const beginDelete = (readConfirmed = false, writeConfirmed = false) => {
@@ -51,25 +54,17 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
             return;
 
         }
-        for (const permission of ['vault:read', 'vault:write'] as const) {
 
-            const check = checkConfigPolicy('user', activeConfig, permission);
-            if (!check.allowed) {
+        const unconfirmed = vaultEditConfirmation(activeConfig, { 'vault:read': readConfirmed, 'vault:write': writeConfirmed });
 
-                setError(check.blockedReason ?? `${permission} is not allowed`);
+        if (unconfirmed) {
 
-                return;
+            setPendingPolicy(unconfirmed);
 
-            }
-            if (check.requiresConfirmation && !(permission === 'vault:read' ? readConfirmed : writeConfirmed)) {
-
-                setPendingPolicy(permission);
-
-                return;
-
-            }
+            return;
 
         }
+
         void handleDelete();
 
     };
@@ -174,7 +169,17 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
     // Keyboard handling
     useInput((input, key) => {
 
-        if (!isFocused || phase !== 'ready' || pendingPolicy) return;
+        if (!isFocused) return;
+
+        if (denied) {
+
+            if (key.escape) back();
+
+            return;
+
+        }
+
+        if (phase !== 'ready' || pendingPolicy) return;
 
         if (key.escape || input === 'n' || input === 'N') {
 
@@ -191,6 +196,8 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
         }
 
     });
+
+    if (denied) return <VaultEditRefused title="Delete Vault Secret" reason={denied.blockedReason} />;
 
     // No secret key provided
     if (!secretKey) {

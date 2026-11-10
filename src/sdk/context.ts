@@ -13,12 +13,12 @@ import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
-import type { ConnectionRetryOptions } from '../core/connection/index.js';
+import type { ConnectionRetryOptions, PinnedConnection, RuntimeConnectionOptions } from '../core/connection/index.js';
 import { getStateManager, type StateManager } from '../core/state/index.js';
 
 import { callProc, callFunc, callTvf, qualifyName, withRoutines } from './routines.js';
 import { NoormOps } from './noorm-ops.js';
-import { bindSdkPolicy } from './guards.js';
+import { bindSdkPolicy, DisconnectedError } from './guards.js';
 import type { ContextState } from './state.js';
 import { requireConnection } from './state.js';
 import type { CreateContextOptions, ExtractArgs, ExtractReturn, RoutineCalls, TransactionScope } from './types.js';
@@ -92,10 +92,11 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     #noorm: NoormOps | null = null;
 
     /**
-     * Release callbacks for explicit-mode impersonation scopes still holding a
-     * pooled connection. `disconnect()` drains these first — otherwise a
-     * caller who never reverted leaves `destroy()` awaiting a connection the
-     * pool can never reclaim, and the context never closes.
+     * Release callbacks for explicit-mode impersonation scopes and running
+     * `withConnection` callbacks still holding a pooled connection.
+     * `disconnect()` drains these first — otherwise a caller who never
+     * reverted, or a callback that never returns, leaves `destroy()` awaiting
+     * a connection the pool can never reclaim, and the context never closes.
      */
     #heldConnections = new Set<() => void>();
 
@@ -264,17 +265,19 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
 
         if (this.#state.connection) return;
 
+        const inline = this.#state.options.connection;
+        const runtime: RuntimeConnectionOptions = {
+            password: typeof inline?.password === 'function' ? inline.password : undefined,
+            checkServerIdentity: typeof inline?.ssl === 'object' ? inline.ssl.checkServerIdentity : undefined,
+            driver: inline?.driver,
+        };
+
         this.#state.connection = await createConnection(
             this.#state.config.connection,
             this.#state.config.name,
             retryOptions,
             undefined,
-            {
-                password: typeof this.#state.options.connection?.password === 'function'
-                    ? this.#state.options.connection.password : undefined,
-                checkServerIdentity: typeof this.#state.options.connection?.ssl === 'object'
-                    ? this.#state.options.connection.ssl.checkServerIdentity : undefined,
-            },
+            runtime,
         );
 
     }
@@ -333,6 +336,73 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
     async transaction<T>(fn: (trx: TransactionScope<DB, Procs, Funcs, Tvfs>) => Promise<T>): Promise<T> {
 
         return this.kysely.transaction().execute((trx) => fn(withRoutines(trx, this.dialect, this.#schema)));
+
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Pinned Connections
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Run `fn` on one connection held for its whole duration, with the option
+     * to close that connection instead of returning it to the pool.
+     *
+     * `connection.discard()` closes it when `fn` ends, for a session that
+     * holds a lock and no longer answers. A thrown error does not discard by
+     * itself, since most errors leave a healthy session.
+     *
+     * `disconnect()` does not wait for `fn`: the call rejects and the
+     * connection is discarded, because its session state is then unknown.
+     *
+     * @throws NotConnectedError if the context is not connected
+     *
+     * @example
+     * ```typescript
+     * const result = await ctx.withConnection(async (db, connection) => {
+     *     await sql`select pg_advisory_lock(${key})`.execute(db);
+     *
+     *     const [value, err] = await attempt(() => doWork(db));
+     *
+     *     if (err) connection.discard();
+     *
+     *     return value;
+     * });
+     * ```
+     */
+    async withConnection<T>(fn: (db: Kysely<DB>, connection: PinnedConnection) => Promise<T>): Promise<T> {
+
+        const { db: pool, withConnection } = requireConnection(this.#state);
+        const schema = this.#schema;
+        const disconnected = Promise.withResolvers<void>();
+        const pin = withConnection
+            ?? (<R>(run: (db: Kysely<unknown>, connection: PinnedConnection) => Promise<R>) =>
+                pool.connection().execute((db) => run(db, { discard: () => {} })));
+
+        this.#heldConnections.add(disconnected.resolve);
+
+        try {
+
+            return await pin(async (db, connection) => {
+
+                const scoped = (schema === null ? db : db.withSchema(schema)) as Kysely<DB>;
+                const interrupted = disconnected.promise.then(() => {
+
+                    connection.discard();
+
+                    throw new DisconnectedError();
+
+                });
+
+                return Promise.race([fn(scoped, connection), interrupted]);
+
+            });
+
+        }
+        finally {
+
+            this.#heldConnections.delete(disconnected.resolve);
+
+        }
 
     }
 

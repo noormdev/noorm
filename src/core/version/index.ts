@@ -253,6 +253,8 @@ export {
 
 export type { VersionRecordOptions } from './schema/index.js';
 
+export { prepareTrackingSchema, readerRemedy, requireCurrentSchema, type TrackingCaller } from './tracking.js';
+
 // Re-export shared table types
 export { NOORM_TABLES } from '../shared/index.js';
 

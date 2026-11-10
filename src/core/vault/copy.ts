@@ -5,6 +5,7 @@
  * Uses the dual connection infrastructure for cross-database operations.
  */
 import { withDualConnection } from '../db/dual.js';
+import { tablesExist } from '../version/schema/index.js';
 import type { Config } from '../config/types.js';
 import { observer } from '../observer.js';
 import { getNoormTables, noormDb } from '../shared/tables.js';
@@ -115,16 +116,13 @@ export async function copyVaultSecrets(
     });
 
     return withDualConnection(
-        { sourceConfig, destConfig, ensureSchema: !dryRun },
+        { sourceConfig, destConfig, tracking: { channel, dryRun } },
         async (ctx) => {
 
-            // Get vault key from source
-            const sourceVaultKey = await getVaultKey(
-                ctx.source.db,
-                identityHash,
-                privateKey,
-                ctx.source.dialect,
-            );
+            // A dry run skips the tracking bootstrap, so the source may have no tables to read a key from.
+            const sourceVaultKey = await tablesExist(ctx.source.db, ctx.source.dialect)
+                ? await getVaultKey(ctx.source.db, identityHash, privateKey, ctx.source.dialect)
+                : null;
 
             if (!sourceVaultKey) {
 

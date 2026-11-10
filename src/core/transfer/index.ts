@@ -103,7 +103,6 @@ export async function transferData(
         {
             sourceConfig,
             destConfig,
-            ensureSchema: false, // Don't create noorm tables on destination
         },
         async (ctx) => {
 
@@ -210,7 +209,6 @@ export async function getTransferPlan(
         {
             sourceConfig,
             destConfig,
-            ensureSchema: false,
         },
         async (ctx) => {
 

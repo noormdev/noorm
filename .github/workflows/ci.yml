@@ -144,29 +144,14 @@ jobs:
                   FORCE_COLOR: 'true'
               run: |
                   bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-                      ! -name 'cli-logger-settings.test.ts' \
-                      ! -name 'protected-config-escape.test.tsx' | sort | tr '\n' ' ')
-            # Isolated for the same reason tests/core/transfer is: bun's
-            # `mock.module` registry is process-global and re-registering does
-            # not restore, so an `afterAll` cleanup is a no-op. Two init screen
-            # tests replace the `SettingsManager` class; `getSettingsManager`
-            # then constructs a mock instance, and `createCliLogger` reads
-            # `settings: {}` instead of settings.yml. Load order decides who
-            # wins — root files first on macOS, subdirectories first on Linux —
-            # so this passed locally and failed only here. A separate process
-            # is the only reliable isolation.
+                      ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
+            # Isolated: other CLI test files leave `getSettingsManager` mocked for the rest
+            # of their process, and bun picks the file order. See "Running Tests" in CLAUDE.md.
             - name: Run CLI logger settings tests (isolated)
               env:
                   CI: 'false'
                   FORCE_COLOR: 'true'
               run: bun test --serial tests/cli/cli-logger-settings.test.ts
-            # Isolated for the same reason: init-screen tests mock
-            # `state/manager.js` and this test needs the real StateManager.
-            - name: Run CLI protected config escape tests (isolated)
-              env:
-                  CI: 'false'
-                  FORCE_COLOR: 'true'
-              run: bun test --serial tests/cli/screens/protected-config-escape.test.tsx
             - name: Run integration tests
               env:
                   CI: 'false'

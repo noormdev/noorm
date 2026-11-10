@@ -45,10 +45,14 @@ export {
 // Key storage
 export {
     saveKeyPair,
+    savePublicKey,
+    backupKeyPair,
+    IDENTITY_REPLACE_WARNING,
     loadPrivateKey,
     loadPublicKey,
     loadKeyPair,
     hasKeyFiles,
+    hasPrivateKeyFile,
     validateKeyPermissions,
     isValidKeyHex,
     getPrivateKeyPath,
@@ -76,11 +80,12 @@ export {
     detectIdentityDefaults,
     createCryptoIdentity,
     createIdentityForExistingKeys,
+    ensureIdentity,
     regenerateKeyPair,
     loadExistingIdentity,
 } from './factory.js';
 
-export type { IdentityDefaults, CreateIdentityResult } from './factory.js';
+export type { IdentityDefaults, CreateIdentityResult, EnsureIdentityResult } from './factory.js';
 export type { IdentityHashInput } from './hash.js';
 
 // Sync (database identity registration and discovery)

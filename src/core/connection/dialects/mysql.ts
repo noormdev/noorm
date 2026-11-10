@@ -4,15 +4,74 @@
  * Uses the 'mysql2' package for MySQL connections.
  * Install with: npm install mysql2
  */
+import type { Duplex } from 'node:stream';
+
+import { attempt } from '@logosdx/utils';
 import { Kysely, MysqlDialect } from 'kysely';
 import type { MysqlPool, MysqlPoolConnection } from 'kysely';
 import type { Connection } from 'mysql2';
 import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
 import { observer } from '../../observer.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
+import { guardPasswordCallback, trackPoolLogins } from '../login.js';
+import { assertConnectionOptions, driverOptionsFor, tarnPoolOptions } from '../options.js';
+import { trackPinnedConnections } from '../pinned.js';
+
+/**
+ * Build the mysql2 connection options and the Tarn pool options.
+ *
+ * Later entries win: flat fields, `driver`, then the keys noorm owns. The
+ * password is absent on purpose: each physical connection resolves its own.
+ *
+ * @example
+ * const { connection, pool } = buildMysqlOptions(config, runtime);
+ */
+export function buildMysqlOptions(config: ConnectionConfig, runtime?: RuntimeConnectionOptions) {
+
+    const keepAliveDelay = config.keepAliveInitialDelayMs;
+
+    assertConnectionOptions(config);
+
+    return {
+        connection: {
+            enableKeepAlive: config.keepAlive ?? (keepAliveDelay === undefined ? undefined : true),
+            keepAliveInitialDelay: keepAliveDelay,
+            ...driverOptionsFor('mysql', runtime),
+            host: config.host ?? 'localhost',
+            port: config.port ?? DEFAULT_PORTS.mysql,
+            user: config.user,
+            database: config.database,
+            ssl: config.ssl ? {} : undefined,
+            connectTimeout: connectTimeoutFor(config),
+        },
+        pool: tarnPoolOptions(config),
+    };
+
+}
+
+/**
+ * Close a mysql2 connection without a goodbye.
+ *
+ * mysql2's `destroy()` only ends the stream. A server that is not reading
+ * never sees that, and the socket would stay open.
+ *
+ * @example
+ * closeMysqlConnection(connection);
+ */
+export function closeMysqlConnection(connection: Connection): void {
+
+    connection.destroy();
+    // mysql2's typings omit `stream`, the socket every connection holds.
+    (connection as Connection & { stream: Duplex }).stream.destroy();
+
+}
 
 /**
  * Create a MySQL connection.
+ *
+ * The pool is Tarn for a string password and a password callback alike:
+ * mysql2's own pool creates connections synchronously from one shared config,
+ * so it cannot await a credential, and it has no `min`.
  *
  * @example
  * ```typescript
@@ -31,140 +90,147 @@ export async function createMysqlConnection(
     configName = '__default__',
 ): Promise<ConnectionResult> {
 
+    const options = buildMysqlOptions(config, runtime);
     // Dynamic import to avoid compile-time dependency
     const mysql2 = await import('mysql2');
-    const options = {
-        host: config.host ?? 'localhost',
-        port: config.port ?? DEFAULT_PORTS.mysql,
-        user: config.user,
-        database: config.database,
-        ssl: config.ssl ? {} : undefined,
-        connectTimeout: connectTimeoutFor(config),
-    };
+    const TarnImport = await import('tarn');
+    const Tarn = TarnImport.default ?? TarnImport;
+    const createConnection = mysql2.default?.createConnection ?? mysql2.createConnection;
+    const password = runtime?.password ? guardPasswordCallback(runtime.password) : () => config.password;
+    const failed = new WeakSet<object>();
+    const checkedOut = new WeakSet<Connection>();
+    const established = new WeakSet<Connection>();
+    const pins = trackPinnedConnections();
+    const logins = trackPoolLogins(configName, 'MySQL');
 
-    let pool: MysqlPool;
+    const login = async () => {
 
-    if (runtime?.password) {
+        const credential = await password();
+        const connection = createConnection({ ...options.connection, password: credential });
+        connection.on('error', () => {
 
-        // mysql2's native pool uses synchronous creation from a shared config;
-        // Tarn permits an async credential lookup for each physical connection.
-        const TarnImport = await import('tarn');
-        const Tarn = TarnImport.default ?? TarnImport;
-        const createConnection = mysql2.default?.createConnection ?? mysql2.createConnection;
-        const password = runtime.password;
-        const failed = new WeakSet<object>();
-        const checkedOut = new WeakSet<Connection>();
-        const established = new WeakSet<Connection>();
-        const physical = new Tarn.Pool<Connection>({
-            min: config.pool?.min ?? 0,
-            max: config.pool?.max ?? 10,
-            propagateCreateError: true,
-            create: async () => {
+            const wasIdle = established.has(connection) && !checkedOut.has(connection);
+            failed.add(connection);
+            established.delete(connection);
 
-                const credential = await password();
-                const connection = createConnection({ ...options, password: credential });
-                connection.on('error', () => {
+            if (wasIdle) {
 
-                    const wasIdle = established.has(connection) && !checkedOut.has(connection);
-                    failed.add(connection);
-                    established.delete(connection);
-
-                    if (wasIdle) {
-
-                        observer.emit('connection:error', {
-                            configName,
-                            phase: 'idle',
-                            error: 'MySQL idle pool connection failed',
-                        });
-
-                    }
-
+                observer.emit('connection:error', {
+                    configName,
+                    phase: 'idle',
+                    error: 'MySQL idle pool connection failed',
                 });
 
-                await new Promise<void>((resolve, reject) => {
+            }
 
-                    connection.connect((err) => {
+        });
 
-                        if (err) {
+        await new Promise<void>((resolve, reject) => {
 
-                            connection.destroy();
-                            reject(err);
+            connection.connect((err) => {
 
-                            return;
+                if (err) {
 
-                        }
+                    closeMysqlConnection(connection);
+                    reject(err);
 
-                        resolve();
-
-                    });
-
-                });
-
-                established.add(connection);
-
-                return connection;
-
-            },
-            validate: (connection) => !failed.has(connection) && connection.state === 'authenticated',
-            destroy: (connection) => {
-
-                if (failed.has(connection) || connection.state !== 'authenticated') {
-
-                    connection.destroy();
-
-                    return Promise.resolve();
+                    return;
 
                 }
 
-                return new Promise<void>((resolve, reject) => {
+                resolve();
 
-                    connection.end((err) => err ? reject(err) : resolve());
+            });
 
-                });
-
-            },
         });
 
-        pool = {
-            getConnection(callback) {
+        established.add(connection);
 
-                physical.acquire().promise.then(
-                    (connection) => {
+        return connection;
 
-                        checkedOut.add(connection);
-                        callback(null, {
-                            query: connection.query.bind(connection) as MysqlPoolConnection['query'],
-                            release: () => {
+    };
 
-                                checkedOut.delete(connection);
-                                physical.release(connection);
+    const physical = new Tarn.Pool<Connection>({
+        ...options.pool,
+        create: async () => {
 
-                            },
-                        });
+            const [connection, err] = await attempt(login);
 
-                    },
-                    (err) => callback(err, undefined as unknown as MysqlPoolConnection),
-                );
+            if (err) {
 
-            },
-            end(callback) {
+                logins.failed();
 
-                physical.destroy().then(() => callback(null), callback);
+                throw err;
 
-            },
-        };
+            }
 
-    }
-    else {
+            logins.opened();
 
-        const createPool = mysql2.default?.createPool ?? mysql2.createPool;
-        pool = createPool({
-            ...options,
-            password: config.password,
-            connectionLimit: config.pool?.max ?? 10,
-        });
+            return connection;
 
-    }
+        },
+        validate: (connection) => !failed.has(connection) && connection.state === 'authenticated',
+        destroy: (connection) => {
+
+            if (failed.has(connection) || connection.state !== 'authenticated') {
+
+                closeMysqlConnection(connection);
+
+                return Promise.resolve();
+
+            }
+
+            return new Promise<void>((resolve, reject) => {
+
+                connection.end((err) => err ? reject(err) : resolve());
+
+            });
+
+        },
+    });
+
+    const pool: MysqlPool = {
+        getConnection(callback) {
+
+            const pinTo = pins.claim();
+
+            physical.acquire().promise.then(
+                (connection) => {
+
+                    pinTo(connection);
+                    checkedOut.add(connection);
+                    callback(null, {
+                        query: connection.query.bind(connection) as MysqlPoolConnection['query'],
+                        release: () => {
+
+                            checkedOut.delete(connection);
+
+                            if (pins.isDiscarded(connection)) {
+
+                                // No goodbye: a dead session would never answer it.
+                                // Tarn drops it at the next checkout, where `validate` fails.
+                                failed.add(connection);
+                                established.delete(connection);
+                                closeMysqlConnection(connection);
+
+                            }
+
+                            physical.release(connection);
+
+                        },
+                    });
+
+                },
+                (err) => callback(err, undefined as unknown as MysqlPoolConnection),
+            );
+
+        },
+        end(callback) {
+
+            physical.destroy().then(() => callback(null), callback);
+
+        },
+    };
 
     const db = new Kysely<unknown>({
         dialect: new MysqlDialect({ pool }),
@@ -174,6 +240,7 @@ export async function createMysqlConnection(
         db,
         dialect: 'mysql',
         destroy: () => db.destroy(),
+        withConnection: pins.withConnection(db),
     };
 
 }

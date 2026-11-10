@@ -124,7 +124,7 @@ await lockManager.acquire(db, configName, identity, {
 
 ## Checking Lock Status
 
-Before starting work, check if someone else has the lock. Note that `status()` automatically cleans up expired locks before checking:
+Before starting work, check if someone else has the lock. `status()` deletes an expired lock before checking. Pass `{ removeExpired: false }` as the fourth argument for a caller without `lock:acquire`: an expired lock then reads as unlocked and its row stays. On a database with no tracking tables `status()` reports unlocked. `LockManager.status` does not check the schema version; the SDK's `ctx.noorm.lock.status()` does that first and throws on tables that need a migration.
 
 ```typescript
 const status = await lockManager.status(db, 'production')

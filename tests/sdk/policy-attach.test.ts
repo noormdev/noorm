@@ -92,8 +92,8 @@ function providerFor(): SettingsProvider {
 
 const CTX_AFTER_GATE = 'Not connected. Call connect() first.';
 const TRANSFER_AFTER_GATE = /Transfer not supported for dialect: sqlite/;
-// Past the gate, copy fails on the identity lookup: no identity file in CI, no identity table locally.
-const VAULT_AFTER_GATE = /no such table: __noorm_identities__|require a cryptographic identity/;
+// Past the gate, copy fails on the identity lookup: no identity file in CI, no vault in the source locally.
+const VAULT_AFTER_GATE = /No vault access on source config "source"|require a cryptographic identity/;
 
 describe('sdk: policy context attach', () => {
 

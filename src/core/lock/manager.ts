@@ -29,6 +29,7 @@ import type { Kysely } from 'kysely';
 import { observer } from '../observer.js';
 import { getNoormTables, noormDb, type NoormDatabase } from '../shared/index.js';
 import type { Dialect } from '../connection/types.js';
+import { tablesExist } from '../version/schema/index.js';
 import type { ForceReleaseResult, Lock, LockOptions, LockStatus } from './types.js';
 import { DEFAULT_LOCK_OPTIONS } from './types.js';
 import {
@@ -455,18 +456,24 @@ class LockManager {
      * @param db - Kysely database instance
      * @param configName - Config/database scope
      * @param dialect - Database dialect for date formatting
+     * @param options - `removeExpired: false` for a caller that may not acquire: an expired lock reads as free and its row stays
      * @returns Lock status with isLocked flag and lock details
      */
     async status(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect = 'postgres',
+        options: { removeExpired?: boolean } = {},
     ): Promise<LockStatus> {
 
-        // Clean up expired first
-        await this.#cleanupExpired(db, configName, dialect);
+        const removeExpired = options.removeExpired !== false;
 
-        const lock = await this.#getLock(db, configName, dialect);
+        // Status is a read: a database with no tracking tables has no lock, and asking must not fail.
+        if (!(await tablesExist(db, dialect))) return { isLocked: false, lock: null };
+
+        if (removeExpired) await this.#cleanupExpired(db, configName, dialect);
+
+        const lock = await this.#getLock(db, configName, dialect, !removeExpired);
 
         return {
             isLocked: lock !== null,
@@ -480,22 +487,26 @@ class LockManager {
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Get lock from database, or null if none exists.
+     * Get lock from database, or null if none exists. `skipExpired` filters in SQL, as cleanup compares.
      */
     async #getLock(
         db: Kysely<NoormDatabase>,
         configName: string,
         dialect: Dialect,
+        skipExpired = false,
     ): Promise<Lock | null> {
 
         const ndb = noormDb(db, dialect);
         const tables = getNoormTables(dialect);
-
-        const row = await ndb
+        const held = ndb
             .selectFrom(tables.lock)
             .selectAll()
-            .where('config_name', '=', configName)
-            .executeTakeFirst();
+            .where('config_name', '=', configName);
+
+        const row = await (skipExpired
+            ? held.where('expires_at', '>=', formatDateForDialect(new Date(), dialect) as Date)
+            : held
+        ).executeTakeFirst();
 
         if (!row) {
 

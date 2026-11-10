@@ -273,7 +273,7 @@ The `ALTER` is in the change and the column is declared once, inline, in `sql/`.
 
 
 - A fresh database built from `sql/` and a database built from the previous commit then moved with `noorm change ff` end up with the same schema. This is the test of the pairing rule.
-- `noorm run build --dry-run` and `noorm change ff --dry-run` render every file, templates and manifests included, to `tmp/` and execute nothing. `change ff --dry-run` still reads the change tracking tables to decide what is pending.
+- `noorm run build --dry-run` and `noorm change ff --dry-run` render every file, templates and manifests included, to `tmp/` and execute nothing. `change ff --dry-run` still reads the change tracking tables to decide what is pending. Neither creates tracking tables on a database that has none; every change is then pending.
 - `sql/` contains no `ALTER`, `DROP`, backfill or guard that you added for this edit.
 - No `CREATE OR REPLACE` object was copied into a change when a manifest would do.
 - Seed lists, grants and repeated statements went through a template.

@@ -2,13 +2,15 @@
  * Identity Setup screen.
  *
  * First-time setup for user identity. Pre-populates fields from system/git.
- * Generates keypair on continue.
  *
  * Fields:
  * - Name (from git config or OS username, editable)
  * - Email (from git config, editable)
  * - Machine (from hostname, editable)
  * - OS (auto-detected, not editable)
+ *
+ * One panel, no spacer rows: the app shell leaves 20 rows on an 80x24
+ * terminal, and anything taller pushes the action row out of the frame.
  */
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactElement } from 'react';
@@ -31,6 +33,12 @@ export interface IdentitySetupProps {
 
     /** Whether this is regenerating an existing identity (changes UI text) */
     isRegeneration?: boolean;
+
+    /** Why setup is being shown, when the user did not ask for it */
+    reason?: string;
+
+    /** Why the last attempt failed */
+    error?: string;
 }
 
 /**
@@ -48,8 +56,17 @@ export interface IdentitySetupValues {
  *
  * Shows a form pre-populated with detected values.
  * User can edit name, email, and machine; OS is auto-detected.
+ *
+ * @example
+ * <IdentitySetup onComplete={createIdentity} onCancel={back} reason="Saving a config needs an identity." />
  */
-export function IdentitySetup({ onComplete, onCancel, isRegeneration = false }: IdentitySetupProps): ReactElement {
+export function IdentitySetup({
+    onComplete,
+    onCancel,
+    isRegeneration = false,
+    reason,
+    error,
+}: IdentitySetupProps): ReactElement {
 
     // Note: No useFocusScope here - let the Form manage its own focus.
     // Parent focus scopes interfere with child focus due to React effect order.
@@ -133,66 +150,28 @@ export function IdentitySetup({ onComplete, onCancel, isRegeneration = false }: 
     ];
 
     return (
-        <Box flexDirection="column">
-            {/* Header message - varies based on regeneration */}
-            <Panel title={isRegeneration ? 'Regenerate Identity' : 'Welcome to noorm'} titleColor="cyan">
-                {isRegeneration ? (
-                    <Box flexDirection="column" marginBottom={1}>
-                        <Text color="yellow">You are regenerating your identity.</Text>
-                        <Box flexDirection="column" marginLeft={2} marginTop={1}>
-                            <Text dimColor>• Your keypair will be replaced</Text>
-                            <Text dimColor>• Old encrypted data becomes unreadable</Text>
-                            <Text dimColor>• Team members need your new public key</Text>
-                        </Box>
-                    </Box>
-                ) : (
-                    <Box flexDirection="column" marginBottom={1}>
-                        <Text>Let's set up your identity. This is used for:</Text>
-                        <Box flexDirection="column" marginLeft={2} marginTop={1}>
-                            <Text>
-                                <Text dimColor>•</Text> Tracking who made changes (audit trail)
-                            </Text>
-                            <Text>
-                                <Text dimColor>•</Text> Securely sharing configs with teammates
-                            </Text>
-                        </Box>
-                    </Box>
-                )}
-
-                {/* Detection source hints */}
+        <Panel title={isRegeneration ? 'Regenerate Identity' : 'Welcome to noorm'} titleColor="cyan">
+            {isRegeneration ? (
                 <Box flexDirection="column" marginBottom={1}>
-                    <Text dimColor>We've pre-filled what we could detect:</Text>
+                    <Text color="yellow">You are regenerating your identity.</Text>
                 </Box>
-            </Panel>
+            ) : (
+                <Box flexDirection="column" marginBottom={1}>
+                    {reason && <Text>{reason}</Text>}
+                    <Text>It is used for the audit trail and for sharing configs with teammates.</Text>
+                </Box>
+            )}
 
-            {/* Form */}
-            <Box marginTop={1}>
-                <Form
-                    fields={fields}
-                    onSubmit={handleSubmit}
-                    onCancel={onCancel}
-                    submitLabel={isRegeneration ? 'Regenerate' : 'Continue'}
-                />
-            </Box>
+            <Form
+                fields={fields}
+                onSubmit={handleSubmit}
+                onCancel={onCancel}
+                submitLabel={isRegeneration ? 'Regenerate' : 'Continue'}
+                statusError={error}
+            />
 
-            {/* Auto-detected OS info (read-only) */}
-            <Box marginTop={1} flexDirection="column">
-                <Text dimColor>
-                    <Text>OS: </Text>
-                    <Text>{defaults.os}</Text>
-                    <Text dimColor> (auto-detected)</Text>
-                </Text>
-            </Box>
-
-            {/* Info message */}
-            <Box marginTop={1}>
-                <Text dimColor>
-                    {isRegeneration
-                        ? 'Your identity hash will change after regeneration.'
-                        : "On continue, we'll generate your keypair for secure config sharing."}
-                </Text>
-            </Box>
-        </Box>
+            <Text dimColor>{'  '}OS: {defaults.os} (auto-detected)</Text>
+        </Panel>
     );
 
 }

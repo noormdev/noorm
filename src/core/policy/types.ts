@@ -64,7 +64,7 @@ export type Permission =
     | 'vault:read' | 'vault:write' | 'vault:propagate'
     | 'secret:read' | 'secret:write'
     | 'transfer:plan'
-    | 'lock:force'
+    | 'lock:acquire' | 'lock:force'
     | 'debug:read' | 'debug:write';
 
 /**

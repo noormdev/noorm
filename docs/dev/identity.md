@@ -173,7 +173,7 @@ const state = new StateManager(projectRoot, {
 
 On first run, noorm:
 
-1. Detects your name/email from git config (or prompts)
+1. Detects your name and email from `git config user.name` and `user.email`, falling back to the OS username for the name and an empty email, then shows them in a form you can edit
 2. Generates an X25519 keypair
 3. Saves keys and metadata to `~/.noorm/`
 4. Creates your cryptographic identity
@@ -239,7 +239,18 @@ if (await hasKeyFiles()) {
 }
 ```
 
-This loads your existing public key from `~/.noorm/identity.pub` and creates the identity metadata (hash, machine info, etc.) without regenerating keys. Use this when:
+Setup code should call `ensureIdentity` instead of checking for key files itself. It decides on the private key alone: when `~/.noorm/identity.key` exists it never generates a keypair, derives `identity.pub` if that file is missing, and writes metadata only when none exists. A key restored without its `.pub` is therefore kept. The TUI identity setup and `noorm init` both go through it.
+
+```typescript
+import { ensureIdentity } from './core/identity'
+
+const { privateKey, createdKeys } = await ensureIdentity({
+    name: 'Alice Smith',
+    email: 'alice@example.com',
+})
+```
+
+`createIdentityForExistingKeys` loads your existing public key from `~/.noorm/identity.pub` and creates the identity metadata (hash, machine info, etc.) without regenerating keys. Use this when:
 
 - Migrating to a new machine where keys were copied
 - Updating name or email without regenerating keys
@@ -256,12 +267,15 @@ When you activate a database config (`noorm config use <name>`), noorm automatic
 
 This happens silently and non-blocking—connection failures don't prevent config activation.
 
+A caller that cannot write to the tracking tables on that config (`mayWriteTracking` in `src/core/policy/`, for example the `viewer` role) registers nothing: the sync creates no tables, migrates none, and writes no identity row. It still fetches the known users when the tables exist. A config hidden from the caller's channel (`agent: false` on the agent channel) is not connected to at all, and `noorm config use` exits 1 on it.
+
 ```typescript
 import { syncIdentityWithConfig } from './core/identity'
 
-// Takes the config only — it loads the identity itself from ~/.noorm/.
+// Takes a policy-bound config and the caller's channel. It loads the identity itself from ~/.noorm/.
 // Returns known users instead of storing them directly.
-const result = await syncIdentityWithConfig(config)
+const bound = withConfigPolicy(config, new SettingsProvider(settingsManager))
+const result = await syncIdentityWithConfig(bound, resolveChannel())
 
 if (result.ok && result.knownUsers?.length) {
     // Store discovered users in state
@@ -270,12 +284,13 @@ if (result.ok && result.knownUsers?.length) {
 ```
 
 The sync function:
+- Returns `{ ok: true, knownUsersCount: 0 }` without connecting when the config is hidden from the channel
 - Loads the crypto identity from `~/.noorm/` (returns `{ ok: true, knownUsersCount: 0 }` if there is none)
 - Derives the dialect from `config.connection.dialect` — callers do not pass it
 - Connects to the database (a connection failure is non-blocking: it emits an error event and returns `ok: true` with no users)
-- Runs `ensureSchemaVersion` so a database still on the legacy prefixed tables is migrated before identity queries hit `noorm.identities`
+- Calls `prepareTrackingSchema` with the caller's channel and the config. For a caller that can write, it runs `ensureSchemaVersion`, so a database still on the legacy prefixed tables is migrated before identity queries hit `noorm.identities`. For any other caller it writes nothing, and tables that need a migration end the sync with `ok: true` and no users
 - Checks if noorm tracking tables exist (skips sync if not bootstrapped)
-- Upserts your identity (updates `last_seen_at` if already registered)
+- Upserts your identity (updates `last_seen_at` if already registered), only for a caller that can write
 - Fetches all identities from the table, but only when the count is non-zero
 - Returns `IdentitySyncResult`: `{ ok, error?, registered?, knownUsersCount?, knownUsers? }`
 
@@ -371,7 +386,9 @@ import {
 ```
 
 `detectIdentityDefaults` and `regenerateKeyPair` are worth a note: the first is
-synchronous despite reading git config (it shells out with `execSync`), and the
+synchronous despite reading git config (it shells out with `execSync`) and never
+throws (without git or a git user the name is the OS username and the email is
+empty; in a container whose uid has no passwd entry the name is empty too), and the
 second takes the existing `CryptoIdentity` and returns a new one with the same
 identityHash — the hash derives from user details, not from the keys.
 
@@ -421,7 +438,9 @@ Copies your public key to clipboard for sharing with team members. They can use 
 
 **Regenerate Identity** (`[r]` from identity screen)
 
-Creates a new X25519 keypair. Use this if your private key was compromised. Warning: you'll lose access to any configs encrypted for your old public key.
+Creates a new X25519 keypair. Use this if your private key was compromised.
+
+State encryption is keyed off the private key, so every `.noorm/state/state.enc` on the machine becomes unreadable under the new one. Before anything is replaced, the screen copies `identity.key`, `identity.pub`, and `identity.json` to `<file>.bak-<timestamp>` in `~/.noorm/`, then lists the backup paths. If the backup cannot be written, it refuses and leaves the identity as it was. Restore `identity.key` from the backup to regain access to existing state.
 
 
 **Known Users** (`[u]` from identity screen)

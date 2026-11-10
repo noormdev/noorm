@@ -20,6 +20,7 @@ import type { Config } from '../../core/index.js';
 
 import { attempt } from '@logosdx/utils';
 import { getLockManager } from '../../core/lock/index.js';
+import { checkConfigPolicy } from '../../core/policy/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 import { resolveScreenIdentity } from '../utils/index.js';
 import { useConnection } from './useConnection.js';
@@ -40,6 +41,7 @@ export interface LockStatusResult {
  *
  * Resolves identity, uses shared connection, and fetches lock status
  * via getLockManager(). Provides a reload callback for refresh.
+ * Pass `enabled: false` when policy refuses the screen: connecting bootstraps the tracking tables, which is a write.
  *
  * @example
  * ```typescript
@@ -52,6 +54,7 @@ export function useLockStatus(
     activeConfig: Config | null,
     activeConfigName: string | null,
     cryptoIdentity: CryptoIdentity | null | undefined,
+    enabled = true,
 ): LockStatusResult {
 
     const [status, setStatus] = useState<LockStatus | null>(null);
@@ -67,7 +70,7 @@ export function useLockStatus(
     }, []);
 
     // Shared connection with schema ensured (lock tables need __noorm_* schema)
-    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true });
+    const { db, dialect, loading: connLoading, error: connError } = useConnection({ ensureSchema: true, enabled });
 
     useEffect(() => {
 
@@ -108,7 +111,8 @@ export function useLockStatus(
 
             const lockManager = getLockManager();
 
-            const [result, err] = await attempt(() => lockManager.status(db, activeConfigName, dialect ?? 'postgres'));
+            const removeExpired = checkConfigPolicy('user', activeConfig, 'lock:acquire').allowed;
+            const [result, err] = await attempt(() => lockManager.status(db, activeConfigName, dialect ?? 'postgres', { removeExpired }));
 
             if (!cancelled && err) {
 

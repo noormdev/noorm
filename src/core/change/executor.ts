@@ -40,7 +40,8 @@ import { approvedSql, assertApprovedChange } from '../shared/approved-content.js
 import type { NoormDatabase } from '../shared/index.js';
 import { getLockManager } from '../lock/index.js';
 import { ChangeHistory, decideNeedsRunFile } from './history.js';
-import { ChangeTracker } from './tracker.js';
+import { ChangeTracker, type CanRevertResult } from './tracker.js';
+import { tablesExist } from '../version/schema/index.js';
 import { resolveManifest, validateChange, hasRevertFiles } from './parser.js';
 import type {
     Change,
@@ -312,47 +313,47 @@ export async function revertChange(
     const history = new ChangeHistory(context.db, context.configName, context.dialect ?? 'postgres');
     const tracker = new ChangeTracker(context.db, context.configName, context.dialect ?? 'postgres');
 
-    // Check if can revert (unless dry run or preview)
-    if (!opts.dryRun && !opts.preview) {
+    // A dry run or preview skips the bootstrap, so the tracking tables may be missing: nothing is applied then.
+    const untracked = (opts.dryRun || opts.preview) && !(await tablesExist(context.db, context.dialect ?? 'postgres'));
+    const canRevertResult: CanRevertResult = untracked
+        ? { canRevert: false, reason: 'not applied' }
+        : await tracker.canRevert(change.name, opts.force);
 
-        const canRevertResult = await tracker.canRevert(change.name, opts.force);
+    if (!canRevertResult.canRevert) {
 
-        if (!canRevertResult.canRevert) {
+        // A check that could not run is not a "nothing to do".
+        if (canRevertResult.error) {
 
-            // A check that could not run is not a "nothing to do".
-            if (canRevertResult.error) {
-
-                return createFailedResult(
-                    change.name,
-                    'revert',
-                    `Could not determine revert state: ${canRevertResult.error.message}`,
-                    start,
-                );
-
-            }
-
-            if (canRevertResult.reason === 'not applied') {
-
-                throw new ChangeNotAppliedError(change.name);
-
-            }
-
-            observer.emit('change:skip', {
-                name: change.name,
-                reason: canRevertResult.reason ?? 'cannot revert',
-            });
-
-            return {
-                name: change.name,
-                direction: 'revert',
-                status: 'success',
-                files: [],
-                durationMs: performance.now() - start,
-            };
+            return createFailedResult(
+                change.name,
+                'revert',
+                `Could not determine revert state: ${canRevertResult.error.message}`,
+                start,
+            );
 
         }
 
+        if (canRevertResult.reason === 'not applied') {
+
+            throw new ChangeNotAppliedError(change.name);
+
+        }
+
+        observer.emit('change:skip', {
+            name: change.name,
+            reason: canRevertResult.reason ?? 'cannot revert',
+        });
+
+        return {
+            name: change.name,
+            direction: 'revert',
+            status: 'success',
+            files: [],
+            durationMs: performance.now() - start,
+        };
+
     }
+
 
     // Handle dry run
     if (opts.dryRun) {

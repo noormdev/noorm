@@ -31,7 +31,7 @@ The same domain owns DT serialization in [`src/core/dt`](../../src/core/dt): por
 
 `createContext` initializes state and settings, resolves configuration, checks `requireTest`, and resolves identity before returning; the `Context` constructor does none of those. Inline `connection` fields enter the shared resolver as flags, above environment settings. The resolver owns defaults, stage constraints, stored selection, and synthetic names; see core-state. Without an explicit name, any configuration with an inline `connection` uses `__inline__`, including an environment-plus-inline one, while environment-only configurations use `__env__`. Synthetic names are not unique context identifiers.
 
-Use `createContext()` for normal consumer startup rather than constructing `Context` and supplying internal state yourself. `CreateContextOptions` includes `config`, `projectRoot`, `stage`, `requireTest`, `channel`, `yes`, `freshState`, and inline `connection` settings. With `freshState: true` the factory builds a new `StateManager` and `SettingsManager` from disk instead of the process-wide instances, and the `Context` carries that `StateManager` in `ContextState.stateManager`; the changes, run, secrets, and templates namespaces read state through it. `Context` also exposes `projectRoot`. The default channel is `user`; the SDK does not perform the CLI entrypoint's project walk-up and `chdir`.
+Use `createContext()` for normal consumer startup rather than constructing `Context` and supplying internal state yourself. `CreateContextOptions` includes `config`, `name`, `projectRoot`, `stage`, `requireTest`, `channel`, `yes`, `freshState`, and inline `connection` settings. With `freshState: true` the factory builds a new `StateManager` and `SettingsManager` from disk instead of the process-wide instances, and the `Context` carries that `StateManager` in `ContextState.stateManager`; the changes, run, secrets, and templates namespaces read state through it. `Context` also exposes `projectRoot`. The default channel is `user`; the SDK does not perform the CLI entrypoint's project walk-up and `chdir`.
 
 The `Context` constructor revalidates `config.access` through `bindSdkPolicy`, which maps `settings.access.roles` and the protected-stage ceiling from `settings.stages[*].defaults.protected` into core-state's `bindPolicyContext`, with `options.stage` as the stage name. Metadata carried from another project or an older settings snapshot cannot supply authority.
 
@@ -63,6 +63,57 @@ The factory separates serializable overrides from runtime hooks, and `connect()`
 ### Connection lifecycle
 
 `connect()` returns immediately when already connected. On success it stores the connection; on failure the context remains unconnected. `disconnect()` releases held explicit impersonation scopes before destroying the connection, then clears the connection and cached change manager. Reconnecting uses the same resolved configuration and runtime hooks. Cleanup is explicit through `disconnect()`.
+
+### Connection controls
+
+`createContext` picks the connection source through `config`, `name`, and the inline `connection` object. The pool and socket settings travel in that object; core-db owns what they do to the physical pool.
+
+| Option | Behavior |
+|---|---|
+| `config: string` | Selects a stored config. |
+| `config: false` | Ignores `NOORM_CONFIG` and the active stored config. Stage defaults (`stage`, `NOORM_NAME`), `NOORM_isTest`, `NOORM_ACCESS_*`, and `NOORM_CONNECTION_*` still apply. With no inline `connection`, and no `dialect` plus `database` from `NOORM_CONNECTION_*` and stage defaults, the factory throws `No connection available for { config: false }`. |
+| `name` | Names a context that uses no stored config; wins over `NOORM_NAME` and reaches the resolver as `unstoredName`. The name is a key, not a label: it is `configName` on events and keys change history, run checksums, locks, pipeline history, and local secrets. Reopening a database under another name makes applied changes pending and builds run again. The resolver throws when a stored config is selected (including the active config or `NOORM_CONFIG`; pass `config: false` or an inline `connection`), or when a stored config already has that name. A stage with that name still applies its protected ceiling and `isTest: false`; its other defaults need `stage`. |
+| `connection` | An `InlineConnection<DialectConnectionConfig>`: non-persisted fields applied after environment settings. `password` may be a callback, `ssl.checkServerIdentity` a function, and `driver` an object. |
+
+Inline `pool` is typed per dialect through `DialectConnectionConfig`, so an option the dialect cannot honor is a compile error. The SDK entrypoint re-exports `DialectConnectionConfig` and the option types `PoolOpts`, `PgPoolOpts`, `TarnPoolOpts`, `MysqlPoolOpts`, and `MssqlPoolOpts`.
+
+| Dialect | `pool` options |
+|---|---|
+| PostgreSQL | `min`, `max`, `idleTimeoutMs`, `maxLifetimeMs`, `maxUses`, `allowExitOnIdle`. |
+| MySQL, MSSQL | `min`, `max`, `idleTimeoutMs`, `acquireTimeoutMs`, `createTimeoutMs`, `reapIntervalMs` (Tarn). |
+| SQLite | Typed as `min` and `max` only; there is no pool. |
+
+`idleTimeoutMillis` is a deprecated alias of `idleTimeoutMs`. `keepAlive` and `keepAliveInitialDelayMs` apply to PostgreSQL and MySQL sockets; setting the delay implies `keepAlive` unless it is `false`. Without the delay the first probe waits for the operating system default, about two hours. The core-db page covers pool, timeout, and keepalive behavior.
+
+`connection.driver` merges into the driver's options below the keys noorm owns, so it cannot change the target, credentials, TLS, or pool size; core-db gives the order per dialect. The factory validates it before returning a context, and `connect()` hands it to `createConnection` as a runtime option, so it is never stored, resolved into `Config`, or placed in events.
+
+| Condition | Result |
+|---|---|
+| `driver` is not a plain object | `connection.driver must be an object of driver options`. |
+| SQLite config | `Driver options are not supported for SQLite`. |
+| Key that selects the target, credentials, or TLS | Rejected by `driverOptionsFor`. |
+
+### Pinned connections
+
+`ctx.withConnection(fn)` runs `fn(db, connection)` on one connection held for the whole call, for work that sets session state, such as an advisory lock. `connection.discard()` makes the connection close when `fn` ends instead of returning to the pool, for a session that holds a lock and no longer answers. A thrown error does not discard on its own.
+
+A pinned connection leaves the pool only when `discard()` ran or `disconnect()` interrupted the call:
+
+```mermaid
+flowchart TD
+    %% source: src/sdk/context.ts, src/core/connection/pinned.ts
+    Start["withConnection(fn)"] --> Held["add release to<br/>#heldConnections"]
+    Held --> Pin["ConnectionResult.withConnection:<br/>pin one connection"]
+    Pin --> Run["fn(db, connection)"]
+    Run --> Out{"how does it end?"}
+    Out -->|"fn returns or throws"| Flag{"connection.discard()<br/>called?"}
+    Out -->|"disconnect() called"| Rej["discard, reject with<br/>DisconnectedError"]
+    Flag -->|yes| Close["connection closed"]
+    Flag -->|no| Back["returned to pool"]
+    Rej --> Close
+```
+
+`discard()` takes effect in the `finally` of the pinned callback, so a handle kept past the callback cannot close a connection another caller checked out. `disconnect()` during the call always calls `discard()`, because the session state is unknown. The call requires a connected context (`NotConnectedError` otherwise), and on a `withSchema` view `db` carries the schema plugin. A dialect whose connection result has no `withConnection` (SQLite) runs `fn` on `pool.connection()` with a no-op `discard`.
 
 ### Schema views
 
@@ -134,9 +185,9 @@ Principal names must match `[a-zA-Z0-9_@.\-\\]+`; invalid names fail before SQL 
 | `changes` | Offline `create`, `addFile`, `removeFile`, `renameFile`, `reorderFiles`, `delete`, `discover`, `parse`, and `validate`; connected `apply`, `revert`, `ff`, `next`, `rewind`, `status`, and history reads (`history`, `historyForChange`, and `getFileHistory` run behind the `explore` check). Deleting a local change still checks `change:rm`. |
 | `run` | Offline `discover`; connected `preview`, `file`, `files`, `dir`, and `build`. A symbol-keyed `prepareRunContext` method builds a run context for MCP approval preparation and never grants execution. `build` returns `unmatchedInclude` and `unmatchedExclude` alongside the batch result. |
 | `pipelines` | Connected `run`, `history`, and `getRun`. `run` checks `pipeline:run` through `checkProtectedConfig`; `history` and `getRun` run through `runGatedExplore`, behind the `explore` check. See Pipelines namespace below. |
-| `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, and `overview`, all run through `runGatedExplore` behind the `explore` permission (CLI, MCP, and RPC explore commands reach it through the symbol-keyed `gatedExplore` method); plus `previewTeardown` (checks `db:teardown` allow/deny without confirmation), `truncate` (`db:truncate`), `teardown` (`db:teardown`), and `reset` (`db:reset`). |
+| `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, and `overview`, all run through `runGatedExplore` behind the `explore` permission (CLI, MCP, and RPC explore commands reach it through the symbol-keyed `gatedExplore` method); plus `previewTeardown` (checks `db:teardown` allow/deny without confirmation), `truncate` (`db:truncate`), `teardown` (`db:teardown`), and `reset` (`db:reset`). `reset()` resolves with the rebuild's `BatchResult` and throws `ResetBuildError` (its `result` field holds the failed `BatchResult`) when the build status is not `success`. Before dropping anything it checks `db:reset` and `run:build`, runs `ensureTracking`, and requires a readable schema directory; after teardown it runs `build({ force: true })`. |
 | `dt` | `exportTable` and `importFile`; import checks `db:reset`. |
-| `lock` | `acquire`, `release`, `status`, `withLock`, and `forceRelease`; force release checks `lock:force`. |
+| `lock` | `acquire`, `release`, `status`, `withLock`, and `forceRelease`. `acquire`, `release`, and `withLock` check `lock:acquire`; `acquire` and `withLock` also call `ensureTracking`. `status` needs only channel visibility, reads through `requireCurrentSchema` without migrating, and removes expired locks only when `lock:acquire` is allowed. Force release checks `lock:force`. |
 | `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. `set` and `propagate` check `vault:read` as well as `vault:write`/`vault:propagate`. `copy` binds the destination through `bindSdkPolicy`, checks `vault:read` on the source and `vault:write` on the destination (write skipped on dry run), and runs under `withPolicyConfirmation` for both configs; `withDestinationRead` also checks `vault:read` on the destination. |
 | `secrets` | Config-scoped `get`, `list`, `set`, and `delete`, gated by `secret:read` or `secret:write`. |
 | `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. It resolves secrets and global secrets into the returned string and passes the resolved `Config` to `processFile` without a cast. |
@@ -152,6 +203,8 @@ The public entrypoint re-exports namespace classes, option/result types, `Extrac
 | `ProtectedConfigError` | Policy denies an operation or requires unsupplied user confirmation. |
 | `VaultAccessError` | `vault.set()` cannot obtain a usable vault key. Reads can instead return `null` or `{}`. |
 | `ImpersonationError` | Unsupported dialect or invalid principal name. |
+| `ResetBuildError` | `db.reset()` dropped the schema and the rebuild did not succeed. The schema was dropped and the rebuild stopped part way, so the database holds only the files listed as successful in `err.result.files`; `err.result` is the `BatchResult`. |
+| `DisconnectedError` | `disconnect()` ran while a `withConnection` callback was in flight; the pinned connection is discarded. |
 | `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` | Re-exported core change errors for validation, lookup, state, and manifest failures. |
 | `LockAcquireError`, `LockExpiredError` | Re-exported core lock failures. |
 | `PipelineBusyError` | `pipelines.run` on a `singleRun` pipeline that already has an active run. |
@@ -165,14 +218,14 @@ flowchart TD
     %% source: src/sdk/namespaces/pipelines.ts
     A["pipelines.run(slug, options)"] --> B["#connected()"]
     B --> C["checkProtectedConfig('pipeline:run')"]
-    C --> D["buildPipelineContext:<br/>ensureSchemaVersion, then buildRunContext"]
+    C --> D["buildPipelineContext:<br/>prepareTrackingSchema, then buildRunContext"]
     D --> F["runPipeline(context, slug, options)"]
     F --> G{"coded failure?"}
     G -->|yes| H["throws PipelineCodedError"]
     G -->|no| I["resolves result with status<br/>and transactionOutcome"]
 ```
 
-The guard runs before any context is built, and `ensureSchemaVersion()` runs before the executor receives the context. `history` and `getRun` also call `#connected()` and `ensureSchemaVersion()`, inside `runGatedExplore`, so they gate on `explore` rather than `pipeline:run`.
+The guard runs before any context is built, and `prepareTrackingSchema` runs before the executor receives the context: it creates or migrates the tracking tables only for a role that may write and outside `dryRun`, and otherwise only checks them. `history` and `getRun` run inside `runGatedExplore`, so they gate on `explore` rather than `pipeline:run`, and they read through `requireCurrentSchema` without migrating.
 
 | Method | Returns | Failure |
 |---|---|---|
@@ -278,7 +331,7 @@ SDK unit tests cover namespace behavior by role, guard errors, policy attachment
 - The SDK cannot prompt. Guarded operations throw `ProtectedConfigError` on denial or unconfirmed user-channel operations. `yes: true` supplies user confirmation but cannot override agent-channel denial, because `confirm` collapses to deny on the agent channel before `options.yes` is read; core-policy owns the matrix.
 - `NOORM_YES` in an SDK process has no effect. The guard in [`src/sdk/guards.ts`](../../src/sdk/guards.ts) reads only `options.yes`, though its error text names `NOORM_YES`; CLI helpers translate that variable into the option.
 - Exploration reads (`db` listing, describe, and overview methods, change history, and pipeline history) require the `explore` permission via `runGatedExplore`; denial throws `ProtectedConfigError`, and the gate passes config name, access, and channel to core explore.
-- Truncate (`db:truncate`), teardown (`db:teardown`), and reset (`db:reset`) use their own permissions. Dry-run truncate/teardown still require permission but do not require confirmation. Reset does not preserve configured tables because rebuilding would collide with existing objects.
+- Truncate (`db:truncate`), teardown (`db:teardown`), and reset (`db:reset`) use their own permissions. Dry-run truncate/teardown still require permission but do not require confirmation. Reset does not preserve configured tables because rebuilding would collide with existing objects. A `ResetBuildError` means the teardown already happened, so treat the database as torn down and partly rebuilt; rerun `reset()` once the failing file is fixed.
 - Standalone truncate and teardown honor `settings.teardown.preserveTables` (truncate can override it with `options.preserve`). A full reset deliberately ignores that setting before rebuilding.
 - `withSchema` accepts only alphanumerics, underscores, and hyphens; invalid names throw synchronously. Raw `sql` fragments resolve against the connection's default schema, so raw SQL issued through a schema view hits the wrong schema. The `describe*` methods ignore the view's schema and take their own optional `schema` argument; `listTables()` takes none.
 - PostgreSQL transaction procedure detection matches names and namespaces, not argument overloads or search-path precedence. A same-named function/procedure ambiguity can still select a failing `CALL`; use `tvf` when calling the function.

@@ -28,13 +28,13 @@ const actualCore = await import('../../../../src/core/index.js');
 const actualIdentity = await import('../../../../src/core/identity/index.js');
 const actualConnectionFactory = await import('../../../../src/core/connection/factory.js');
 
-function makeConfig(name: string) {
+function makeConfig(name: string, userRole = 'admin') {
 
     return {
         name,
         type: 'local' as const,
         isTest: false,
-        access: { user: 'admin' as const, agent: 'admin' as const },
+        access: { user: userRole, agent: 'admin' as const },
         connection: {
             dialect: 'postgres' as const,
             host: 'localhost',
@@ -378,5 +378,111 @@ describe('cli: ConfigEditScreen', () => {
         unmount();
 
     }, 20_000);
+
+    /**
+     * A database behind a tunnel that is not up yet cannot pass the connection
+     * test, and the test used to be the only way to save. The bypass skips that
+     * one step and nothing else.
+     */
+    describe('save without verifying', () => {
+
+        const CTRL_S = '\x13';
+
+        /** The frame as one line without the panel border, so a wrapped status message still matches. */
+        const flat = (frame: string | undefined) => (frame ?? '').replace(/[│\s]+/g, ' ');
+
+        it('should still block the normal save on a failed test, and name the way out', async () => {
+
+            mockStateManager = createMockStateManager('prod', makeConfig('prod'));
+            mockSettingsManager = createMockSettingsManager({});
+            testConnectionImpl = async () => ({ ok: false, error: 'connect ECONNREFUSED' });
+
+            const { stdin, lastFrame, unmount } = render(
+                <TestWrapper>
+                    <ConfigEditScreen params={{ name: 'prod' }} />
+                </TestWrapper>,
+            );
+
+            await submitForm(stdin, lastFrame);
+
+            await waitFor(() => flat(lastFrame()).includes('ECONNREFUSED'));
+
+            expect(testConnectionMock).toHaveBeenCalledTimes(1);
+            expect(mockStateManager.setConfig).not.toHaveBeenCalled();
+
+            // The error is where the user is looking when they need the key.
+            expect(flat(lastFrame())).toContain('Ctrl+S to save without verifying');
+
+            unmount();
+
+        }, 20_000);
+
+        it('should save on the bypass key without opening a connection', async () => {
+
+            mockStateManager = createMockStateManager('prod', makeConfig('prod'));
+            mockSettingsManager = createMockSettingsManager({});
+
+            // A test that would fail: the bypass must not depend on it.
+            testConnectionImpl = async () => ({ ok: false, error: 'connect ECONNREFUSED' });
+
+            const { stdin, lastFrame, unmount } = render(
+                <TestWrapper>
+                    <ConfigEditScreen params={{ name: 'prod' }} />
+                </TestWrapper>,
+            );
+
+            // The active-row marker, not the hint: the hint renders before the
+            // form has focus, and a chord written then lands on nothing.
+            await waitFor(() => Boolean(lastFrame()?.includes('›')));
+
+            expect(lastFrame()).toContain('ctrl+s save without verifying');
+
+            stdin.write(CTRL_S);
+
+            await waitFor(() => mockStateManager.setConfig.mock.calls.length > 0);
+
+            expect(testConnectionMock).not.toHaveBeenCalled();
+            expect(mockStateManager.setConfig).toHaveBeenCalledTimes(1);
+
+            const [savedName, saved] = mockStateManager.setConfig.mock.calls[0] as [
+                string,
+                ReturnType<typeof makeConfig>,
+            ];
+
+            expect(savedName).toBe('prod');
+            expect(saved.connection.database).toBe('prod_db');
+
+            unmount();
+
+        }, 20_000);
+
+        it('should still reject an unknown access role on the bypass key', async () => {
+
+            // Skipping the connection test must not become a way to store a
+            // config whose roles the project does not define.
+            mockStateManager = createMockStateManager('prod', makeConfig('prod', 'ghost'));
+            mockSettingsManager = createMockSettingsManager({});
+
+            const { stdin, lastFrame, unmount } = render(
+                <TestWrapper>
+                    <ConfigEditScreen params={{ name: 'prod' }} />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => Boolean(lastFrame()?.includes('›')));
+
+            stdin.write(CTRL_S);
+
+            await waitFor(() => flat(lastFrame()).includes('Unknown access role'));
+
+            expect(flat(lastFrame())).toContain('Unknown access role "ghost"');
+            expect(testConnectionMock).not.toHaveBeenCalled();
+            expect(mockStateManager.setConfig).not.toHaveBeenCalled();
+
+            unmount();
+
+        }, 20_000);
+
+    });
 
 });

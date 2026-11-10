@@ -110,7 +110,8 @@ describe('cli: screens/init/ProjectSetup', () => {
         expect(lastFrame()).toContain('Will create');
         expect(lastFrame()).toContain('.gitkeep');
         expect(lastFrame()).toContain('settings.yml');
-        expect(lastFrame()).toContain('state.enc');
+        // state.enc is written by the first config save, not by init.
+        expect(lastFrame()).not.toContain('state.enc');
 
     });
 

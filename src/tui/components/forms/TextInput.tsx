@@ -1,9 +1,10 @@
 /**
  * Single-line text input.
  *
- * A copy of `@inkjs/ui`'s `TextInput` (MIT) with one behavioural change, a
- * mouse report is dropped instead of typed into the field, plus a
- * `useTextEntry` call so `GlobalKeyboard` leaves its keystrokes alone.
+ * A copy of `@inkjs/ui`'s `TextInput` (MIT) with two behavioural changes, a
+ * mouse report and the letter of a Ctrl chord are dropped instead of typed
+ * into the field, plus a `useTextEntry` call so `GlobalKeyboard` leaves its
+ * keystrokes alone.
  *
  * **Why a copy and not a wrapper.** Upstream's handler ends in an
  * unconditional `state.insert(input)`, and Ink's `useInput` is subscriber-based
@@ -132,7 +133,7 @@ export interface TextInputProps {
 }
 
 /**
- * Text input that ignores mouse reports.
+ * Text input that ignores mouse reports and Ctrl chords.
  *
  * @example
  * <TextInput defaultValue={value} onChange={setValue} onSubmit={commit} />
@@ -226,7 +227,9 @@ export function TextInput({
             dispatch({ type: 'delete' });
 
         }
-        else {
+        // Ink reports Ctrl+S as the letter `s` with `key.ctrl` set. A chord is
+        // a command for whoever owns it, never text.
+        else if (!key.ctrl) {
 
             dispatch({ type: 'insert', text: input });
 

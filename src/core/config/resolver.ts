@@ -100,6 +100,21 @@ const DEFAULTS: ConfigInput = {
     },
 };
 
+// `pool.idleTimeoutMs` and its alias `pool.idleTimeoutMillis` are one setting:
+// a layer that names either replaces whichever the layers below it set.
+function mergeLayer(merged: Partial<ConfigInput>, layer: Partial<ConfigInput>): Partial<ConfigInput> {
+
+    const pool = layer.connection?.pool;
+    const lower = merged.connection?.pool;
+
+    if (!lower || (pool?.idleTimeoutMs === undefined && pool?.idleTimeoutMillis === undefined)) return merge(merged, layer);
+
+    const { idleTimeoutMs: _idle, idleTimeoutMillis: _alias, ...rest } = lower;
+
+    return merge({ ...merged, connection: { ...merged.connection, pool: rest } }, layer);
+
+}
+
 /** Reject role references that cannot be resolved against project settings. */
 export function validateAccessRoles(
     access: ConfigAccess,
@@ -224,8 +239,11 @@ export function withConfigPolicy(config: Config, settings: SettingsProvider, val
  * Options for resolving a config.
  */
 export interface ResolveOptions {
-    /** Config name to load (overrides env var and active config) */
-    name?: string;
+    /** Config name to load (overrides env var and active config); `false` loads no stored config */
+    name?: string | false;
+
+    /** Name for a config resolved without a stored one; wins over `NOORM_NAME`, throws when a stored config is selected or has it */
+    unstoredName?: string;
 
     /** CLI flag overrides */
     flags?: ConfigInput;
@@ -291,8 +309,10 @@ export const configNotFoundMessage = (name: string): string => `Config "${name}"
 export function resolveConfig(state: StateProvider, options: ResolveOptions = {}): Config | null {
 
     // 1. Determine which config to use
-    const configName = options.name ?? getEnvConfigName()
-        ?? (options.flags?.connection ? undefined : state.getActiveConfigName());
+    const configName = options.name === false
+        ? undefined
+        : options.name ?? getEnvConfigName()
+            ?? (options.flags?.connection ? undefined : state.getActiveConfigName());
 
     if (!configName) {
 
@@ -311,11 +331,21 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
         if (options.flags?.connection || (envConfig.connection && connection.dialect && connection.database)) {
 
-            return resolveFromEnvOnly(state, envConfig, options.flags, options.stage, options.settings);
+            return resolveFromEnvOnly(state, envConfig, options);
 
         }
 
         return null;
+
+    }
+
+    // A stored config's name selects its stage and protected-stage ceiling, so it is not renamed per call.
+    if (options.unstoredName !== undefined) {
+
+        throw new Error(
+            `Cannot apply the name "${options.unstoredName}" to stored config "${configName}". `
+            + 'A name applies only when no stored config is used.',
+        );
 
     }
 
@@ -337,18 +367,29 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageFields(stageDefaults, true));
+        merged = mergeLayer(merged, clone(stageFields(stageDefaults, true)));
 
     }
 
-    merged = merge(merged, stored);
+    // merge() adopts a layer's nested objects by reference; the overlays below would otherwise write into the stored record.
+    merged = mergeLayer(merged, clone(stored));
 
     // Captured before the env/flag overlays so they cannot grant the isTest relaxation.
     const storedConnection = { ...merged.connection };
     const storedIsTest = stored.isTest === true;
 
-    merged = merge(merged, envConfig);
-    merged = merge(merged, options.flags ?? {});
+    merged = mergeLayer(merged, envConfig);
+    merged = mergeLayer(merged, options.flags ?? {});
+
+    // Same reason as the env-only refusal: secrets, vault lookups and tracking records are keyed by the merged name.
+    if (merged.name && merged.name !== configName && state.getConfig(merged.name)) {
+
+        throw new Error(
+            `An env or flag name cannot rename config "${configName}" to the name of stored config "${merged.name}". `
+            + `Select it with NOORM_CONFIG=${merged.name} or the config option, or choose another name.`,
+        );
+
+    }
 
     const trustedIsTest = storedIsTest && sameTarget(storedConnection, merged.connection);
 
@@ -413,6 +454,9 @@ interface EnvOnlyTrust {
     stageNames: string[];
     settings: SettingsProvider | undefined;
     supplied: ConfigInput['connection'];
+
+    /** The name `unstoredName` replaced; a stored config under it still decides. */
+    displacedName?: string;
 }
 
 /**
@@ -421,19 +465,15 @@ interface EnvOnlyTrust {
  */
 function envOnlyIsTest(state: StateProvider, trust: EnvOnlyTrust): boolean {
 
-    const { parsed, stageDefaults, stageNames, settings, supplied } = trust;
+    const { parsed, stageDefaults, stageNames, settings, supplied, displacedName } = trust;
     const declared = [stageDefaults, ...stageNames.map((stage) => settings?.findStageForConfig(stage)?.defaults)]
         .map((defaults) => defaults?.isTest);
 
     if (declared.includes(false) || !parsed.isTest) return false;
 
-    const stored = state.getConfig(parsed.name);
+    const stored = displacedName ? state.getConfig(displacedName) : null;
 
-    if (stored) {
-
-        return stored.isTest === true && sameTarget(stored.connection, parsed.connection);
-
-    }
+    if (stored) return stored.isTest === true && sameTarget(stored.connection, parsed.connection);
 
     const stageTarget = stageDefaults ? stageFields(stageDefaults, true).connection : undefined;
 
@@ -459,40 +499,49 @@ function envOnlyIsTest(state: StateProvider, trust: EnvOnlyTrust): boolean {
 function resolveFromEnvOnly(
     state: StateProvider,
     envConfig: ConfigInput,
-    flags?: ConfigInput,
-    stageName?: string,
-    settings?: SettingsProvider,
+    options: ResolveOptions,
 ): Config {
 
-    // Generate a name if not provided
-    const name = envConfig.name ?? flags?.name ?? (flags?.connection ? '__inline__' : '__env__');
+    const { flags, stage: stageName, settings, unstoredName } = options;
 
-    // Get stage defaults if available
-    const stageDefaults = getStageDefaults(name, stageName, settings);
+    // Flags before env, as in the merge below.
+    const fallbackName = flags?.name ?? envConfig.name ?? (flags?.connection ? '__inline__' : '__env__');
+    const name = unstoredName ?? fallbackName;
+    const displacedName = unstoredName === undefined ? undefined : fallbackName;
+
+    // Secrets, vault lookups and tracking records are keyed by name, so this name would reach the stored config's.
+    if (state.getConfig(name)) {
+
+        throw new Error(
+            `Cannot name a context "${name}": a stored config is named "${name}". `
+            + `Select it with NOORM_CONFIG=${name} or the config option, or choose another name.`,
+        );
+
+    }
+
+    // A caller-chosen name restricts and never selects defaults, so they come from the name it displaced.
+    const stageDefaults = getStageDefaults(fallbackName, stageName, settings);
 
     // Merge: defaults <- stage <- env <- flags
     let merged: Partial<ConfigInput> = clone(DEFAULTS);
 
     if (stageDefaults) {
 
-        merged = merge(merged, stageFields(stageDefaults, true));
+        merged = mergeLayer(merged, clone(stageFields(stageDefaults, true)));
 
     }
 
-    merged = merge(merged, envConfig);
-    merged = merge(merged, flags ?? {});
+    merged = mergeLayer(merged, envConfig);
+    merged = mergeLayer(merged, flags ?? {});
 
-    // Ensure name is set
-    if (!merged.name) {
-
-        merged.name = name;
-
-    }
+    merged.name = name;
 
     const parsed = parseConfig(merged);
-    const stageNames = stageNamesOf(name, stageName);
+
+    // Both names feed the ceiling and the isTest checks.
+    const stageNames = [...stageNamesOf(name, stageName), ...(displacedName ? [displacedName] : [])];
     const supplied = { ...envConfig.connection, ...flags?.connection };
-    const trustedIsTest = envOnlyIsTest(state, { parsed, stageDefaults, stageNames, settings, supplied });
+    const trustedIsTest = envOnlyIsTest(state, { parsed, stageDefaults, stageNames, settings, supplied, displacedName });
 
     return applyPolicyContext(parsed, stageNames, trustedIsTest, settings);
 

@@ -46,7 +46,7 @@ These flags recur across commands. Each command section lists the ones it accept
 |---|---|---|
 | `--config <name>` | `-c` | Use this stored config instead of the active one |
 | `--json` | | Print one JSON document on stdout |
-| `--dry-run` | | Preview without writing. `run` and `change` commands render to `tmp/` |
+| `--dry-run` | | Preview without writing. `run` and `change` commands render to `tmp/`. Creates no tracking tables, and treats a database without them as having nothing applied. Exits 1 when the tracking tables need a migration, with `tracking tables are at schema version N and this version needs M. A dry run does not migrate them: run a command without --dry-run first, such as "noorm change history".` |
 | `--force` | `-f` | `run` and `change`: skip the checksum check. `init`, `ci init`, `settings init`, `config create`, `config import`, `vault cp`, `identity init`: overwrite what exists, subject to each command's confirmation and policy checks |
 | `--yes` | `-y` | Confirm a command the config's role marks `confirm`. `NOORM_YES` does the same |
 
@@ -219,9 +219,20 @@ Through the CLI, an `agent` channel `confirm` cell is a deny, so `--yes` never u
 | `vault:write`, `secret:write` | `vault init`, `set`, `rm`, `cp`, and `secret set`, `rm` | deny | confirm | allow |
 | `vault:propagate` | `vault propagate`, `ci identity enroll` | deny | confirm | confirm |
 | `transfer:plan` | `db transfer --to --dry-run` | deny | allow | allow |
+| `lock:acquire` | `lock acquire`, `lock release` | deny | allow | allow |
 | `lock:force` | `lock force` | deny | confirm | confirm |
 
 `explore` and `sql:read` are gated on the agent channel only; a person at the keyboard always passes. Commands not listed have no role gate.
+
+A role denied every command that records to noorm's tracking tables, such as `viewer`, never creates or migrates them. On the agent channel a `confirm` cell counts as denied here, because an agent cannot confirm. `db create` and `db teardown` record to the tables, so a role that holds either one can create and migrate them. A role that cannot write gets these results:
+
+| Database state | Result |
+|---|---|
+| No tracking tables | Read commands treat the database as empty: no changes applied, no lock, no pipeline runs |
+| Tables that need a migration | Exit 1 until a role that can write runs a command |
+| `config use` | Activates the config, creates and migrates nothing, and registers no identity in the database |
+
+The [TUI](/tui#what-does-a-role-that-cannot-write-see) follows the same rule.
 
 On a config with `isTest: true`, every role on both channels reads the admin column, even on a protected stage, and the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` rows read `allow`. An agent can run `run build`, `change run` and `db reset` on it; admin's other `confirm` rows still need a human. The same cells gate `db transfer` destinations. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
 
@@ -252,7 +263,7 @@ These commands never connect to a database:
 #### `init`
 
 
-Create `.noorm/`, `settings.yml`, an encrypted `state.enc`, and a `# noorm` block in `.gitignore`. On the default layout, also create `db/sql/`, `db/changes/`, `db/AGENTS.md`, and `db/CLAUDE.md`. Create an identity first when none exists.
+Create `.noorm/`, `settings.yml`, and a `# noorm` block in `.gitignore`. The encrypted `state.enc` is written when the first config is saved. On the default layout, also create `db/sql/`, `db/changes/`, `db/AGENTS.md`, and `db/CLAUDE.md`. Create an identity first when none exists.
 
 ```
 noorm init [--force] [--yes] [--here]
@@ -285,7 +296,7 @@ noorm ui
 ### Config
 
 
-Local state in `.noorm/state/state.enc`. `config use` also registers your identity in that config's database when it can connect.
+Local state in `.noorm/state/state.enc`. `config use` also registers your identity in that config's database when it can connect and the role can write there.
 
 
 #### `config list`
@@ -303,7 +314,9 @@ JSON: `configs[]` with `name`, `type`, `isTest`, `access`, `isActive`, `dialect`
 #### `config use <name>`
 
 
-Set the active config. An unknown name exits 2. JSON: `activeConfig`.
+Set the active config. An unknown name exits 2. On the agent channel, a config with `agent: false` exits 1 with `Config "<name>" is not accessible on the agent channel.` and stays inactive. JSON: `activeConfig`.
+
+The command then connects to the config's database, when it can, to register your identity. A failed connection does not fail the command. A role that cannot write to the tracking tables registers nothing.
 
 ```bash
 noorm config use staging
@@ -474,7 +487,7 @@ Your keypair lives at `~/.noorm/identity.{key,pub,json}`. It signs change histor
 #### `identity init`
 
 
-Create an X25519 keypair.
+Create an X25519 keypair, or complete an identity around an existing `identity.key`.
 
 ```bash
 noorm identity init --name "Ana Ruiz" --email ana@example.com
@@ -482,16 +495,20 @@ noorm identity init --name "Ana Ruiz" --email ana@example.com
 
 | Flag | Effect |
 |---|---|
-| `--name` | Display name. Required |
-| `--email` | Email address. Required |
+| `--name` | Display name. Default: `git config user.name`, then the OS username |
+| `--email` | Email address. Default: `git config user.email`. Exits 1 asking for `--email` when neither is set |
 | `--force` | Replace an existing identity. Needs `--yes` |
 | `--yes`, `-y` | Confirm the replacement. Only the literal flag counts, so an ambient `NOORM_YES` does not |
 
-An existing identity without `--force` exits 1. JSON: `name`, `email`, `fingerprint`, `publicKey`, and on replacement `backedUpTo` and `warning`.
+A complete identity (`identity.key`, `identity.pub` and `identity.json`) without `--force` exits 1. JSON: `name`, `email`, `fingerprint`, `publicKey`, `completedExistingKey: true` when an existing key was kept, and on replacement `backedUpTo` and `warning`.
 
 ::: danger
 Replacing an identity re-keys state encryption. Every `state.enc` on the machine becomes unreadable: configs, secrets, and database passwords. Nothing re-encrypts them under the new key. The old keypair is backed up first, and restoring `identity.key` from `backedUpTo` is the only way back.
 :::
+
+A restored `identity.key` with no `identity.pub` or `identity.json` is kept as it is. `identity init` without `--force`, and identity setup in the TUI and in `noorm init`, derive `identity.pub` from it and write `identity.json`; they do not generate a new keypair. A key file that is unreadable, corrupted, or readable by other users exits 1 with the reason and is never replaced.
+
+With `NOORM_IDENTITY_PRIVATE_KEY` set and no `identity.key` on disk, `identity init` exits 1 and writes nothing. The variable already supplies the identity, and the command would otherwise write a public key with no key file beside it. Unset the variable to create a key file.
 
 
 #### `identity edit`
@@ -923,7 +940,7 @@ Run one applied change's `revert/` scripts.
 noorm change revert 2026-10-20-order-status
 ```
 
-Accepts `--config`, `--force`, `--dry-run`, and `--json`.
+Accepts `--config`, `--force`, `--dry-run`, and `--json`. A change that was never applied exits 1 with `Cannot revert '<name>': not applied`, with `--dry-run` too.
 
 
 #### `change rewind [name]`
@@ -1161,11 +1178,13 @@ noorm lock status --json
 
 JSON: `isLocked` and `lock` (`lockedBy`, `lockedAt`, `expiresAt`), or `lock: null`.
 
+`lock status` has no role gate, but it exits 1 on a config hidden from the agent channel (`agent: false`). It deletes an expired lock only for a role with `lock:acquire`; for any other role it reports the expired lock as unlocked and leaves the row.
+
 
 #### `lock acquire`
 
 
-Take the config's lock so other noorm runs against it fail until you release it or it expires.
+Take the config's lock so other noorm runs against it fail until you release it or it expires. Needs the `lock:acquire` permission, as `lock release` does.
 
 ```bash
 noorm lock acquire --timeout 600000 --reason "nightly migration"

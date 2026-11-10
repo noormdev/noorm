@@ -401,7 +401,7 @@ await updateVersionRecord(db, dialect, {
 
 `VersionRecordOptions` carries only `stateVersion` and `settingsVersion`, both optional and both defaulting to `CURRENT_VERSIONS`. `cli_version` and `noorm_version` are not callers' to set—the former comes from `getCurrentVersion()`, the latter from `CURRENT_VERSIONS.schema`.
 
-Both reads (`getLatestVersionRecord`, `getSchemaVersion`, `tablesExist`) are two-step: they try the legacy `__noorm_version__` location first, then the schema-qualified `noorm.version` on PostgreSQL and SQL Server. That is what lets a pre-v2 database be recognized before the v2 migration has moved anything.
+The reads (`getLatestVersionRecord`, `getSchemaVersion`, `tablesExist`) first locate the version table with one catalog query per dialect (`sqlite_master`, `information_schema.tables`, `OBJECT_ID`). The legacy `__noorm_version__` location wins over the schema-qualified `noorm.version` on PostgreSQL and SQL Server. A table the login cannot see reads as absent on every dialect; a probe that fails for another reason, such as a dropped connection, throws. `checkSchemaVersion` also returns `tablesExist`, which separates a database noorm never touched from tables whose version record is missing. That is what lets a pre-v2 database be recognized before the v2 migration has moved anything.
 
 
 ## Layer-Specific Functions
@@ -645,18 +645,22 @@ beforeEach(() => {
 |-------|-------------|-------|
 | state | `migrateState` (schema-version), then the package-semver migration | `StateManager.load()` |
 | settings | `migrateSettings` | Settings load path |
-| schema | `ensureSchemaVersion(db, dialect)` | After connect, in the CLI/TUI bootstrap |
+| schema | `prepareTrackingSchema(db, dialect, caller)` | After connect, in the CLI/TUI bootstrap |
 
 Order matters inside `StateManager.load()`: the schema-version migrations run **first**, on the raw record. The package-semver migration only knows `State`'s own top-level fields and would silently drop anything schema-version-owned—including `schemaVersion` itself—if it ran first.
 
-The schema step is what the CLI does after a connection is established:
+The schema step is what the CLI does after a connection is established. `prepareTrackingSchema` calls `ensureSchemaVersion` only when the role may write (`mayWriteTracking` in `src/core/policy/`) and the run is not a dry run. Otherwise it calls `requireCurrentSchema`, which writes nothing, passes a database with no tracking tables, and throws when the tables need a migration. The TUI's `useConnection({ ensureSchema: true })` makes the same call on the `user` channel.
 
 ```typescript
 import { attempt } from '@logosdx/utils'
 
-import { ensureSchemaVersion } from './core/version'
+import { prepareTrackingSchema } from './core/version'
 
-const [, schemaError] = await attempt(() => ensureSchemaVersion(ctx.kysely, ctx.dialect))
+const [, schemaError] = await attempt(() => prepareTrackingSchema(ctx.kysely, ctx.dialect, {
+    channel: resolveChannel(),
+    config: ctx.noorm.config,
+    dryRun: !!args.dryRun,
+}))
 
 if (schemaError) {
 
@@ -671,4 +675,12 @@ if (schemaError) {
 
 Schema v3 adds the pipeline history tables, and the move is one way. An older CLI or TUI that connects to a v3 database throws `VersionMismatchError`; upgrade the client instead of rolling the database back. An older SDK (such as `@noormdev/sdk@1.7.0`) checks the schema only when `vault.copy` writes to a v3 destination, which throws `VersionMismatchError`. Every other call keeps working and ignores the pipeline tables.
 
-The CLI and TUI migrate a v1 or v2 database to v3 on connect. The SDK migrates when `pipelines.run`, `pipelines.history` or `pipelines.getRun` runs (`buildPipelineContext` and `PipelinesNamespace#historyContext`), and when `vault.copy` writes to its destination (`withDualConnection`).
+The CLI and TUI migrate a v1 or v2 database to v3 on connect, for a role that can write and outside a dry run. The SDK applies the same rule in the methods that record to the tracking tables. Each one reaches `prepareTrackingSchema`, which skips the migration for a dry run or a preview:
+
+| SDK call | Reaches it through |
+|---|---|
+| `run.*`, `changes.apply`, `changes.revert`, `changes.ff`, `changes.next`, `changes.rewind`, `lock.acquire`, `lock.withLock`, `db.reset`, `vault.init` | `ensureTracking` in `src/sdk/state.ts` |
+| `pipelines.run` | `buildPipelineContext` |
+| `vault.copy`, on its destination | `withDualConnection`, option `tracking: { channel, dryRun }` |
+
+The SDK readers never migrate. `lock.status`, `changes.history`, `changes.historyForChange` and the pipeline history readers (`listPipelineHistory`, `getPipelineRun`) return an empty result on a database with no tracking tables, and throw an error that names both schema versions on tables that need a migration.

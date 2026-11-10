@@ -113,6 +113,47 @@ flowchart TD
 
 A caller therefore sees a thrown error only before execution starts, never once it is running. [`src/cli/sql/query.ts`](../../src/cli/sql/query.ts) runs the same checks itself, requires `--yes` when a permission needs confirmation, and wraps `executeRawSql` in `withPolicyConfirmation` so the core check sees the consent.
 
+### `identity init` completes an existing private key and replaces one only with `--force --yes`
+
+Every `state.enc` on the machine is encrypted with the private key, so `noorm identity init` ([`src/cli/identity/init.ts`](../../src/cli/identity/init.ts)) asks `hasPrivateKeyFile` (the private key alone, not `hasKeyFiles`) before it creates anything. Without `--force` it calls `ensureIdentity` ([`src/core/identity/factory.ts`](../../src/core/identity/factory.ts)), which keeps the private key, writes `identity.pub` through `savePublicKey` when it is missing, and writes `identity.json` through `createIdentityForExistingKeys` when it is missing. With `--force` it calls `createCryptoIdentity`, which is also what runs when no private key exists and `--force` is set. When no key file exists and `getKeyOverride()` is set, the command refuses before either path (see Constraints).
+
+```mermaid
+flowchart TD
+    %% source: src/cli/identity/init.ts, src/core/identity/factory.ts
+    P{"hasPrivateKeyFile()"} -->|no| EN["generate keypair:<br/>createCryptoIdentity with --force,<br/>else ensureIdentity"]
+    P -->|yes| F{"--force?"}
+    F -->|no| M{"identity.json and<br/>identity.pub present?"}
+    M -->|yes| E2["error: Identity<br/>already exists"]
+    M -->|no| EC["ensureIdentity:<br/>derive pub, write metadata"]
+    F -->|yes| Y{"--yes passed?"}
+    Y -->|no| E3["error:<br/>IDENTITY_REPLACE_WARNING"]
+    Y -->|yes| R["backupKeyPair, then<br/>createCryptoIdentity"]
+```
+
+`--name` and `--email` are optional: stored metadata wins, then the flags, then `detectIdentityDefaults()` (git `user.name`, falling back to the OS username; git `user.email`). A missing email or name is an error that names the flag to pass. `ensureIdentity` also backs [`src/core/project-init.ts`](../../src/core/project-init.ts), `InitScreen.tsx`, and `IdentityOnboarding.tsx`; the TUI `IdentityInitScreen.tsx` calls `backupKeyPair` before regenerating and shows the same `IDENTITY_REPLACE_WARNING` ([`src/core/identity/storage.ts`](../../src/core/identity/storage.ts)).
+
+### Identity sync registers the user only when the role may write tracking tables
+
+`syncIdentityWithConfig(config, channel)` ([`src/core/identity/sync.ts`](../../src/core/identity/sync.ts)) takes a policy-bound config (`withConfigPolicy`) and the acting channel. It never creates or migrates tracking tables for a caller that may not write them.
+
+```mermaid
+flowchart TD
+    %% source: src/core/identity/sync.ts, src/core/version/tracking.ts, src/core/policy/check.ts
+    V{"isVisibleToChannel<br/>(config.access, channel)?"} -->|no| S["skipped: ok,<br/>knownUsersCount 0"]
+    V -->|yes| I{"loadExistingIdentity()<br/>and connection ok?"}
+    I -->|no| S
+    I -->|yes| T["prepareTrackingSchema"]
+    T --> W{"mayWriteTracking<br/>(channel, config)?"}
+    W -->|yes| EN["ensureSchemaVersion,<br/>mayRegister = true"]
+    W -->|no| RC["requireCurrentSchema,<br/>mayRegister = false"]
+    EN -->|throws| S
+    RC -->|throws| S
+    EN --> SY["syncIdentity(db,<br/>identity or null)"]
+    RC --> SY
+```
+
+`syncIdentity` returns early with `knownUsersCount: 0` when `tablesExist` is false, and registers the identity only when it receives one, so a read-only role still fetches known users from tables that already exist. `requireCurrentSchema` throws when the tables need a migration (the message ends with the remedy) or are newer than this version; `syncIdentityWithConfig` turns either, and any throw from `ensureSchemaVersion`, into the skipped result. The connection closes in a `finally`. Callers: [`src/cli/config/use.ts`](../../src/cli/config/use.ts) (passes the resolved channel), `ConfigUseScreen.tsx` and `ConfigListScreen.tsx` (pass `'user'`).
+
 ### The logger skips its own events, then filters by event name
 
 `Logger#handleEvent` ([`src/core/logger/logger.ts`](../../src/core/logger/logger.ts)) subscribes to every event (`observer.queue(/./)`) but returns immediately on anything prefixed `logger:`, so the logger never logs itself into a loop.
@@ -149,7 +190,7 @@ flowchart TD
 
 | Path | Covers |
 |------|--------|
-| [`src/core/identity/factory.ts`](../../src/core/identity/factory.ts), `index.ts`, `types.ts`, `resolver.ts`, `crypto.ts`, `hash.ts`, `env.ts`, `provenance.ts`, `sync.ts`, `storage.ts` | keypair generation, `getIdentityForConfig` (`index.ts`), `CryptoIdentity` and related types (`types.ts`), audit-identity resolution chain, config-sharing/state encryption, `identityHash`, CI env bootstrap, provenance/harness lookup, `identities` table sync, private/public key file I/O |
+| [`src/core/identity/factory.ts`](../../src/core/identity/factory.ts), `index.ts`, `types.ts`, `resolver.ts`, `crypto.ts`, `hash.ts`, `env.ts`, `provenance.ts`, `sync.ts`, `storage.ts` | keypair generation, `getIdentityForConfig` (`index.ts`), `CryptoIdentity` and related types (`types.ts`), audit-identity resolution chain, config-sharing/state encryption, `identityHash`, CI env bootstrap, provenance/harness lookup, `identities` table sync (`syncIdentityWithConfig`), `ensureIdentity` (`factory.ts`), private/public key file I/O (`savePublicKey`, `hasPrivateKeyFile`, `IDENTITY_REPLACE_WARNING`, `backupKeyPair` in `storage.ts`) |
 | [`src/core/vault/key.ts`](../../src/core/vault/key.ts), `storage.ts`, `policy.ts`, `propagate.ts`, `resolve.ts`, `copy.ts` | vault key generation/sealing, secret CRUD, `*Checked` policy wrappers (`storage.ts`, `propagate.ts`: `propagateVaultKeyChecked`, `propagateVaultKeyToChecked`), `checkVaultPolicy`/`assertVaultPolicy`/`VaultPolicyGate` (`policy.ts`), propagation to pending users (`propagate.ts`), secret resolution/merge, cross-config copy |
 | [`src/core/logger/logger.ts`](../../src/core/logger/logger.ts), `classifier.ts`, `formatter.ts`, `redact.ts`, `rotation.ts`, `queue.ts`, `reader.ts`, `init.ts` | the `Logger` class, event-name-to-level classification, message templates, field redaction, size/count rotation, ordered file writes, JSON-Lines reader, startup wiring against `Settings` |
 | [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts), `history.ts` | `executeRawSql`/`executeRawSqlUnchecked`, abort/server-cancel handling, per-config plain JSON history plus gzipped result files |
@@ -173,16 +214,19 @@ flowchart TD
 - SQL history is a plain JSON file per config (`SqlHistoryManager`); result rows are gzip-compressed separately. Both are written 0600 (files) / 0700 (dirs) via `HISTORY_FILE_MODE`/`HISTORY_DIR_MODE`, the same permission discipline as `state.enc`. Dropping those modes makes result rows readable by other local users. `noorm sql query` (headless/CI) never writes history; only `sql repl` and the TUI SQL terminal do.
 - `noorm sql repl` requires a TTY. [`src/cli/sql/repl.ts`](../../src/cli/sql/repl.ts) exits `EXIT.USAGE` in both rejected cases, so a CI script that calls `sql repl` fails fast instead of hanging. With `--yes`/`NOORM_YES` it prints a pointer to `noorm sql query`; without a TTY it prints "noorm sql repl requires an interactive terminal."
 - Log event classification ([`src/core/logger/classifier.ts`](../../src/core/logger/classifier.ts)) is regex-pattern-based on event-name prefix/suffix, not a registry: a new event namespace defaults to `debug` level unless a suffix pattern or an `INFO_PATTERNS` prefix matches it. At the default level those events are dropped. `shouldLog` filters on the event name before the `data.error` override, so a debug-classified event that carries an error (for example `sql-terminal:execute:after`) never reaches info output.
+- `syncIdentityWithConfig` needs the channel and a policy-bound config (`withConfigPolicy`). Without it, `mayWriteTracking` decides on raw `config.access` without settings policy, so a role may register or migrate where policy forbids. A role that cannot write tracking tables is not registered in `identities` by this path, and the tables are neither created nor migrated for it.
+- `noorm identity init` without `--force` never replaces a private key. A key that fails to load (bad hex, insecure permissions) surfaces `loadPrivateKey`'s error unwrapped, to fix by hand. With `NOORM_IDENTITY_PRIVATE_KEY` set and no key file, it refuses, since completing the override would write only `identity.pub`. `--force` reads the raw `--yes` flag, not `isYesMode()`, so an ambient `NOORM_YES` cannot confirm the replacement.
 - Vault has no local-disk history file; vault secrets live in DB rows only, unlike SQL history and local secrets (`state.enc`), so a lost vault key cannot be recovered from a local cache.
 
 ## Coupling
 
 - **core-policy**: [`src/core/vault/policy.ts`](../../src/core/vault/policy.ts) and [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) gate every operation through `checkConfigPolicy`/`sqlPermissionsFor` from [`src/core/policy/`](../../src/core/policy); [`src/core/identity/provenance.ts`](../../src/core/identity/provenance.ts) reads `AgentHarness` from [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts).
+    - [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) uses `isVisibleToChannel` from the policy barrel, and `prepareTrackingSchema` decides through `mayWriteTracking` ([`src/core/policy/check.ts`](../../src/core/policy/check.ts)).
     - `resolveChannel` ([`src/core/policy/channel.ts`](../../src/core/policy/channel.ts), re-exported from [`src/core/policy/index.ts`](../../src/core/policy/index.ts)) resolves the acting channel. Callers in this domain's commands are every command in [`src/cli/vault/`](../../src/cli/vault) (including `cp.ts`), [`src/cli/sql/query.ts`](../../src/cli/sql/query.ts), and [`src/cli/secret/_policy.ts`](../../src/cli/secret/_policy.ts).
     - `resolveSecretPolicy` in `_policy.ts` loads settings and applies `withConfigPolicy` before checking; `noorm secret list` requires `--yes` when `secret:read` needs confirmation, and `noorm vault cp` applies the same settings-derived policy to both configs.
-- **core-db**: [`src/core/connection/session.ts`](../../src/core/connection/session.ts) supplies `SESSION_ID_SQL`, `SERVER_CANCEL`, `hasServerSideCancel`, and `readSessionId`, which [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) imports to pin a connection and cancel a running statement from a second one. [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) and [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) open connections via `createConnection`/`withDualConnection`.
+- **core-db**: [`src/core/connection/session.ts`](../../src/core/connection/session.ts) supplies `SESSION_ID_SQL`, `SERVER_CANCEL`, `hasServerSideCancel`, and `readSessionId`, which [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) imports to pin a connection and cancel a running statement from a second one. [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) and [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) open connections via `createConnection`/`withDualConnection`; `copyVaultSecrets` passes `tracking: { channel, dryRun }`, which bootstraps the destination only, and reads the source vault key only when `tablesExist` on the source (the source is never bootstrapped, so it may have no tracking tables).
 - **shared tables**: vault and identity storage use the `NoormDatabase`/`noormDb`/`getNoormTables` helpers from [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts), a shared module owned by core-state.
-- **core-state**: [`src/core/vault/resolve.ts`](../../src/core/vault/resolve.ts) takes a `StateManager` for local-secret resolution; [`src/core/logger/init.ts`](../../src/core/logger/init.ts) waits on `settings:loaded`; [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `tablesExist`/`ensureSchemaVersion` from [`src/core/version/`](../../src/core/version). `StateManager`'s own encryption key is derived from the identity private key (`deriveStateKey`), so `core-state` cannot decrypt state until this domain has an identity available. [`src/core/logger/logger.ts`](../../src/core/logger/logger.ts) subscribes to every event through `observer.queue(/./)` ([`src/core/observer.ts`](../../src/core/observer.ts)); [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `LogLevel` from [`src/core/logger/types.ts`](../../src/core/logger/types.ts).
+- **core-state**: [`src/core/vault/resolve.ts`](../../src/core/vault/resolve.ts) takes a `StateManager` for local-secret resolution; [`src/core/logger/init.ts`](../../src/core/logger/init.ts) waits on `settings:loaded`; [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `tablesExist` and `prepareTrackingSchema` from [`src/core/version/`](../../src/core/version) (see the identity sync section). `StateManager`'s own encryption key is derived from the identity private key (`deriveStateKey`), so `core-state` cannot decrypt state until this domain has an identity available. [`src/core/logger/logger.ts`](../../src/core/logger/logger.ts) subscribes to every event through `observer.queue(/./)` ([`src/core/observer.ts`](../../src/core/observer.ts)); [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `LogLevel` from [`src/core/logger/types.ts`](../../src/core/logger/types.ts).
 - **sdk**: [`src/sdk/namespaces/vault.ts`](../../src/sdk/namespaces/vault.ts) imports `core/vault` directly and gates each call behind its own `#gate` method; [`src/sdk/index.ts`](../../src/sdk/index.ts) calls `loadIdentityFromEnv`, `setKeyOverride`, `setIdentityOverride`, and `getIdentityForConfig`, and re-exports the `Identity` type and the vault types. `VaultAccessError` is defined in the SDK, not this domain.
 - **mcp-rpc**: [`src/rpc/commands/query.ts`](../../src/rpc/commands/query.ts) calls `executeRawSql` directly, sharing the same `SqlPolicyGate` contract used by `noorm sql query` and the TUI SQL terminal.
 - **tui**: [`src/tui/screens/identity/`](../../src/tui/screens/identity), [`src/tui/screens/vault/`](../../src/tui/screens/vault), [`src/tui/screens/db/SqlTerminalScreen.tsx`](../../src/tui/screens/db/SqlTerminalScreen.tsx), and [`src/tui/components/overlays/LogViewerOverlay.tsx`](../../src/tui/components/overlays/LogViewerOverlay.tsx) import these core modules directly. The vault screens call `checkConfigPolicy` themselves (see Constraints); `SqlTerminalScreen.tsx` goes through `executeRawSql`.

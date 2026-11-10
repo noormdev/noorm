@@ -85,7 +85,7 @@ NOORM_DEBUG                  # Enable debug logging
 
 ### init
 
-Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`db/sql/`, `db/changes/`, `.noorm/`), `settings.yml`, and encrypted `state.enc`.
+Bootstrap a new noorm project interactively. Creates identity (if needed), project structure (`db/sql/`, `db/changes/`, `.noorm/`), and `settings.yml`. The encrypted `state.enc` is written when the first config is saved.
 
 ```bash
 noorm init              # Interactive — requires TTY
@@ -109,7 +109,7 @@ Use the [config command reference](https://noorm.dev/headless#config-create) for
 
 ### config use
 
-Set the active configuration.
+Set the active configuration. It connects to the config's database when it can, to register your identity; a role that cannot write registers nothing and creates no tables. On the agent channel a config with `agent: false` exits 1 with `Config "<name>" is not accessible on the agent channel.`
 
 ```bash
 noorm config use dev
@@ -124,9 +124,16 @@ noorm config use production --json
 
 Create a new cryptographic identity. Generates an X25519 keypair and stores it at `~/.noorm/identity.{key,pub,json}`. Required before using config sharing or team discovery features.
 
+When `identity.key` exists without `identity.pub` or `identity.json` (a key restored on a new machine), the command keeps the key, derives the public key and writes the metadata; the JSON then carries `completedExistingKey: true`. Never use `--force --yes` for that case: it replaces the key and makes existing encrypted state unreadable.
+
+`--name` defaults to `git config user.name`, then the OS username. `--email` defaults to `git config user.email`; with neither, the command exits 1 and asks for `--email`. Pass both in CI, where git is usually unconfigured.
+
+With `NOORM_IDENTITY_PRIVATE_KEY` set and no `identity.key` on disk, the command exits 1 and writes nothing: `NOORM_IDENTITY_PRIVATE_KEY is set, so this process already has an identity and no key would be written to ~/.noorm. Unset it to create an identity on this machine.` A CI job that sets the `NOORM_IDENTITY_*` variables does not need `identity init`.
+
 ```bash
+noorm identity init
 noorm identity init --name "Alice" --email "alice@example.com"
-noorm identity init --name "Alice" --email "alice@example.com" --force
+noorm identity init --name "Alice" --email "alice@example.com" --force --yes
 noorm identity init --name "Alice" --email "alice@example.com" --json
 ```
 
@@ -484,6 +491,8 @@ noorm change revert 2024-02-01-notifications
 noorm change revert 002_users --json
 ```
 
+A change that was never applied exits 1, with `--dry-run` too.
+
 ### change rewind
 
 Revert applied changes back to (and including) a named change — the inverse of `change ff`. Omit the name on a TTY to pick from successfully applied changes.
@@ -664,6 +673,8 @@ noorm lock release   # Release lock
 noorm lock force     # Force-release any lock (emergency)
 ```
 
+`lock acquire` and `lock release` need the config's `lock:acquire` permission: `viewer` (the agent channel's default role) is denied, `operator` and `admin` are allowed. `lock force` needs `lock:force`, which is `confirm` for `operator` and `admin`, so an agent cannot run it. `lock status` has no role gate.
+
 **JSON (lock status):**
 
 ```json
@@ -677,7 +688,7 @@ noorm lock force     # Force-release any lock (emergency)
 }
 ```
 
-**CI/CD pattern with cleanup:**
+**CI/CD pattern with cleanup** (the config's role needs `lock:acquire`):
 
 ```bash
 noorm lock acquire
@@ -954,7 +965,7 @@ export NOORM_CONNECTION_PASSWORD=$DB_PASSWORD
 # Bootstrap ephemeral state from env
 noorm ci init --name prod
 
-# Acquire lock to prevent concurrent migrations
+# Acquire lock to prevent concurrent migrations (the role needs lock:acquire)
 noorm lock acquire
 trap "noorm lock release" EXIT
 

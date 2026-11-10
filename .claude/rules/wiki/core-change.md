@@ -3,7 +3,9 @@
 paths:
   - "src/core/change/**"
   - "src/cli/change/**"
+  - "src/core/lock/**"
   - "tests/core/change/**"
+  - "tests/core/lock/**"
   - "tests/integration/change/**"
 ---
 

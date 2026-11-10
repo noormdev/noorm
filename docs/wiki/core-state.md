@@ -9,7 +9,7 @@ tags: [core, state, config]
 
 ## What it does
 
-This domain gives commands a validated database configuration while keeping encrypted credentials separate from version-controlled project settings. Reach for it when changing how stored configs, environment variables, inline overrides, or stages select a database. It also owns project discovery and initialization, persisted-data migration, application shutdown coordination, and the shared typed event bus.
+This domain gives commands a validated database configuration while keeping encrypted credentials separate from version-controlled project settings. Reach for it when changing how stored configs, environment variables, inline overrides, or stages select a database. It also owns project discovery and initialization, persisted-data migration, the rule for who may create or migrate a database's tracking tables, application shutdown coordination, and the shared typed event bus.
 
 The name is broader than encrypted state: the domain also covers config resolution, settings, version migration, project discovery and initialization, `LifecycleManager`, and the observer. Its paths are `src/core/{state,settings,config,lifecycle,version,shared}`, `project.ts`, `project-init.ts`, `environment.ts`, and `observer.ts`.
 
@@ -21,7 +21,9 @@ Config selection decides whether stored state participates before config values 
 flowchart TD
     %% source: src/core/config/resolver.ts
     A["resolveConfig"] --> B{"configName?"}
-    B -->|yes| C{"state.getConfig<br/>(configName)?"}
+    B -->|yes| U{"options.unstoredName?"}
+    U -->|yes| V["throw Error<br/>(cannot rename stored config)"]
+    U -->|no| C{"state.getConfig<br/>(configName)?"}
     C -->|missing| D["throw Error<br/>(configNotFoundMessage)"]
     C -->|found| E["getStageDefaults<br/>stageFields, clone<br/>merge"]
     E --> F["parseConfig<br/>applyPolicyContext"]
@@ -34,20 +36,20 @@ flowchart TD
 
 ### Resolution separates selection from value precedence
 
-`resolveConfig` in [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) selects a stored name from `options.name`, then `NOORM_CONFIG`, then `state.getActiveConfigName()` only when `options.flags.connection` is absent. Inline input alone does not inherit an active config's connection fields, access roles, or `isTest` flag. A selected name must exist in state; complete environment or inline connection values do not bypass a missing explicitly selected config.
+`resolveConfig` in [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts) selects a stored name from `options.name`, then `NOORM_CONFIG`, then `state.getActiveConfigName()` only when `options.flags.connection` is absent. `options.name: false` selects no stored config at all, so only the env-only and inline branches can run. Inline input alone does not inherit an active config's connection fields, access roles, or `isTest` flag. A selected name must exist in state; complete environment or inline connection values do not bypass a missing explicitly selected config.
 
 | Resolution mode | Entry condition | Values from lowest to highest priority | Name behavior |
 |---|---|---|---|
-| Stored | A selected config name exists | `DEFAULTS`, mapped stage defaults, stored config, environment, `options.flags` | Selection uses the stored name; merged input can override the resulting config's `name` |
-| Env-only | No selected name; environment has a connection and the stage/env/inline connection supplies dialect and database (`options.flags.connection` absent in the simple case) | `DEFAULTS`, mapped stage defaults, environment, flags | `options.flags.name` overrides `NOORM_NAME` in the merge; absent both, `__env__` |
-| Inline connection | No selected name; `options.flags.connection` exists | `DEFAULTS`, mapped stage defaults, environment, flags | Merged explicit name, otherwise `__inline__` |
+| Stored | A selected config name exists | `DEFAULTS`, mapped stage defaults, stored config, environment, `options.flags` | Selection uses the stored name. An env or flag `name` can rename the result, but throws when the new name belongs to another stored config. `options.unstoredName` throws here |
+| Env-only | No selected name; environment has a connection and the stage/env/inline connection supplies dialect and database (`options.flags.connection` absent in the simple case) | `DEFAULTS`, mapped stage defaults, environment, flags | `options.unstoredName`, then `options.flags.name`, then `NOORM_NAME`, then `__env__`; the name is then fixed on the result. Throws when a stored config already has that name |
+| Inline connection | No selected name; `options.flags.connection` exists | `DEFAULTS`, mapped stage defaults, environment, flags | Same order as env-only, with `__inline__` as the synthetic name |
 | No usable input | No selected name and neither eligibility condition holds | No config is parsed | Returns `null` |
 
 An inline connection enters validation even when incomplete. It does not need to satisfy the env-only eligibility gate first. `parseConfig` still requires the final dialect and database.
 
-Stage lookup uses an explicit `options.stage` when supplied, otherwise a stage matching the config name. The no-selected-name eligibility probe uses the inline name, environment name, or `__env__`; the actual merge looks up the stage again using the environment name, inline name, or synthetic name. This environment-first lookup does not set the returned name: the later flags merge overrides `NOORM_NAME`. `stageFields(defaults, true)` maps flat stage connection fields into `connection` before the merge. Stage `type`, `isTest`, and `access` stay at the top level. The stage's `protected` value binds a per-permission ceiling for policy checks, not a replacement connection field or role assignment. See [`docs/wiki/core-policy.md`](core-policy.md) for role semantics.
+Stage lookup uses an explicit `options.stage` when supplied, otherwise a stage matching the config name. The no-selected-name eligibility probe looks up the stage by the inline name, then the environment name, then `__env__`. `resolveFromEnvOnly` repeats the lookup with `fallbackName`, which is `options.flags.name`, then the environment name, then `__inline__` when `options.flags.connection` is set and `__env__` otherwise, even when `options.unstoredName` supplies the returned name, so a caller-chosen name restricts and never selects stage defaults. A name that belongs to a stored config is refused in both the stored and env-only branches, because secrets, vault lookups, and tracking records are keyed by name. `stageFields(defaults, true)` maps flat stage connection fields into `connection` before the merge. Stage `type`, `isTest`, and `access` stay at the top level. The stage's `protected` value binds a per-permission ceiling for policy checks, not a replacement connection field or role assignment. See [`docs/wiki/core-policy.md`](core-policy.md) for role semantics.
 
-When `options.settings` is supplied, `applyPolicyContext` calls `bindPolicyContext` with the roles from `settings.getRoles()`. `validateAccessRoles` throws `UnknownAccessRoleError` for a `user` or `agent` role that is neither built in nor a key of the project's roles, so role-name validity depends on project settings (`ConfigSchema` accepts any nonempty role string). `attachPolicyContext` then records the roles, whether the config is under a protected stage, and a `targetIdentity` from `policyTargetIdentity(projectRoot, connection)`. The protected flag is true when the config name or any stage name (lookup and merged) is a protected stage, so an environment or flag rename cannot drop the ceiling. `withConfigPolicy` applies the same binding to a stored config without environment overrides.
+When `options.settings` is supplied, `applyPolicyContext` calls `bindPolicyContext` with the roles from `settings.getRoles()`. `validateAccessRoles` throws `UnknownAccessRoleError` for a `user` or `agent` role that is neither built in nor a key of the project's roles, so role-name validity depends on project settings (`ConfigSchema` accepts any nonempty role string). `attachPolicyContext` then records the roles, whether the config is under a protected stage, and a `targetIdentity` from `policyTargetIdentity(projectRoot, connection)`. The protected flag is true when the config name or any stage name (lookup and merged, including the name `unstoredName` displaced) is a protected stage, so an environment or flag rename cannot drop the ceiling. The binding also carries `isTest` and a `testTargetIdentity` from `connectionTarget` (dialect, host, port, database, filename, no credentials). A stored config's `isTest` survives only while `sameTarget` shows the resolved connection still reaches the stored database, and env or flag overlays alone cannot grant it. `withConfigPolicy` applies the same binding to a stored config without environment overrides.
 
 ### Environment names express object paths
 
@@ -66,7 +68,7 @@ When `options.settings` is supplied, `applyPolicyContext` calls `bindPolicyConte
 
 `NOORM_CONFIG` selects a stored config and is excluded from config values. `NOORM_NAME` supplies a config value instead. CLI control variables such as `NOORM_YES` and `NOORM_CHANNEL`, and the `NOORM_IDENTITY_` prefix, are filtered out. `NOORM_IDENTITY` itself can supply the config's identity string.
 
-The accessor builds input; schema parsing validates it. `ConnectionSchema` accepts `postgres`, `mysql`, `sqlite`, or `mssql`, requires a nonempty database, and requires a host outside SQLite. It accepts boolean SSL or an SSL object with `rejectUnauthorized`, `ca`, `cert`, and `key`. Runtime fields include `tlsServerName`, `connectTimeoutMs`, `statementTimeoutMs`, `queryTimeoutMs`, `applicationName`, and `keepAlive`. Connection timeout must be a positive integer; statement and query timeouts permit zero. Pool fields validate their integer bounds. `ConfigValidationError` carries the field path and Zod issues.
+The accessor builds input; schema parsing validates it. `ConnectionSchema` accepts `postgres`, `mysql`, `sqlite`, or `mssql`, requires a nonempty database, and requires a host outside SQLite. It accepts boolean SSL or an SSL object with `rejectUnauthorized`, `ca`, `cert`, and `key`. Runtime fields include `tlsServerName`, `connectTimeoutMs`, `statementTimeoutMs`, `queryTimeoutMs`, `applicationName`, and `keepAlive`. Connection timeout must be a positive integer; statement and query timeouts permit zero. `PoolSchema` is strict and lists every dialect's pool keys; `rejectUnsupportedOptions` (from `connectionOptionProblems` in [`src/core/connection/options.ts`](../../src/core/connection/options.ts)) rejects a pool key or `keepAliveInitialDelayMs` that the connection's dialect cannot honor, whether the config is stored, from the environment, or inline. `mergeLayer` treats `pool.idleTimeoutMs` and its alias `idleTimeoutMillis` as one setting, so a layer naming either replaces both from lower layers. `ConfigValidationError` carries the field path and Zod issues.
 
 For server dialects, database names reject quotes, backticks, brackets, semicolons, and control characters because database creation and removal interpolate a quoted identifier. SQLite database paths are exempt. Config names accept letters, digits, hyphens, and underscores.
 
@@ -107,7 +109,7 @@ Materialization fixes the requested name and takes top-level behavior from stage
 
 ### Initialization establishes identity before state loading
 
-`performProjectInit` is shared by CLI `noorm init` and the TUI `InitScreen`. It creates identity before constructing `StateManager` when the caller supplies identity information and keys do not exist. With `identityInfo: null`, the caller must already have a global identity in `~/.noorm/`; initialization does not create one implicitly. `SettingsManager` does not require a private key. `SettingsManager.init(force)` writes `settings.yml` and throws when the file exists and `force` is false.
+`performProjectInit` is shared by CLI `noorm init` and the TUI `InitScreen`. It calls `ensureIdentity` before constructing `StateManager` when the caller supplies identity information: that creates missing keys, derives a missing public key, or writes metadata for existing keys, and creates nothing when all exist. With `identityInfo: null`, the caller must already have a global identity in `~/.noorm/`; initialization does not create one implicitly. `SettingsManager` does not require a private key. `SettingsManager.init(force)` writes `settings.yml` and throws when the file exists and `force` is false.
 
 Initialization loads settings before scaffolding the default database layout.
 
@@ -120,7 +122,7 @@ sequenceDiagram
     participant State as StateManager
     Init->>FS: create .noorm/state and ignore file
     opt identityInfo supplied
-        Init->>Init: createCryptoIdentity or metadata
+        Init->>Init: ensureIdentity(identityInfo)
     end
     Init->>Settings: init(force)
     Init->>Settings: getPaths()
@@ -130,7 +132,7 @@ sequenceDiagram
     Init->>FS: ensure .noorm/state/ ignore entry
 ```
 
-`scaffoldDbLayout` creates `db/sql/`, `db/changes/`, and steering files beside them only for the default layout. Existing steering files remain untouched. The root ignore update checks for the [`.noorm/state/`](../../.noorm/state) entry, not merely the `# noorm` header.
+`scaffoldDbLayout` creates `db/sql/`, `db/changes/`, and steering files beside them only for the default layout. Existing steering files and existing `.gitkeep` files remain untouched, and only newly written ones are reported as created. Init does not report `state.enc` as created, since the file stays absent until a later save. The root ignore update checks for the [`.noorm/state/`](../../.noorm/state) entry, not merely the `# noorm` header.
 
 `getStateManager(projectRoot).reloadPrivateKey()` refreshes the manager for that root after initialization, including when it was constructed before identity existed. `getStateManager` caches one `StateManager` per resolved root in a map; an explicit root also becomes the active instance that a later call without arguments returns, and `resetStateManager` clears both. Loading an absent state file still leaves it in memory until a later save.
 
@@ -199,7 +201,41 @@ Every existence check runs again after a retry, so a partial first run is comple
 
 `migrateSchema` wraps each pending migration's failure in `MigrationError` and writes the version record only after all pending migrations succeed. When tables exist but no version record does, it starts from version 1, so every v2+ migration must be idempotent. [`tests/integration/version/schema-v3.test.ts`](../../tests/integration/version/schema-v3.test.ts) drops the run index, the step table, and `name_key` between runs on Postgres, MySQL, and SQL Server, then asserts the columns and both indexes exist; [`tests/core/version/schema.test.ts`](../../tests/core/version/schema.test.ts) covers SQLite.
 
-`buildPipelineContext` in [`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts) calls `ensureSchemaVersion` before it builds the run context, so tracking tables reach the current version before any pipeline call reads or writes them. It then checks `input.signal?.throwIfAborted()`, so an abort during migration rejects before secrets are read.
+### Tracking tables are created or migrated only by a role that may record to them
+
+A caller that cannot record to the tracking tables must never create or migrate them, and a dry run must leave the database as it found it. Every surface decides through [`src/core/version/tracking.ts`](../../src/core/version/tracking.ts), so the rule lives in one place. Without it, a read-only role or a `--dry-run` against a fresh database would create `noorm.*` tables or migrate them under a role that policy never allowed to write.
+
+`prepareTrackingSchema` takes a `TrackingCaller` (`channel`, `config` with its `access`, optional `dryRun`) and resolves to whether the caller may record. Only a caller that may record, outside a dry run, reaches `ensureSchemaVersion`; every other path only checks:
+
+```mermaid
+flowchart TD
+    %% source: src/core/version/tracking.ts, src/core/policy/check.ts
+    A["prepareTrackingSchema"] --> B{"mayWriteTracking<br/>(channel, config)?"}
+    B -->|yes| C{"dryRun?"}
+    C -->|no| D["ensureSchemaVersion<br/>returns true"]
+    C -->|yes| E["requireCurrentSchema<br/>dry-run remedy, returns false"]
+    B -->|no| F["requireCurrentSchema<br/>role remedy, returns false"]
+```
+
+`mayWriteTracking` in [`src/core/policy/check.ts`](../../src/core/policy/check.ts) is true when `checkConfigPolicy` allows any permission in `TRACKED_WRITES`: the permissions whose `RECORDS_TO_TRACKING` flag in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) is true (`change:*`, `run:*`, `pipeline:run`, `db:create`, `db:reset`, `db:teardown`, `vault:read`, `vault:write`, `vault:propagate`, `lock:acquire`, `lock:force`, and `debug:write`). `RECORDS_TO_TRACKING` is keyed by `Permission`, so a new permission cannot go unclassified. A `confirm` cell counts where the channel can confirm. Role semantics belong to [`docs/wiki/core-policy.md`](core-policy.md).
+
+`requireCurrentSchema(db, dialect, remedy)` writes nothing. It throws `VersionMismatchError` when the tables are newer than this version, and throws an `Error` ending with `remedy` when the tables exist but need migration. It resolves to whether the tables exist, so a reader answers "nothing recorded" without a second probe. `readerRemedy(what)` builds the remedy for readers, which never migrate.
+
+| Caller | Contract |
+|---|---|
+| CLI `prepareTracking` in [`src/cli/_utils.ts`](../../src/cli/_utils.ts) | `prepareTrackingSchema` with `resolveChannel()`, the context's config, and `dryRun` from the args |
+| TUI `useConnection` | `prepareTrackingSchema` with channel `user` when `ensureSchema` is requested |
+| SDK `ensureTracking` in [`src/sdk/state.ts`](../../src/sdk/state.ts) | `prepareTrackingSchema`; `dryRun` and `preview` both skip the write |
+| SDK readers ([`src/sdk/namespaces/lock.ts`](../../src/sdk/namespaces/lock.ts), [`src/sdk/namespaces/changes.ts`](../../src/sdk/namespaces/changes.ts)), [`src/core/pipeline/history.ts`](../../src/core/pipeline/history.ts) | `requireCurrentSchema` with `readerRemedy`; no migration |
+| `buildPipelineContext` in [`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts) | `prepareTrackingSchema`, then `input.signal?.throwIfAborted()`, so an abort during migration rejects before secrets are read |
+| Identity sync in [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) | `prepareTrackingSchema`; a failure skips sync, and a caller that may not record syncs with a null identity so it reads known users without registering |
+| Dual-database setup in [`src/core/db/dual.ts`](../../src/core/db/dual.ts) | When the caller passes `tracking`, `prepareTrackingSchema` on the destination connection with the destination config |
+
+#### Catalog probes tell absence from failure
+
+`locateVersionTable` in [`src/core/version/schema/index.ts`](../../src/core/version/schema/index.ts) asks the catalog (`sqlite_master`, `information_schema.tables`, `OBJECT_ID`) instead of selecting from the version table. A failed SELECT cannot distinguish a missing table from a dropped connection or a missing grant, and it lands in the server's error log. The probe finds the version table under its legacy `__noorm_version__` name or in the `noorm` schema. On Postgres it counts `information_schema.tables` rows filtered by `current_schemas(false)` or `table_schema = 'noorm'`; `to_regclass` is avoided because it raises for a login without `USAGE` on the `noorm` schema. A table this login cannot see reads as absent on every dialect, so `tablesExist` is true only for a visible table, while a probe that fails for another reason throws. `checkSchemaVersion` adds `tablesExist` to its status: a database noorm never touched and tracking tables without a version record both read as version 0, and only `tablesExist` separates them. The v3 migration's own `tableExists`, `indexExists`, and `nameKeyExists` probes follow the same rule.
+
+### State files are reconciled, encrypted, and key-checked
 
 State persistence uses a content fingerprint and `mergeState` for three-way reconciliation between the loaded baseline, local mutations, and concurrent disk changes. `acquireWriteLock` uses exclusive `wx` (`O_EXCL`) creation rather than `flock`, which can be ineffective on network mounts. It waits up to 5s and treats locks older than 30s as abandoned. `backupExisting` attempts a previous-generation `.bak` copy before each overwrite; `writeFileAtomicSync` flushes a sibling file before renaming it over the target. State writes use mode `0o600`, and backup permissions are set to the same mode.
 
@@ -216,13 +252,13 @@ Encryption uses AES-256-GCM with `deriveStateKey` from the identity private key.
 3. `releasing`
 4. `flushing`
 
-`LifecycleManager.#performShutdown` skips `exiting`; the caller owns exit handling, and resources registered for `exiting` do not run here. Signal and exception handlers live in [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts). The default database cleanup calls `getConnectionManager().closeAll()`.
+`shutdown(reason, exitCode)` defaults `exitCode` to the manager's current exit code, and a passed `0` is replaced by a nonzero current code, so an earlier failure is not masked. `LifecycleManager.#performShutdown` skips `exiting`; the caller owns exit handling, and resources registered for `exiting` do not run here. Signal and exception handlers live in [`src/core/lifecycle/handlers.ts`](../../src/core/lifecycle/handlers.ts). The default database cleanup calls `getConnectionManager().closeAll()`.
 
 | Shutdown condition | Behavior |
 |---|---|
 | Resources share a phase | Run sequentially in ascending priority. |
-| A resource cleanup fails | Emit `error` with `source: 'lifecycle'` and the resource name, then continue with subsequent resources. |
-| A phase times out | Emit `app:shutdown:phase` with `status: 'timeout'` and continue to the next phase. |
+| A resource cleanup fails | Emit `error` with `source: 'lifecycle'` and the resource name, set the exit code to `1` if it was `0`, then continue with subsequent resources. |
+| A phase times out or fails | Emit `app:shutdown:phase` with `status: 'timeout'`, set the exit code to `1` if it was `0`, and continue to the next phase. |
 | An uncaught exception or unhandled rejection reaches fatal handling | Emit `app:fatal`, remove process handlers, mark lifecycle state `failed`, and emit `app:exit` with code `1` without awaiting phased shutdown. |
 | A second signal arrives while shutting down | Emit `app:fatal` with `Forced exit on second <signal>` and call `process.exit(128 + signal code)`. |
 
@@ -230,7 +266,7 @@ Encryption uses AES-256-GCM with `deriveStateKey` from the identity private key.
 
 [`src/core/observer.ts`](../../src/core/observer.ts) exports the shared `ObserverEngine<NoormEvents>` instance. `NoormEvents` combines imported settings, update, vault, transfer, and DT event interfaces with inline file, config, state, connection, application, and version events. Logger, teardown, and statement-probe types define individual payload fields. Changes to those payload types affect emitters and subscribers through this shared contract.
 
-`connection:open` includes `configName` and `dialect`, plus optional `host`, `port`, and `database`, so subscribers can identify the resolved connection rather than infer it from the stored name. `connection:error` carries a user-facing `error`, optional server diagnostics, and optional `phase` of `'idle'` or `'checked-out'` to distinguish pool-client failures from connection-opening failures. Config CRUD payloads carry names; `config:created` declares only `name`; `config:updated.fields` is `Object.keys` of the whole written config (`StateManager.setConfig`), not only changed fields; activation carries the previous name.
+`connection:open` includes `configName` and `dialect`, plus optional `host`, `port`, and `database`, so subscribers can identify the resolved connection rather than infer it from the stored name. `connection:error` carries a user-facing `error`, optional server diagnostics, and optional `phase` of `'idle'`, `'checked-out'`, or `'login'` for pool failures after the first connect; it is absent for a failed connect. Config CRUD payloads carry names; `config:created` declares only `name`; `config:updated.fields` is `Object.keys` of the whole written config (`StateManager.setConfig`), not only changed fields; activation carries the previous name.
 
 The event contract permits repeating progress signals between file execution boundaries.
 
@@ -269,6 +305,7 @@ The runner's `executeSingleFile` and `executeSingleFileWithUpdate` emit `file:be
 | [`src/core/state/persistence.ts`](../../src/core/state/persistence.ts), [`src/core/state/merge.ts`](../../src/core/state/merge.ts) | `writeFileAtomicSync`, `acquireWriteLock`, `backupExisting`, fingerprinting, and `mergeState` |
 | [`src/core/state/access.ts`](../../src/core/state/access.ts), [`src/core/state/migrations.ts`](../../src/core/state/migrations.ts) | `resolveStateConfigAccess`, semver `migrateState`, and `needsMigration` |
 | [`src/core/state/encryption/crypto.ts`](../../src/core/state/encryption/crypto.ts), [`src/core/state/encryption/index.ts`](../../src/core/state/encryption/index.ts), [`src/core/state/types.ts`](../../src/core/state/types.ts), [`src/core/state/version.ts`](../../src/core/state/version.ts) | `encrypt`/`decrypt` and their barrel exports, `State`, `EncryptedPayload`, `createEmptyState`, and `getPackageVersion` (the build-time-injected CLI package version) |
+| [`src/core/version/tracking.ts`](../../src/core/version/tracking.ts) | `prepareTrackingSchema`, `requireCurrentSchema`, `readerRemedy`, and `TrackingCaller`; the tracking-table preparation contract |
 | [`src/core/version/types.ts`](../../src/core/version/types.ts), `src/core/version/{schema,state,settings}/` | `CURRENT_VERSIONS`, numeric migration interfaces and each engine's `MIGRATIONS` with `up`/`down` steps; `schema/` owns database tracking tables |
 | [`src/core/shared/`](../../src/core/shared) | Cross-domain helpers: `getNoormTables`/`noormDb` in `tables.ts`, `dialect-quoting.ts`, `errors.ts`, `abort.ts`, `mask.ts`, `operation-id.ts`, and `approved-content.ts` (an `AsyncLocalStorage` scope that only the MCP approval server establishes, read by the runner and change executor through `approvedSql`) |
 | [`src/core/project.ts`](../../src/core/project.ts), [`src/core/project-init.ts`](../../src/core/project-init.ts) | `findProjectRoot`, `getOriginalCwd`/`setOriginalCwd`, `performProjectInit`, and layout scaffolding |
@@ -293,7 +330,8 @@ The runner's `executeSingleFile` and `executeSingleFileWithUpdate` emit `file:be
 - An absent state file remains absent after `StateManager.load()`. A caller requiring a durable file must perform a later mutation; initialization's reported path alone does not establish persistence.
 - Numeric state migration must precede `migrateState`. Skipping it leaves v2-era configs with `access.mcp` and no `agent`; `resolveStateConfigAccess` rejects them as malformed, and `getConfig`, `getActiveConfig`, and `setActiveConfig` throw the repair-access diagnostic.
 - State locks must be released on failure as well as success. A held lock blocks competing mutations until release or stale-lock handling.
-- Bun's process-global `mock.module` registry never restores, so a module mock poisons every later file in the same process, including tests of this domain. Config lookup passes `memoizeOpts: false` and re-reads `process.env`, so it is not the contamination source. Run a failing test file in isolation first.
+- Bun's process-global `mock.module` registry never restores, so a module mock poisons every later file in the same process, including tests of this domain. CI therefore runs serial test processes ([`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)): core, [`tests/utils`](../../tests/utils), and [`tests/sdk`](../../tests/sdk) without transfer; transfer isolated; CLI; CLI logger settings isolated; and integration. Config lookup passes `memoizeOpts: false` and re-reads `process.env`, so it is not the contamination source. Run a failing test file in isolation first.
+- Do not call `ensureSchemaVersion` or `migrateSchema` from a surface that has a caller and config. Go through `prepareTrackingSchema`, or `requireCurrentSchema` for a read, or a read-only role and a dry run will create or migrate tables.
 - A null `file:progress.status` provides no health signal. Subscribers that display it as success misrepresent an unavailable probe.
 - `isEnvTruthy` does not trim input. It treats empty strings, `0`, and case-insensitive `false` as false. Substituting JavaScript string truthiness would accidentally bypass confirmations for `NOORM_YES=false` or enable debug logging for `NOORM_DEBUG=0`.
 

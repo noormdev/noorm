@@ -21,7 +21,7 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Confirm, useToast } from '../../components/index.js';
+import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
 import { createConnection } from '../../../core/connection/index.js';
 import {
@@ -29,6 +29,7 @@ import {
     LockNotFoundError,
     LockOwnershipError,
 } from '../../../core/lock/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 
 /**
  * Screen phase state.
@@ -46,6 +47,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
     const { isFocused } = useFocusScope('LockRelease');
     const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'lock:acquire') : null;
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
@@ -55,7 +57,7 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
         identityStr,
         loading: lockLoading,
         error: lockError,
-    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity);
+    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity, check?.allowed !== false);
 
     // Derive phase from lock status loading state
     useEffect(() => {
@@ -172,6 +174,14 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
 
         if (!isFocused) return;
 
+        if (check && !check.allowed) {
+
+            if (key.return || key.escape) back();
+
+            return;
+
+        }
+
         if (phase === 'done' || phase === 'error' || phase === 'no-lock' || phase === 'not-yours') {
 
             if (key.return || key.escape) {
@@ -206,6 +216,22 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
             <Panel title="Release Lock" borderColor="red" paddingX={1} paddingY={1}>
                 <Text color="red">No active configuration selected.</Text>
             </Panel>
+        );
+
+    }
+
+    if (check && !check.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Release Lock" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -271,7 +297,11 @@ export function LockReleaseScreen({ params: _params }: ScreenProps): ReactElemen
     if (phase === 'confirm') {
 
         return (
-            <Confirm
+            <SmartConfirm
+                requiresConfirmation={check?.requiresConfirmation === true}
+                confirmationPhrase={check?.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action="release your lock on"
                 title="Release Lock"
                 message="Are you sure you want to release your lock? Other users will be able to acquire it."
                 onConfirm={handleConfirm}

@@ -167,6 +167,12 @@ describe.skipIf(!bundleExists)('sdk bundle: error classes', () => {
 
     });
 
+    it('should export DatabaseConnectionError', () => {
+
+        expect(typeof bundle.DatabaseConnectionError).toBe('function');
+
+    });
+
     it('should export lock error classes', () => {
 
         expect(typeof bundle.LockAcquireError).toBe('function');
