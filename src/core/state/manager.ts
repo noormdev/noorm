@@ -430,7 +430,7 @@ export class StateManager {
         const error = this.getConfigAccessError(name);
         if (error) throw new ConfigAccessInvalidError(name, error);
 
-        return state.configs[name] ?? null;
+        return Object.hasOwn(state.configs, name) ? state.configs[name] ?? null : null;
 
     }
     /** Create a detached user-policy candidate from a recognizable stored user role. */

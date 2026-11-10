@@ -18,7 +18,8 @@ import type { Config } from '../config/types.js';
 import type { NoormDatabase } from '../shared/tables.js';
 import { createConnection } from '../connection/factory.js';
 import { observer } from '../observer.js';
-import { ensureSchemaVersion } from '../version/schema/index.js';
+import type { Channel } from '../policy/index.js';
+import { prepareTrackingSchema } from '../version/tracking.js';
 
 /**
  * Connection info for dual connection context.
@@ -47,8 +48,8 @@ export interface DualConnectionOptions {
     /** Destination config object */
     destConfig: Config;
 
-    /** Bootstrap noorm tables on destination if needed (default: true) */
-    ensureSchema?: boolean;
+    /** Set by an operation that records to the destination's tracking tables; omitted, they are left untouched and unchecked. */
+    tracking?: { channel: Channel; dryRun?: boolean };
 }
 
 /**
@@ -86,7 +87,7 @@ export async function withDualConnection<T>(
     fn: (ctx: DualConnectionContext) => Promise<T>,
 ): Promise<[T | null, Error | null]> {
 
-    const { sourceConfig, destConfig, ensureSchema = true } = options;
+    const { sourceConfig, destConfig, tracking } = options;
 
     let sourceConn: ConnectionResult | null = null;
     let destConn: ConnectionResult | null = null;
@@ -109,13 +110,9 @@ export async function withDualConnection<T>(
             destination: destConfig.name,
         });
 
-        // Optionally bootstrap noorm schema on destination
-        if (ensureSchema) {
+        if (tracking) {
 
-            await ensureSchemaVersion(
-                destConn.db as Kysely<NoormDatabase>,
-                destConn.dialect,
-            );
+            await prepareTrackingSchema(destConn.db as Kysely<NoormDatabase>, destConn.dialect, { ...tracking, config: destConfig });
 
         }
 

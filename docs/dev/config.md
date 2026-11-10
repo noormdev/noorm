@@ -53,13 +53,14 @@ interface Config {
         user?: string
         password?: string
         ssl?: boolean | SSLConfig
-        pool?: { min?: number, max?: number, idleTimeoutMillis?: number } // min/max default to 0/10
+        pool?: PoolOpts         // min/max default to 0/10; PgPoolOpts and TarnPoolOpts add the per-dialect options, see below
         tlsServerName?: string  // PostgreSQL/MSSQL certificate hostname, including IP dial hosts
         connectTimeoutMs?: number  // Per attempt, defaults to 15000
         statementTimeoutMs?: number // PostgreSQL server-side timeout
         queryTimeoutMs?: number     // PostgreSQL client-side timeout
         applicationName?: string    // PostgreSQL session application_name
-        keepAlive?: boolean         // PostgreSQL TCP keepalive
+        keepAlive?: boolean         // PostgreSQL/MySQL TCP keepalive
+        keepAliveInitialDelayMs?: number // PostgreSQL/MySQL: idle ms before the first keepalive probe
     }
 
     identity?: string         // Override audit identity
@@ -77,6 +78,23 @@ no limit, so an unreachable host waited forever. Raise it when the link is slow
 but working; a serverless database resuming from auto-pause is the case that
 needs it.
 
+`pool` accepts a different set of options per dialect. PostgreSQL uses `pg`'s pool. MySQL and MSSQL use Tarn, for a string password and a password callback alike.
+
+| `pool` option | PostgreSQL | MySQL, MSSQL | SQLite |
+|---|---|---|---|
+| `min`, `max` | yes; `min` must not exceed `max` | yes; `min` must not exceed `max` | accepted, unused |
+| `idleTimeoutMs` | yes; zero disables the timeout | yes; must be greater than zero | no; the `idleTimeoutMillis` alias is accepted, unused |
+| `maxLifetimeMs` | yes | no | no |
+| `maxUses`, `allowExitOnIdle` | yes | no | no |
+| `acquireTimeoutMs`, `createTimeoutMs` | no | yes; positive; default 30000, or `connectTimeoutMs` plus 5000 when that is larger | no |
+| `reapIntervalMs` | no | yes; positive | no |
+
+`ConnectionSchema` rejects an option the dialect cannot honor (`pool.maxUses is not supported on mysql`), and the dialect adapter repeats the check for a config that reached it without passing the schema. Both read the rules from `src/core/connection/options.ts`. A key that is not a pool option at all fails too (`pool.maxuses is not a pool option`); the pool schema is strict, so nothing is stripped. The message names the camelCase spelling when only the case differs, which is what an all-caps environment segment such as `NOORM_CONNECTION_POOL_MAXUSES` turns into. The connection object itself is not strict: an unknown connection key, including an all-caps `NOORM_CONNECTION_KEEPALIVEINITIALDELAYMS`, is still dropped without an error.
+
+`pool.idleTimeoutMillis` is a deprecated alias of `pool.idleTimeoutMs`. One source that sets both to different values is an error. The resolver treats them as one setting across sources, so a stored, environment, or inline value under either name replaces a lower source's value under either name. The [SDK reference](/reference/sdk#pool-options) maps each option to its driver option.
+
+`keepAliveInitialDelayMs` is rejected on MSSQL, where tedious fixes the delay at 30 seconds, and on SQLite, which has no socket. On PostgreSQL and MySQL it also turns `keepAlive` on unless `keepAlive` is `false`. `keepAlive: false` turns keepalive off on both, which on MySQL overrides mysql2's default of on.
+
 
 ## Environment Variables
 
@@ -85,10 +103,10 @@ needs it.
 ```bash
 export NOORM_CONNECTION_connectTimeoutMs=30000
 export NOORM_CONNECTION_SSL_rejectUnauthorized=true
-export NOORM_CONNECTION_POOL_idleTimeoutMillis=10000
+export NOORM_CONNECTION_POOL_idleTimeoutMs=10000
 ```
 
-These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, and `connection.pool.idleTimeoutMillis`. `NOORM_CONNECTION_CONNECT_TIMEOUT_MS` instead builds nested `connection.connect.timeout.ms`; it does not set a timeout.
+These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, and `connection.pool.idleTimeoutMs`. `NOORM_CONNECTION_CONNECT_TIMEOUT_MS` instead builds nested `connection.connect.timeout.ms`; it does not set a timeout.
 
 **Connection variables:**
 
@@ -108,13 +126,16 @@ These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, an
 | `NOORM_CONNECTION_tlsServerName` | `connection.tlsServerName` | PostgreSQL/MSSQL certificate identity |
 | `NOORM_CONNECTION_SSL_rejectUnauthorized` | `connection.ssl.rejectUnauthorized` | Boolean |
 | `NOORM_CONNECTION_SSL_CA`, `_CERT`, `_KEY` | `connection.ssl.ca`, `.cert`, `.key` | PEM strings |
-| `NOORM_CONNECTION_POOL_idleTimeoutMillis` | `connection.pool.idleTimeoutMillis` | PostgreSQL, nonnegative integer |
+| `NOORM_CONNECTION_POOL_idleTimeoutMs` | `connection.pool.idleTimeoutMs` | Nonnegative integer; greater than zero on MySQL and MSSQL. `_POOL_idleTimeoutMillis` is an alias |
+| `NOORM_CONNECTION_POOL_maxLifetimeMs`, `_maxUses`, `_allowExitOnIdle` | `connection.pool.<option>` | PostgreSQL only |
+| `NOORM_CONNECTION_POOL_acquireTimeoutMs`, `_createTimeoutMs`, `_reapIntervalMs` | `connection.pool.<option>` | MySQL and MSSQL only, positive integer |
 | `NOORM_CONNECTION_statementTimeoutMs` | `connection.statementTimeoutMs` | PostgreSQL, nonnegative integer |
 | `NOORM_CONNECTION_queryTimeoutMs` | `connection.queryTimeoutMs` | PostgreSQL, nonnegative integer |
 | `NOORM_CONNECTION_applicationName` | `connection.applicationName` | PostgreSQL session name |
-| `NOORM_CONNECTION_keepAlive` | `connection.keepAlive` | PostgreSQL TCP keepalive, boolean |
+| `NOORM_CONNECTION_keepAlive` | `connection.keepAlive` | PostgreSQL and MySQL TCP keepalive, boolean |
+| `NOORM_CONNECTION_keepAliveInitialDelayMs` | `connection.keepAliveInitialDelayMs` | PostgreSQL and MySQL, nonnegative integer |
 
-The native parser converts numeric and boolean values, except keys containing `password`, which retain strings. The config schemas validate the merged result and strip unknown fields. There is no custom spelling map or unsupported-name check. Use either scalar `NOORM_CONNECTION_SSL` or its nested fields; the parser does not provide a conflict-resolution contract for combining them.
+The native parser converts numeric and boolean values, except keys containing `password`, which retain strings. The config schemas validate the merged result and strip unknown fields outside `pool`. An unknown `pool` key is an error that names the camelCase spelling; no other key has a spelling map or unsupported-name check. Use either scalar `NOORM_CONNECTION_SSL` or its nested fields; the parser does not provide a conflict-resolution contract for combining them.
 
 **Path variables** (override `settings.yml` paths, not `Config`):
 
@@ -169,7 +190,7 @@ const config = resolveConfig(state, options)
 
 The resolver selects a stored name before considering inline or environment-only input. Unknown selected names throw instead of falling back:
 
-Name selection follows `options.name`, then `NOORM_CONFIG`, then the active config in state only when `options.flags.connection` is absent. Inline connection input does not inherit the active config's connection fields, access roles, or `isTest` flag.
+Name selection follows `options.name`, then `NOORM_CONFIG`, then the active config in state only when `options.flags.connection` is absent. `options.name: false` selects no stored config and skips the other two sources. Inline connection input does not inherit the active config's connection fields, access roles, or `isTest` flag.
 
 ```mermaid
 flowchart TD
@@ -185,7 +206,7 @@ flowchart TD
     E --> V
 ```
 
-Inline mode is available through `options.flags.connection`; the SDK maps its `connection` option there. With no selected stored name, the synthetic name defaults to `__inline__` when that object exists and `__env__` otherwise. `NOORM_NAME` can supply the synthetic name without selecting a stored record. Environment-only resolution requires a connection object and a dialect/database supplied by the combined stage and environment layers. Inline input enters schema validation even when incomplete.
+Inline mode is available through `options.flags.connection`; the SDK maps its `connection` option there. With no selected stored name, the synthetic name defaults to `__inline__` when that object exists and `__env__` otherwise. `NOORM_NAME` can supply the synthetic name without selecting a stored record; `options.flags.name` wins over it, and `options.unstoredName` (the SDK's `name` option) wins over both. `resolveConfig` throws when a stored config has the synthetic name, and when an env or flag name would rename a selected stored config to another stored config's name, because secrets and tracking records are keyed by name. `resolveConfig` throws when `unstoredName` is set and a stored config is selected. The name `unstoredName` displaced still feeds the protected-stage ceiling and the `isTest` trust check, so a caller-chosen name only adds restriction. Environment-only resolution requires a connection object and a dialect/database supplied by the combined stage and environment layers. Inline input enters schema validation even when incomplete.
 
 `stageFields(defaults, true)` maps flat stage fields into nested `connection` before merging, including the stage password at runtime. Stored values, environment variables, and flags override that layer in order. Stage `type`, `isTest`, and `access` remain top-level; protected stages cap effective permission cells at policy-check time without changing assigned roles. An explicit `options.stage` chooses the stage, otherwise the resolver matches the config name. The protected-stage ceiling is the union of the stage the resolver bound, the config name, and `options.stage`: a caller option can add the ceiling and never remove it.
 

@@ -1,11 +1,11 @@
 ---
 type: Index
-reflects_rev: 67017cb5f4ed37303b6ffaa08255555b53999265
+reflects_rev: 1a0c225e11b754d57ef1d8c8f972a3205352e1b4
 description: noorm manages database schemas and versioned SQL changes through a CLI, TUI, and SDK.
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>2629b88cf251d51d3cd2d79b4abe8e9024cfc45f</scan-sha>
+<scan-sha>1e0c64d47a52c95931cc5dcb2eb8d84adc1202d3</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
@@ -71,11 +71,11 @@ Domains follow functional workflows. Existing ownership separates configuration 
 | Lint | `bun run lint` | [`eslint.config.js`](../../eslint.config.js) |
 | Typecheck | `bun run typecheck` | [`tsconfig.json`](../../tsconfig.json) |
 
-[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs lint, typecheck, build, and separate serial processes for core, transfer, CLI, CLI logger settings, CLI protected config escape, and integration tests. Example database jobs depend on the build job. Integration tests use live database services.
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs lint, typecheck, build, and separate serial processes for core (non-transfer), transfer, CLI, CLI logger settings, and integration tests. Example database jobs depend on the build job. Integration tests use live database services.
 
 The `cli-e2e` job also runs [`scripts/smoke-mcp.mjs`](../../scripts/smoke-mcp.mjs) against built MCP tools and embedded prompts.
 
-Bun's process-global `mock.module` registry causes test contamination, so CI isolates transfer, CLI logger settings, and CLI protected config escape tests. Config lookup uses `memoizeOpts: false`; its environment reads are not the contamination source. See [`docs/wiki/core-state.md`](core-state.md) and [`docs/wiki/infra.md`](infra.md).
+Bun's process-global `mock.module` registry causes test contamination, so CI isolates transfer and CLI logger settings tests. Config lookup uses `memoizeOpts: false`; its environment reads are not the contamination source. See [`docs/wiki/core-state.md`](core-state.md) and [`docs/wiki/infra.md`](infra.md).
 
 Exact isolated test invocations, database service ports/storage, and current workflow runtime pins are in [`docs/wiki/infra.md`](infra.md#ci-execution-boundary). CLI/TUI test placement is in [`docs/wiki/cli.md`](cli.md#where-it-lives); logger-settings isolation is in [`docs/wiki/cli.md`](cli.md#constraints).
 
@@ -88,7 +88,7 @@ Exact isolated test invocations, database service ports/storage, and current wor
 | Domain boundaries | Core-state groups startup/persistence; core-identity groups sensitive identity, vault, logger, and SQL terminal concerns; core-db groups live-connection operations. Core-change has its own versioned executor and skip decision, separate from core-runner's file executor, while sharing checksum/template utilities. Infra owns the docs tree because VitePress builds it as a site, including documentation for the separate ignatius tool. |
 | Access enforcement | `Config.access` assigns `user`/`agent` roles instead of the legacy `protected` boolean. [`src/core/policy`](../../src/core/policy) owns enforcement used by runner, pipeline (`pipeline:run`), change, transfer, and SQL-terminal core seams, so SDK/CLI/TUI/MCP operations inherit those gates. Core-state resolves legacy access and binds policy context; protected-stage ceilings apply to permission cells. See [`docs/wiki/core-policy.md`](core-policy.md). |
 | State migration order | `StateManager.load()` applies numeric `schemaVersion` migrations before package-semver migrations. State v2 replaces `protected` with access roles; v3 normalizes the former `access.mcp` key to `access.agent`. See [`src/core/version/state`](../../src/core/version/state) and [`docs/wiki/core-state.md`](core-state.md). |
-| Tracking tables | PostgreSQL/MSSQL use unprefixed tracking names in the `noorm` schema; MySQL/SQLite retain `__noorm_*__`. Use `getNoormTables(dialect)` and `noormDb(db, dialect)` from [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts). `NOORM_TABLES` is deprecated and gives the wrong names with a PostgreSQL/MSSQL schema wrapper. |
+| Tracking tables | PostgreSQL/MSSQL use unprefixed tracking names in the `noorm` schema; MySQL/SQLite retain `__noorm_*__`. Use `getNoormTables(dialect)` and `noormDb(db, dialect)` from [`src/core/shared/tables.ts`](../../src/core/shared/tables.ts). `NOORM_TABLES` is deprecated and gives the wrong names with a PostgreSQL/MSSQL schema wrapper. Surfaces prepare tables through `prepareTrackingSchema` in [`src/core/version/tracking.ts`](../../src/core/version/tracking.ts): only a role that may record, outside a dry run, creates or migrates them; every other caller gets the read-only `requireCurrentSchema` check. See [`docs/wiki/core-state.md`](core-state.md). |
 | History timestamps | [`src/core/change/history.ts`](../../src/core/change/history.ts) hydrates PostgreSQL/MySQL `executed_at` as UTC; MSSQL is deliberately not corrected because its driver behavior was not measured. See [`docs/wiki/core-change.md`](core-change.md). |
 
 ## DevOps & CI

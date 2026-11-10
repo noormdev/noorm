@@ -78,7 +78,7 @@ An agent session (Claude Code, Codex, MCP) runs on the agent channel, whose defa
 
     NOORM_CONNECTION_DIALECT=sqlite NOORM_CONNECTION_DATABASE=./test.db NOORM_isTest=true noorm run build
 
-Env-only applies only when no config name resolves, and MCP cannot use it. Otherwise a person checks Test Database on a config (`noorm ci init --test` or the TUI), and the agent passes `--config <name>`; over MCP, it names that config.
+Env-only applies only when no config name resolves, and MCP cannot use it. Otherwise a person checks Test Database on a config (`noorm ci init --test` or the TUI), and the agent selects it with `--config <name>` or `NOORM_CONFIG=<name>`; over MCP, it names that config. The stored flag decides: `NOORM_isTest=true` adds nothing to a stored config and cannot make a non-test one a test config.
 
 Every other config keeps the agent's role, and only a person can create a stored `isTest` config.
 

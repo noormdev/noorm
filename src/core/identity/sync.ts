@@ -16,7 +16,8 @@ import type { Config } from '../config/types.js';
 import type { CryptoIdentity, KnownUser } from './types.js';
 import { createConnection } from '../connection/factory.js';
 import { observer } from '../observer.js';
-import { tablesExist, ensureSchemaVersion } from '../version/index.js';
+import { tablesExist, prepareTrackingSchema } from '../version/index.js';
+import { isVisibleToChannel, type Channel } from '../policy/index.js';
 import { loadExistingIdentity } from './factory.js';
 import { getInitializedLogger } from '../logger/init.js';
 
@@ -312,25 +313,22 @@ export async function syncIdentity(
 /**
  * High-level identity sync with a config.
  *
- * Handles the complete flow:
- * 1. Creates a database connection
- * 2. Registers the current user's identity
- * 3. Fetches known users from the database
- * 4. Returns known users for caller to store
- * 5. Closes the connection
+ * Connects, registers the current identity, fetches the known users for the
+ * caller to store, and closes the connection.
  *
- * Derives dialect from `config.connection.dialect` so callers don't
- * need to pass it explicitly.
+ * What it may write follows the config's access for `channel`, so `config` must be
+ * policy-bound (`withConfigPolicy`): a role that cannot record to the tracking tables
+ * neither creates nor migrates them and is not registered, and a config hidden from
+ * the channel is never connected to.
  *
- * Silently skips if:
- * - No identity is set up
- * - Database doesn't have noorm tables
- * - Connection fails (non-blocking)
+ * Skips without failing when there is no identity, the config is hidden, the
+ * connection fails, or the tracking tables are unusable for this caller.
  *
  * @example
  * ```typescript
  * // After activating a config
- * const result = await syncIdentityWithConfig(config);
+ * const bound = withConfigPolicy(config, new SettingsProvider(settingsManager));
+ * const result = await syncIdentityWithConfig(bound, resolveChannel());
  * if (result.ok && result.knownUsers?.length) {
  *     await stateManager.addKnownUsers(result.knownUsers);
  * }
@@ -338,23 +336,20 @@ export async function syncIdentity(
  */
 export async function syncIdentityWithConfig(
     config: Config,
+    channel: Channel,
 ): Promise<IdentitySyncResult> {
 
     const dialect = config.connection.dialect;
+    const skipped: IdentitySyncResult = { ok: true, knownUsersCount: 0 };
 
-    // Load identity from global ~/.noorm/identity.json
+    if (!isVisibleToChannel(config.access, channel)) return skipped;
+
     const [identity] = await attempt(() => loadExistingIdentity());
 
     getInitializedLogger()?.info('Loaded existing identity', { identity });
 
-    // Skip if no identity set up
-    if (!identity) {
+    if (!identity) return skipped;
 
-        return { ok: true, knownUsersCount: 0 };
-
-    }
-
-    // Try to connect
     const [conn, connErr] = await attempt(() =>
         createConnection(config.connection, config.name),
     );
@@ -369,38 +364,21 @@ export async function syncIdentityWithConfig(
             },
         });
 
-        // Connection failed - non-blocking, just skip sync
-        return { ok: true, knownUsersCount: 0 };
+        return skipped;
 
     }
 
+    const db = conn.db as Kysely<NoormDatabase>;
 
-    const db = conn!.db as Kysely<NoormDatabase>;
+    try {
 
-    // Ensure schema tables are in the expected location before syncing.
-    // Without this, databases still at v1 (legacy prefixed tables) would
-    // fail when identity code queries schema-qualified tables (noorm.identities).
-    const [, schemaErr] = await attempt(() => ensureSchemaVersion(db, dialect));
+        const [mayRegister, schemaErr] = await attempt(() => prepareTrackingSchema(db, dialect, { channel, config }));
 
-    if (schemaErr) {
+        if (schemaErr) return skipped;
 
-        await conn!.destroy();
+        const syncResult = await syncIdentity(db, mayRegister ? identity : null, config.name, dialect);
 
-        return { ok: true, knownUsersCount: 0 };
-
-    }
-
-    // Sync identity
-    const syncResult = await syncIdentity(db, identity, config.name, dialect);
-
-    if (!syncResult.ok) {
-
-        return syncResult;
-
-    }
-
-    // Fetch known users if there are any
-    if (syncResult.knownUsersCount && syncResult.knownUsersCount > 0) {
+        if (!syncResult.ok || !syncResult.knownUsersCount) return syncResult;
 
         const [res, err] = await attempt(() => fetchKnownUsers(db, config.name, dialect));
 
@@ -418,21 +396,13 @@ export async function syncIdentityWithConfig(
 
         }
 
-        const { ok, users, error } = res;
-
-        if (!ok) {
-
-            return { ok: false, error };
-
-        }
-
-        return {
-            ...syncResult,
-            knownUsers: users,
-        };
+        return res.ok ? { ...syncResult, knownUsers: res.users } : { ok: false, error: res.error };
 
     }
+    finally {
 
-    return syncResult;
+        await conn.destroy();
+
+    }
 
 }

@@ -150,7 +150,7 @@ flowchart TD
     Prompt -->|onCancel| Cancelled["vaultError = cancelled"]
 ```
 
-`SecretReadGate` wraps `SecretListScreen` and gates the local `secret:read` permission. `useVaultSecretKeys(enabled)` gates `vault:read` and returns `vaultConfirmation`, which `SecretListScreen`, `SecretSetScreen`, and `SecretRemoveScreen` render as a confirmation panel. `VaultScreen` checks `vault:read`, `vault:write`, and `vault:propagate`. `useConnection` and `useVaultConnection` accept `enabled`; `enabled: false` skips requesting a connection, so none opens before approval.
+`SecretReadGate` wraps `SecretListScreen` and gates the local `secret:read` permission. `useVaultSecretKeys(enabled)` gates `vault:read` and returns `vaultConfirmation`, which `SecretListScreen`, `SecretSetScreen`, and `SecretRemoveScreen` render as a confirmation panel. `VaultScreen` checks `vault:read`, `vault:write`, and `vault:propagate`. `useConnection` and `useVaultConnection` accept `enabled`; `enabled: false` skips requesting a connection, so none opens before approval. `useConnection({ ensureSchema: true })` (which `useVaultConnection` uses) calls `prepareTrackingSchema(db, dialect, { channel: 'user', config: activeConfig })`. A role that may write tracking creates or migrates the tables. Any other role only has them checked: older tables make the hook set an error rather than migrate, and missing tables are left absent with no error, because the hook ignores the returned value.
 
 Explore screens (`ExploreOverviewScreen`, `ExploreListScreen`, `ExploreDetailScreen`) and `HomeScreen` pass `userGate(activeConfig)` from core-db's explore module to `fetchOverview`, `fetchList`, and `fetchDetail`. `RowPeekOverlay` receives the same gate and calls `fetchRowPeek` directly; it shows no `ProtectedConfirm` of its own, and `fetchRowPeek` refuses a gate that disallows the read. `DbTruncateScreen` lists tables with `GATED_BY_CALLER`, leaving the truncate's own `db:*` check as the gate. `SqlTerminalScreen` resolves policy with `withConfigPolicy`, checks each permission from `sqlPermissionsFor`, and runs through `withPolicyConfirmation` after a `ProtectedConfirm` for confirmed permissions. `ConfigExportScreen` checks `secret:read` and adds a `confirm` step. Pipeline runs use the same pattern with `pipeline:run`; see Pipeline run, stop, and result.
 
@@ -158,7 +158,7 @@ Explore screens (`ExploreOverviewScreen`, `ExploreListScreen`, `ExploreDetailScr
 
 `settings/access`, `settings/access/add`, and `settings/access/edit` route to `SettingsAccessListScreen` and `SettingsAccessEditScreen`, which edit custom roles; `SettingsListScreen` links to them with a role and override summary. Built-in role checks use core-policy's `BUILTIN_ROLES` and `isBuiltinRole`. For permissions in `USER_ALWAYS_ALLOWED`, the edit screen shows the agent channel's effective cell, since the user channel always reads. `getRoleOptions` in `utils/config-validation.ts` builds config role choices from `BUILTIN_ROLES` plus `settings.access.roles`.
 
-`ConfigAddScreen`, `ConfigEditScreen`, and `ConfigImportScreen` call `validateAccessRoles(config.access, settings.access?.roles)` before saving. `ConfigCopyScreen` calls `stateManager.copyConfig(configName, newName, settingsProvider)` and `ConfigEditScreen` calls `stateManager.renameConfig(configName, updatedConfig, settingsProvider)` on a name change (otherwise `setConfig`), so the state manager keeps the protected-stage ceiling across copy and rename. [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) covers these screens and runs in its own CI process.
+`ConfigAddScreen`, `ConfigEditScreen`, and `ConfigImportScreen` call `validateAccessRoles(config.access, settings.access?.roles)` before saving. `ConfigCopyScreen` calls `stateManager.copyConfig(configName, newName, settingsProvider)` and `ConfigEditScreen` calls `stateManager.renameConfig(configName, updatedConfig, settingsProvider)` on a name change (otherwise `setConfig`), so the state manager keeps the protected-stage ceiling across copy and rename. [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) covers these screens and runs in the CI group for CLI tests.
 
 ### Pipelines
 
@@ -205,7 +205,7 @@ sequenceDiagram
     Ops-->>Screen: PipelineDryRunResult or PipelineRunResult
 ```
 
-Each run registers two lifecycle resources: a `stopping`-phase cleanup that aborts the controller, and a `completing`-phase cleanup that waits for the operation promise. App shutdown therefore aborts the run, then waits for SQL and transaction cleanup to settle before connections are released. `capture` refuses to start when the lifecycle is shutting down, stopped, or failed. History reads (`history`, `getRun`) use the same lease and register a `completing` resource, run `ensureSchemaVersion` first, and reject when the target changed while they ran.
+Each run registers two lifecycle resources: a `stopping`-phase cleanup that aborts the controller, and a `completing`-phase cleanup that waits for the operation promise. App shutdown therefore aborts the run, then waits for SQL and transaction cleanup to settle before connections are released. `capture` refuses to start when the lifecycle is shutting down, stopped, or failed. History reads (`history`, `getRun`) use the same lease and register a `completing` resource. They reject when the target changed while they ran. They never migrate the tracking tables: the core pipeline history readers call `requireCurrentSchema` and treat missing tables as no history.
 
 While `busy`, the run screen shows elapsed seconds and a single Escape binding: `operations.stop()` aborts the signal and the screen displays "Stop requested. Waiting for running SQL and transaction cleanup to finish." Escape does not navigate back until the run settles, and the stop request does not make the running SQL stop by itself. If `lease.release()` fails, the hook sets the lifecycle exit code to 1 (when it was 0) and `cleanupFailed`; the result screen shows a cleanup warning and downgrades the status color.
 
@@ -229,6 +229,38 @@ stateDiagram-v2
     Retired --> Closed: last release()
     Closed --> [*]
 ```
+
+### Saving a config without verifying
+
+`ConfigAddScreen` and `ConfigEditScreen` submit through `save(values, verify)`. Enter calls it with `verify: true`, which runs `testConnection` (server only, through `testServerOnly: true`, on both screens, since the database may not exist yet) and stops on failure. Both pass `altSubmit={{ ...SAVE_UNVERIFIED, suggest: testFailed, ... }}` to `Form`, so Ctrl+S calls `save(values, false)` and skips the test. `SAVE_UNVERIFIED` lives in [`src/tui/utils/connection.ts`](../../src/tui/utils/connection.ts); `suggest` turns the hint on after a failed test.
+
+### Identity setup gate and regeneration
+
+`requireIdentity(Screen)` wraps `ConfigAddScreen` and `ConfigImportScreen` in `SCREENS`. Once `loadingStatus` is `ready`, a missing identity or a state manager without a private key (`!hasIdentity || !stateManager.hasPrivateKey()`) renders `IdentityOnboarding` in place of the screen. The route does not change, so finishing setup lands on the requested screen. State is encrypted with the private key, so the gate asks before the user fills a form that could not be saved.
+
+A key that exists but will not load shows `PrivateKeyUnreadable`, never a form that would replace the key every saved config is encrypted with:
+
+```mermaid
+flowchart TD
+    %% source: src/tui/screens/identity/IdentityOnboarding.tsx
+    Check["loadPrivateKey()"] --> Readable{"Key loads?"}
+    Readable -->|"no"| Unreadable["PrivateKeyUnreadable<br/>no setup offered"]
+    Readable -->|"yes or absent"| Meta{"Key and metadata<br/>on disk?"}
+    Meta -->|"yes"| Complete["ensureIdentity(metadata)"]
+    Meta -->|"no"| Form["IdentitySetup form"]
+    Form --> Complete
+    Complete --> Reload["stateManager.reloadPrivateKey()<br/>refresh()"]
+```
+
+`ensureIdentity` completes a lone private key (restored without its `.pub`) without replacing it. When the key and metadata already exist, setup completes with no form.
+
+### Identity regeneration
+
+`IdentityInitScreen` starts at a `warning` step showing `IDENTITY_REPLACE_WARNING` when an identity exists. After the form, it calls `backupKeyPair()` before writing anything, because every `state.enc` on the machine is encrypted with the old key. If the backup fails, it refuses to overwrite and returns to the form with the error. It then calls `createCryptoIdentity` for an existing identity or `ensureIdentity` otherwise, reloads the state manager's private key, and refreshes the context. A failure after the backup reports the backup paths and a restore hint. A successful regeneration shows the backup paths in a `backed-up` step before going back.
+
+### Lock screens
+
+`LockAcquireScreen` checks `lock:acquire`, `LockForceScreen` checks `lock:force`, and `LockReleaseScreen` checks `lock:acquire`, all through `checkConfigPolicy('user', activeConfig, ...)`. A disallowed check renders `blockedReason`; `LockAcquireScreen` and `LockReleaseScreen` also pass `check?.allowed !== false` as the enable flag to `useLockStatus`, and `LockForceScreen` skips its connection when denied. All three confirm through `SmartConfirm`: acquire shows it after the form only when `check.requiresConfirmation` is set (otherwise it acquires directly), release uses `check.requiresConfirmation`, and force uses `isConfigGuarded(activeConfig) || check.requiresConfirmation` with the policy's `confirmationPhrase`.
 
 ### Update download progress
 
@@ -320,6 +352,8 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 - Auto-seeding must retain its explicit `stage.defaults.password` argument. Omitting it changes the saved TUI config's secret contract because `materializeStage` excludes implicit passwords.
 - Auto-seeding does not update an existing config. Changing a stage default leaves the saved same-name config on its old values.
 - Gated screens must pass `enabled` to `useConnection`/`useVaultSecretKeys` until policy allows and confirmation is approved; requesting the connection first reads the vault before the user confirms.
+- A screen that can create the first saved state must be wrapped in `requireIdentity` (today `config/add` and `config/import` in `SCREENS`); without it the form can complete and then fail to store because no private key is loaded.
+- `useConnection` passes `channel: 'user'` and the active config to `prepareTrackingSchema` itself; callers pass only `ensureSchema`. `mayWriteTracking` decides from that channel and config, so a hook change that passes a different config lets the wrong role create or migrate tracking tables.
 - Config add, edit, and import call `validateAccessRoles` against `settings.access.roles` before saving; skipping it persists a role name that policy checks later reject.
 - Progress consumers must clear reports at operation boundaries; retaining them shows server activity for a file that has already finished.
 - Cancellation warning duration and confirmation timing share `DOUBLE_PRESS_WINDOW_MS`; diverging them makes the visible warning disagree with the accepted confirmation window.

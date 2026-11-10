@@ -58,7 +58,7 @@ Commands attach `examples: string[]` to the `defineCommand()` result; this is th
 | `info` | none | Reports CLI/schema/state/settings versions, active connection, identity registration timestamps, detected agent harness, and database object counts. The counts come from `fetchOverview()` behind a gate built from the active config's access and the resolved channel; if settings fail to load, the overview is skipped rather than read unchecked. Individual lookup failures do not discard the rest of the report. |
 | `version` | none | Reports Node, platform, architecture, identity key paths/existence, and project/config discovery without connecting to a database. |
 | `init` | none | Prompts for missing identity name/email through `@clack/prompts`, then calls `performProjectInit()`. Existing-identity, TTY, reinitialization, and working-directory rules appear under Constraints. |
-| `ui` | none | Dynamically loads the Ink application and discards logger console/diagnostic writes during rendering. |
+| `ui` | none | Dynamically loads the Ink application and discards logger console/diagnostic writes during rendering. The process exits with the code carried by the `app:exit` event. |
 | `update` | none | Checks GitHub Releases and replaces the binary. TTY progress updates in place; redirected output uses plain status lines. The checksum escape hatch does not permit a confirmed mismatch. After success, `offerSkill()` ([`src/cli/update.ts`](../../src/cli/update.ts)) prompts on a TTY to install or update the noorm agent skill through `npx` or `gh`, and prints the commands otherwise. It is skipped under `--json` and never changes the exit code. |
 
 ### Config access gates
@@ -70,7 +70,7 @@ Config commands resolve a record's access through `withConfigPolicy()` so projec
 | `config cp` | User channel only; `config:write` on the source; a confirmation cell needs `--yes`; `stateManager.copyConfig()` receives the settings provider and rejects a protected-stage source copied to an unprotected name with `ProtectedStageEscapeError`, whose message is printed as is and exits `1`. |
 | `config export` | `secret:read`; a confirmation cell needs `--yes`. |
 | `config import` | Validates `access` roles against project roles; `config:write` against an existing target; creating a new config needs the user channel. |
-| `config use` | Requires the config to exist and to resolve under policy before `setActiveConfig()`, then syncs identity with the database. |
+| `config use` | Requires the config to exist and to resolve under policy, and to be visible to the current channel (otherwise exit `1`, `is not accessible on the <channel> channel`), before `setActiveConfig()`. Then `syncIdentityWithConfig()` syncs identity with the database as far as the config's access for that channel allows writing. |
 | `config list` | Drops configs where `isVisibleToChannel(c.access, channel)` is false, so an agent never sees an `access.agent: false` config. User channel also reports `accessErrors` for configs whose stored access cannot be read; `--json` adds `effectivePermissions` per channel. |
 | `config rm` | A config with unreadable or invalid access takes a recovery path: user channel and `--yes` required, then `config:rm` is checked against the recovery candidate. |
 | `config repair-access` | User channel and `--yes`; replaces `access` through `repairConfigAccess()` after validating `--user` and `--agent` (or `false`) against project roles. |
@@ -172,13 +172,13 @@ flowchart TD
     G --> H["setConfig()<br/>setActiveConfig()"]
 ```
 
-The stored type is `--type`, otherwise the selected stage's default type, otherwise `remote`. `--type` accepts `local` or `remote`; an unknown stage fails even if `--type` is present. `--stage` inherits type only, not stage connection, test status, or access. `--test` explicitly sets `isTest`; the default remains false so CI bootstrap does not automatically satisfy the SDK's `requireTest` guard.
+The stored type is `--type`, otherwise the selected stage's default type, otherwise `remote`. `--type` accepts `local` or `remote`; an unknown stage fails even if `--type` is present. `--stage` inherits type only, not stage connection, test status, or access. `--test` explicitly sets `isTest`; the default remains false so CI bootstrap does not automatically satisfy the SDK's `requireTest` guard. On the agent channel `--test` exits `2` with `--test is not available on the agent channel`.
 
 The name comes from `--name`, otherwise `NOORM_CI_CONFIG_NAME`, otherwise `ci`. Replacement backs up the encrypted state with owner-only permissions; a backup failure prevents removal. `--force` suffices off a TTY, while a terminal also requires `--yes` because replacement removes the project's configs and config-scoped secrets.
 
 ### Connected command lifecycle and output
 
-`withContext()` connects and checks the schema before calling a command, then disconnects and stops its logger.
+`withContext()` connects and prepares the tracking tables before calling a command, then disconnects and stops its logger. The CLI-local `prepareTracking()` calls `prepareTrackingSchema()` with the resolved channel, the config, and `--dry-run`. Only a caller whose access lets it write tracking tables, and which is not a dry run, creates or migrates them. Any other caller gets `requireCurrentSchema()`, which throws when the tables are at an older or newer schema version than this one and passes when they are absent (it returns `false`).
 
 ```mermaid
 sequenceDiagram
@@ -186,17 +186,19 @@ sequenceDiagram
     participant CLI as withContext
     participant Logger as Logger
     participant SDK as Context
-    participant Schema as ensureSchemaVersion
+    participant Prep as prepareTracking
+    participant Schema as prepareTrackingSchema
     CLI->>Logger: start()
     CLI->>SDK: createContext()
     CLI->>SDK: connect()
-    CLI->>Schema: kysely, dialect
+    CLI->>Prep: args
+    Prep->>Schema: kysely, dialect, channel, config, dryRun
     CLI->>SDK: fn(ctx, logger)
     CLI->>SDK: disconnect()
     CLI->>Logger: stop()
 ```
 
-`withVaultContext()` additionally loads the private key and identity metadata and registers the identity. `createCliLogger()` reads project logging settings; disabling file logging does not disable command output.
+`withVaultContext()` additionally loads the private key and identity metadata, and calls `registerIdentity()` only when `prepareTrackingSchema()` returned `true`, so a read-only caller or dry run never writes an identity row. `createCliLogger()` reads project logging settings; disabling file logging does not disable command output.
 
 Both context helpers return `[result, null]` or `[null, Error]`. They pass `isYesMode(args)` and `resolveChannel()` into `createContext()`, so environment confirmation and detected agent channels reach SDK guards. `handleVaultResult()` converts vault result/error tuples into JSON or text output and an exit code. Logger settings include `file`, `level`, `maxSize`, and `maxFiles`.
 
@@ -311,10 +313,10 @@ Source-checkout detection reads the root package two directories above [`package
 | [`tests/cli/agent-channel-escalation.test.ts`](../../tests/cli/agent-channel-escalation.test.ts), [`tests/cli/change-edit.test.ts`](../../tests/cli/change-edit.test.ts), [`tests/cli/change-prompts.test.ts`](../../tests/cli/change-prompts.test.ts), [`tests/cli/settings-edit.test.ts`](../../tests/cli/settings-edit.test.ts), [`tests/cli/settings-secret.test.ts`](../../tests/cli/settings-secret.test.ts), [`tests/cli/sql-repl.test.ts`](../../tests/cli/sql-repl.test.ts) | Channel-sensitive dispatch, prompts, and TTY gates; core pages own the underlying operations. |
 | [`tests/cli/app.test.tsx`](../../tests/cli/app.test.tsx), [`tests/cli/app-context.test.tsx`](../../tests/cli/app-context.test.tsx), [`tests/cli/router.test.tsx`](../../tests/cli/router.test.tsx), [`tests/cli/screens.test.tsx`](../../tests/cli/screens.test.tsx), [`tests/cli/keyboard.test.tsx`](../../tests/cli/keyboard.test.tsx), [`tests/cli/mouse.test.tsx`](../../tests/cli/mouse.test.tsx), [`tests/cli/focus.test.tsx`](../../tests/cli/focus.test.tsx), [`tests/cli/types.test.ts`](../../tests/cli/types.test.ts), [`tests/cli/debug-pid.test.tsx`](../../tests/cli/debug-pid.test.tsx) | TUI application, routing, screen registry, keyboard, mouse, focus, route types, and diagnostics despite their top-level CLI test location. |
 | [`tests/cli/config-validation.test.ts`](../../tests/cli/config-validation.test.ts), [`tests/cli/settings-validation.test.ts`](../../tests/cli/settings-validation.test.ts) | TUI validators in [`src/tui/utils`](../../src/tui/utils) plus core access-role validation, not headless config dispatch. |
-| [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) | TUI copy and rename refuse to move a protected-stage config to an unprotected name; copy and add refuse to overwrite a malformed-access config; a user role that denies every permission can still be edited in Settings and config edit. Runs in its own CI process (see below). |
+| [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) | TUI copy and rename refuse to move a protected-stage config to an unprotected name; copy and add refuse to overwrite a malformed-access config; a user role that denies every permission can still be edited in Settings and config edit. Runs in the CLI CI group (see below). |
 | [`tests/cli/VaultScreen.test.tsx`](../../tests/cli/VaultScreen.test.tsx) | TUI propagation confirmation; its top-level placement avoids a vault-hook mock loading before the real vault. Moving it into `tests/cli/screens/vault` changes that ordering. |
 
-`protected-config-escape.test.tsx` and the logger-settings test each run in their own CI process, split out in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) (see [`docs/wiki/infra.md`](infra.md)). `protected-config-escape.test.tsx` needs the real `StateManager`, which init-screen tests replace through a `state/manager.js` mock that Bun never restores. The logger-settings test needs the real `SettingsManager`: re-registering a module in Bun's process-global mock registry does not restore it, and the leaked class makes `createCliLogger()` see empty settings instead of `settings.yml`. The workflow documents differing macOS/Linux load order, so a locally passing combined suite does not establish CI isolation.
+CI runs the CLI tests in two processes, split out in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) (see [`docs/wiki/infra.md`](infra.md)): every [`tests/cli`](../../tests/cli) file except `cli-logger-settings.test.ts` in one, which includes `protected-config-escape.test.tsx`, and the logger-settings test isolated in its own. The logger-settings test needs the real `SettingsManager`: Bun's `mock.module` registry is process-global and never restored, so another file's mock leaks and makes `createCliLogger()` see empty settings instead of `settings.yml`. The workflow comment says other CLI test files leave `getSettingsManager` mocked for the rest of their process and Bun picks the file order. A locally passing combined suite therefore does not establish CI isolation.
 
 ### Reference navigation
 
@@ -334,7 +336,7 @@ Source-checkout detection reads the root package two directories above [`package
 - `config sync` authorizes before preview and does not accept dialect conversion. A preview is not an applied change: without `--yes`, a non-TTY or `--json` run returns `applied: false` and saves nothing, so automation must pass `--yes` and inspect `applied`.
 - Create, sync, and `config repair-access` read `args.yes` directly and ignore `NOORM_YES`. A CI job setting only `NOORM_YES=1` gets an unapplied preview from `sync`, a collision error from `create`, and a refusal from `repair-access`.
 - `ci init` completes full `parseConfig()` validation before backup, removal, or state initialization. Invalid configuration exits with usage status `2` without replacing existing state, even with `--force --yes`. Replacement requires a successful backup before removal.
-- `noorm init --yes` requires a complete existing identity, checking both key files and identity metadata; the default files are `~/.noorm/identity.key`, `identity.pub`, and `identity.json`. Without yes mode, non-TTY initialization fails. `--here` uses the original invocation directory instead of the discovered parent project; `--force` is required to reinitialize an existing project.
+- `noorm init --yes` requires a complete existing identity, checking both key files and identity metadata; when only a private key exists, the error points to `noorm init` or `noorm ui` rather than `identity init`, which refuses an existing private key. The default files are `~/.noorm/identity.key`, `identity.pub`, and `identity.json`. Without yes mode, non-TTY initialization fails. `--here` uses the original invocation directory instead of the discovered parent project; `--force` is required to reinitialize an existing project.
 - `sql repl`, `settings edit`, and `settings secret` still require a TTY when `--yes` or `NOORM_YES` is set. Their refusal then includes a redirect hint rather than entering an interactive prompt. `sql repl` also dynamically loads Ink and React.
 - `isYesMode()` and `isInsecureMode()` treat a nonempty environment value as true except `0` and case-insensitive `false`. An explicit true flag wins over a false environment value. Postinstall copies only `isInsecureMode` and mirrors `parseChecksums` from [`src/core/update/checksum.ts`](../../src/core/update/checksum.ts) ([`packages/cli/scripts/postinstall.js`](../../packages/cli/scripts/postinstall.js)), not `isYesMode`, because it runs before TypeScript sources are built. If the `isInsecureMode` copies drift, `NOORM_INSECURE` behaves differently at `npm install` than at `noorm update`.
 - [`src/cli/ui.ts`](../../src/cli/ui.ts) dynamically imports Ink, React, and the TUI app and suppresses logger streams during rendering. Static UI imports into the headless startup graph would violate the boundary covered by [`tests/cli/lazy-startup.test.ts`](../../tests/cli/lazy-startup.test.ts).

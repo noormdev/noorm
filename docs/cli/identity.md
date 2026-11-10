@@ -4,7 +4,7 @@
 Create the keypair that unlocks your local state, tags your changes in the audit trail, and lets teammates share vault secrets with you.
 
 ```bash
-noorm identity init --name "Alice Cooper" --email alice@example.com
+noorm identity init
 ```
 
 ```
@@ -14,7 +14,7 @@ Identity created.
   Fingerprint: 5e217a60eb7c27d5390cf2f3c8639fb7158dc3006df5057be03d83e3be51d721
 ```
 
-`init` writes three files in `~/.noorm/`. The private key never leaves your machine.
+Name and email come from `git config user.name` and `git config user.email`. `--name` and `--email` override them. `init` writes three files in `~/.noorm/`. The private key never leaves your machine.
 
 | File | Mode | Holds |
 |------|------|-------|
@@ -50,28 +50,35 @@ The fingerprint identifies you in the database. A disk identity hashes the machi
 
 
 ```
-noorm identity init --name <name> --email <email> [--force --yes] [--json]
+noorm identity init [--name <name>] [--email <email>] [--force --yes] [--json]
 ```
 
 | Flag | Effect |
 |------|--------|
-| `--name <name>` | Display name. Required |
-| `--email <email>` | Email address. Required |
+| `--name <name>` | Display name. Default: `git config user.name`, then the OS username |
+| `--email <email>` | Email address. Default: `git config user.email` |
 | `--force` | Replace an existing identity. Needs `--yes` |
 | `--yes`, `-y` | Confirm the replacement. `NOORM_YES` does not count |
-| `--json` | JSON result with `name`, `email`, `fingerprint`, `publicKey` |
+| `--json` | JSON result with `name`, `email`, `fingerprint`, `publicKey`, and `completedExistingKey: true` when an existing key was kept |
 
 | Condition | Behavior |
 |-----------|----------|
-| `--name` or `--email` missing | Usage text and `Missing required argument`, exit 1. No prompt |
-| Identity exists, no `--force` | `Identity already exists. Use --force to overwrite.`, exit 1 |
+| No `--email` and `git config user.email` is unset | `Could not determine your email: git config user.email is not set. Pass --email <address>.`, exit 1. No prompt |
+| No `--name`, no `git config user.name`, and no OS username | `Could not determine your name. Pass --name <name>.`, exit 1 |
+| `identity.key`, `identity.pub` and `identity.json` all exist, no `--force` | `Identity already exists. Use --force to overwrite.`, exit 1 |
+| `identity.key` exists, `identity.pub` or `identity.json` is missing, no `--force` | Keeps the key, derives `identity.pub` from it, writes `identity.json`. Prints `Identity completed from the existing private key.`, exit 0. An existing `identity.json` is kept, and then no name or email is needed |
+| `identity.key` is unreadable, corrupted, or readable by other users, no `--force` | Prints the reason, exit 1. The key is not replaced |
+| `NOORM_IDENTITY_PRIVATE_KEY` is set and no `identity.key` exists | `NOORM_IDENTITY_PRIVATE_KEY is set, so this process already has an identity and no key would be written to ~/.noorm. Unset it to create an identity on this machine.`, exit 1. Writes nothing |
+| `--name` or `--email` is blank | Treated as not passed; the default applies |
 | `--force` without `--yes` | Prints the warning below and `Pass --yes to confirm.`, exit 1 |
 | `--force --yes` | Copies the key files to `<file>.bak-<timestamp>`, then replaces them. Prints the backup paths |
 | Backup fails | Refuses to overwrite, exit 1 |
 
 ::: danger
-Replacing an identity makes every `.noorm/state/state.enc` on the machine unreadable. State encryption is keyed off the private key, and nothing re-encrypts it under the new one. Restore `identity.key` from the `.bak-` copy to get the configs, secrets, and database passwords back.
+Replacing an identity makes every `.noorm/state/state.enc` on the machine unreadable. State encryption is keyed off the private key, and nothing re-encrypts it under the new one. Restore `identity.key` from the `.bak-` copy to get the configs, secrets, and database passwords back, and `identity.pub` and `identity.json` from theirs so the public key matches the private one.
 :::
+
+When `identity.key` is the only identity file, as on a new machine you copied the key to, noorm keeps it. Identity setup never generates a keypair over an existing private key. Only two actions replace one: `identity init --force --yes` and regenerating from the TUI identity screen. Both back the files up first and refuse when the backup fails. `identity init` without `--force`, and identity setup in the TUI and in `noorm init`, derive `identity.pub` from the key and write `identity.json` from the name and email you give.
 
 
 ## identity edit

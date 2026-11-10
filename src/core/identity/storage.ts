@@ -104,20 +104,48 @@ export async function saveKeyPair(keypair: KeyPair): Promise<void> {
     // Ensure permissions are correct (writeFile mode may not work on all platforms)
     await attempt(() => chmod(PRIVATE_KEY_PATH, PRIVATE_KEY_MODE));
 
-    // Write public key
-    const [, publicErr] = await attempt(() =>
-        writeFile(PUBLIC_KEY_PATH, keypair.publicKey, { encoding: 'utf8', mode: PUBLIC_KEY_MODE }),
+    await savePublicKey(keypair.publicKey);
+
+}
+
+/**
+ * Write the public key file alone, for repairing a missing `identity.pub`
+ * without touching the private key it derives from.
+ *
+ * @example
+ * ```typescript
+ * await savePublicKey(derivePublicKeyFromPrivate(privateKey))
+ * ```
+ */
+export async function savePublicKey(publicKey: string): Promise<void> {
+
+    await ensureNoormDir();
+
+    const [, err] = await attempt(() =>
+        writeFile(PUBLIC_KEY_PATH, publicKey, { encoding: 'utf8', mode: PUBLIC_KEY_MODE }),
     );
 
-    if (publicErr) {
+    if (err) {
 
-        throw new Error(`Failed to write public key: ${publicErr.message}`);
+        throw new Error(`Failed to write public key: ${err.message}`);
 
     }
 
     await attempt(() => chmod(PUBLIC_KEY_PATH, PUBLIC_KEY_MODE));
 
 }
+
+/**
+ * What replacing an existing keypair costs, worded once for every surface
+ * that asks the user to confirm it.
+ *
+ * @example
+ * outputError(args, `${IDENTITY_REPLACE_WARNING} Pass --yes to confirm.`)
+ */
+export const IDENTITY_REPLACE_WARNING =
+    'Regenerating your identity re-keys state encryption. Every noorm project on this machine — '
+    + 'its configs, secrets and database passwords in .noorm/state/state.enc — becomes permanently '
+    + 'undecryptable. Nothing re-encrypts existing state under the new key.';
 
 /**
  * Copy the existing identity files aside before they are overwritten.
@@ -421,6 +449,26 @@ export async function hasKeyFiles(): Promise<boolean> {
     const [publicStat] = await attempt(() => stat(PUBLIC_KEY_PATH));
 
     return !!privateStat && !!publicStat;
+
+}
+
+/**
+ * Check if the private key file exists, readable or not. Ask this, not
+ * `hasKeyFiles`, before creating an identity: a key restored without its
+ * `.pub` is still the key state is encrypted with.
+ *
+ * @example
+ * ```typescript
+ * if (await hasPrivateKeyFile()) {
+ *     console.log('Identity already exists')
+ * }
+ * ```
+ */
+export async function hasPrivateKeyFile(): Promise<boolean> {
+
+    const [privateStat] = await attempt(() => stat(PRIVATE_KEY_PATH));
+
+    return !!privateStat;
 
 }
 

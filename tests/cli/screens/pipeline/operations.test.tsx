@@ -135,7 +135,8 @@ async function mountShutdown() {
 
 async function buildTestPipelineContext(input: pipelineContext.PipelineContextInput): Promise<PipelineContext> {
 
-    await ensureSchemaVersion(input.db, input.dialect);
+    // As the real context does: a dry run leaves the tracking tables alone.
+    if (!input.dryRun) await ensureSchemaVersion(input.db, input.dialect);
     const gate = preparation;
     preparationEntered.resolve();
     await gate?.promise;
@@ -388,6 +389,27 @@ describe('pipeline operation ownership', () => {
         await until(() => operations.target !== null && operations.target !== target);
         await expect(operations.run('example', { dryRun: false, yes: true, target })).rejects.toThrow();
         expect(await operations.history('example')).toEqual([]);
+
+    });
+
+    it('reads history from a database with no tracking tables without creating them', async () => {
+
+        await mountOperations();
+
+        expect(await operations.history('example')).toEqual([]);
+        expect(await operations.getRun(1)).toBeNull();
+        expect((await sql`SELECT name FROM sqlite_master WHERE type = 'table'`.execute(operations.connection.db!)).rows).toEqual([]);
+
+    });
+
+    it('should run a dry run on a database with no tracking tables without creating them', async () => {
+
+        await mountOperations();
+
+        const result = await operations.run('example', { dryRun: true, yes: true, target: operations.target! });
+
+        expect(result.dryRun).toBe(true);
+        expect((await sql`SELECT name FROM sqlite_master WHERE type = 'table'`.execute(operations.connection.db!)).rows).toEqual([]);
 
     });
 

@@ -17,7 +17,6 @@ import { runPipeline } from '../../core/pipeline/executor.js';
 import { getPipelineRun, listPipelineHistory, type PipelineHistoryRecord } from '../../core/pipeline/history.js';
 import { DEFAULT_PIPELINES_PATH } from '../../core/settings/defaults.js';
 import { getPackageVersion } from '../../core/state/version.js';
-import { ensureSchemaVersion } from '../../core/version/index.js';
 import { useAppContext } from '../app-context.js';
 import { useConnectionContext } from '../providers/ConnectionProvider.js';
 import { resolveScreenIdentity } from '../utils/identity.js';
@@ -172,7 +171,7 @@ export function usePipelineOperations(): PipelineOperations {
                     const context = await buildPipelineContext({
                         db: lease.db, dialect: lease.dialect, config: current.config, configName: lease.configName,
                         identity: current.identity, projectRoot: current.projectRoot, stateManager: current.stateManager,
-                        pipelinesPath: current.pipelinesPath, channel: 'user', yes: true,
+                        pipelinesPath: current.pipelinesPath, channel: 'user', yes: true, dryRun,
                         signal: controller.signal, disposeMemoryConnection: lease.invalidate,
                     });
                     controller.signal.throwIfAborted();
@@ -226,7 +225,6 @@ export function usePipelineOperations(): PipelineOperations {
             let result: T;
             try {
 
-                await ensureSchemaVersion(lease.db, lease.dialect);
                 result = await query(lease, current);
 
             }

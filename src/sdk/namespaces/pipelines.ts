@@ -6,11 +6,8 @@ import { runPipeline } from '../../core/pipeline/executor.js';
 import { assertHistoryLimit, assertRunId, getPipelineRun, listPipelineHistory, type PipelineHistoryContext, type PipelineHistoryRecord } from '../../core/pipeline/history.js';
 import type { PipelineDryRunResult, PipelineRunOptions, PipelineRunResult } from '../../core/pipeline/types.js';
 import { DEFAULT_PIPELINES_PATH } from '../../core/settings/defaults.js';
-import { getSettingsManager } from '../../core/settings/index.js';
 import type { NoormDatabase, NoormPipelineRun } from '../../core/shared/tables.js';
-import { getStateManager } from '../../core/state/index.js';
 import { getPackageVersion } from '../../core/state/version.js';
-import { ensureSchemaVersion } from '../../core/version/index.js';
 import { checkProtectedConfig } from '../guards.js';
 import { requireConnection, runGatedExplore, type ContextState } from '../state.js';
 
@@ -51,10 +48,11 @@ export class PipelinesNamespace {
             configName: this.#state.config.name,
             identity: this.#state.identity,
             projectRoot: this.#state.projectRoot,
-            stateManager: getStateManager(this.#state.projectRoot),
-            pipelinesPath: getSettingsManager(this.#state.projectRoot).settings.paths?.pipelines ?? DEFAULT_PIPELINES_PATH,
+            stateManager: this.#state.stateManager,
+            pipelinesPath: this.#state.settings.paths?.pipelines ?? DEFAULT_PIPELINES_PATH,
             channel: this.#state.options.channel ?? 'user',
             yes: this.#state.options.yes,
+            dryRun: options.dryRun,
             disposeMemoryConnection: async () => {
 
                 try {
@@ -86,7 +84,7 @@ export class PipelinesNamespace {
 
         if (options.limit !== undefined) assertHistoryLimit(options.limit);
 
-        return runGatedExplore(this.#state, 'pipeline history', async () => listPipelineHistory(await this.#historyContext(), slug, options));
+        return runGatedExplore(this.#state, 'pipeline history', () => listPipelineHistory(this.#historyContext(), slug, options));
 
     }
 
@@ -101,7 +99,7 @@ export class PipelinesNamespace {
 
         assertRunId(id);
 
-        return runGatedExplore(this.#state, 'pipeline history', async () => getPipelineRun(await this.#historyContext(), id));
+        return runGatedExplore(this.#state, 'pipeline history', () => getPipelineRun(this.#historyContext(), id));
 
     }
 
@@ -114,19 +112,17 @@ export class PipelinesNamespace {
 
     }
 
-    async #historyContext(): Promise<PipelineHistoryContext> {
+    #historyContext(): PipelineHistoryContext {
 
         const { connection, db } = this.#connected();
-        const context = {
+
+        return {
             db,
             dialect: connection.dialect,
             configName: this.#state.config.name,
             executedBy: this.#state.identity.name,
             cliVersion: getPackageVersion(),
         };
-        await ensureSchemaVersion(context.db, context.dialect);
-
-        return context;
 
     }
 

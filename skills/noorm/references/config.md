@@ -277,7 +277,13 @@ interface Config {
         pool?: {
             min?: number;
             max?: number;
-            idleTimeoutMillis?: number; // PostgreSQL idle-client lifetime
+            idleTimeoutMs?: number;     // PostgreSQL (0 disables), MySQL and MSSQL (must be > 0)
+            maxLifetimeMs?: number;     // PostgreSQL only
+            maxUses?: number;           // PostgreSQL only
+            allowExitOnIdle?: boolean;  // PostgreSQL only
+            acquireTimeoutMs?: number;  // MySQL and MSSQL only
+            createTimeoutMs?: number;   // MySQL and MSSQL only
+            reapIntervalMs?: number;    // MySQL and MSSQL only
         };
         connectTimeoutMs?: number;
         tlsServerName?: string;
@@ -285,12 +291,13 @@ interface Config {
         queryTimeoutMs?: number;
         applicationName?: string;
         keepAlive?: boolean;
+        keepAliveInitialDelayMs?: number; // PostgreSQL and MySQL only
     };
     identity?: string;              // Optional identity override
 }
 ```
 
-The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. Runtime password and TLS callbacks belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
+The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. A pool or keepalive option the dialect does not support fails validation, as does an unknown pool key or a `pool.min` above `pool.max`. `pool.idleTimeoutMillis` is a deprecated alias of `pool.idleTimeoutMs`. Runtime password and TLS callbacks and `driver` options belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
 
 ## Stage Constraints
 

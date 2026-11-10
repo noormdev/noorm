@@ -2,8 +2,7 @@
  * noorm config use — set the active configuration.
  *
  * Persists the active config name to encrypted state, then syncs identity
- * with the database so the current user is registered if not already known.
- * No DB connection is required — operates on local state files only.
+ * with the database as far as the config's access for this channel lets it write there.
  */
 import { attempt, attemptSync } from '@logosdx/utils';
 import { defineCommand } from 'citty';
@@ -12,6 +11,7 @@ import { initState, getStateManager } from '../../core/state/index.js';
 import { syncIdentityWithConfig } from '../../core/identity/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { SettingsProvider, withConfigPolicy } from '../../core/config/resolver.js';
+import { isVisibleToChannel, resolveChannel } from '../../core/policy/index.js';
 import { outputResult, outputError, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
 
@@ -60,11 +60,19 @@ const useCommand = defineCommand({
 
         }
 
-        const [, policyErr] = attemptSync(() => withConfigPolicy(config, new SettingsProvider(settingsManager)));
+        const [bound, policyErr] = attemptSync(() => withConfigPolicy(config, new SettingsProvider(settingsManager)));
         if (policyErr) {
 
             outputError(args, policyErr.message);
             process.exit(EXIT.USAGE);
+
+        }
+
+        const channel = resolveChannel();
+        if (!isVisibleToChannel(bound.access, channel)) {
+
+            outputError(args, `Config "${args.name}" is not accessible on the ${channel} channel.`);
+            process.exit(EXIT.FAILURE);
 
         }
 
@@ -77,7 +85,7 @@ const useCommand = defineCommand({
 
         }
 
-        const syncResult = await syncIdentityWithConfig(config);
+        const syncResult = await syncIdentityWithConfig(bound, channel);
 
         if (syncResult.ok && syncResult.knownUsers?.length) {
 

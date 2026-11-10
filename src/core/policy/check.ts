@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { shouldSkipConfirmations } from '../environment.js';
 import { DEFAULT_ACCESS } from './legacy-access.js';
-import { compareCells, isBuiltinRole, MATRIX, TEST_DB_LIFECYCLE, USER_ALWAYS_ALLOWED } from './matrix.js';
+import { compareCells, isBuiltinRole, MATRIX, RECORDS_TO_TRACKING, TEST_DB_LIFECYCLE, USER_ALWAYS_ALLOWED } from './matrix.js';
 import type { Channel, ConfigAccess, Permission, PolicyCell, PolicyCheck, PolicyContext, PolicyTarget } from './types.js';
 
 const POLICY_CONTEXT = Symbol('noorm.policyContext');
@@ -71,6 +71,24 @@ export function getConfigPermission(channel: Channel, config: ConfigTarget, perm
     const ceiling = MATRIX[permission][channel === 'user' ? 'operator' : 'viewer'];
 
     return compareCells(cell, ceiling) <= 0 ? cell : ceiling;
+
+}
+
+/** The permissions whose operations record to the tracking tables. */
+export const TRACKED_WRITES: readonly Permission[] = Object.keys(RECORDS_TO_TRACKING)
+    .filter((name): name is Permission => Object.hasOwn(MATRIX, name))
+    .filter((permission) => RECORDS_TO_TRACKING[permission]);
+
+/**
+ * Whether the caller may record to the tracking tables. One that may not must never create or migrate them.
+ * A `confirm` cell counts where the channel can confirm: the user channel, or an agent holding a human approval.
+ *
+ * @example
+ * if (mayWriteTracking('user', config)) await ensureSchemaVersion(db, dialect);
+ */
+export function mayWriteTracking(channel: Channel, config: ConfigTarget): boolean {
+
+    return TRACKED_WRITES.some((permission) => checkConfigPolicy(channel, config, permission).allowed);
 
 }
 

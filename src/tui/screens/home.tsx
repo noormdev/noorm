@@ -35,6 +35,7 @@ import { ChangeHistory } from '../../core/change/history.js';
 import { failureListItem, scanChanges } from '../../core/change/parser.js';
 import { isPendingChange } from '../../core/change/types.js';
 import { getLockManager } from '../../core/lock/manager.js';
+import { checkConfigPolicy } from '../../core/policy/index.js';
 import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
 import { relativeTimeAgo } from '../utils/date.js';
@@ -175,7 +176,8 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             // Get lock status
             const lockManager = getLockManager();
             const connDialect = dialect ?? 'postgres';
-            const lockStatus = await lockManager.status(db, activeConfigName ?? '', connDialect);
+            const removeExpired = checkConfigPolicy('user', activeConfig, 'lock:acquire').allowed;
+            const lockStatus = await lockManager.status(db, activeConfigName ?? '', connDialect, { removeExpired });
 
             // Get change info - use ChangeHistory directly for read-only operations
             const changeHistory = new ChangeHistory(db, activeConfigName ?? '', connDialect);

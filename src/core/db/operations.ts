@@ -89,10 +89,17 @@ export async function checkDbStatus(config: ConnectionConfig): Promise<DbStatus>
 
         const conn = await createConnection(config, '__check__');
         const db = conn.db as Kysely<NoormDatabase>;
-        const hasNoormTables = await tablesExist(db, config.dialect);
-        await conn.destroy();
 
-        return hasNoormTables;
+        try {
+
+            return await tablesExist(db, config.dialect);
+
+        }
+        finally {
+
+            await conn.destroy();
+
+        }
 
     });
 

@@ -6,3 +6,4 @@ export { IdentityEditScreen } from './IdentityEditScreen.js';
 export { IdentityExportScreen } from './IdentityExportScreen.js';
 export { KnownUsersScreen } from './KnownUsersScreen.js';
 export { IdentityInitScreen } from './IdentityInitScreen.js';
+export { IdentityOnboarding, requireIdentity } from './IdentityOnboarding.js';

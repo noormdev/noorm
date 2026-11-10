@@ -1,6 +1,6 @@
 /** isTest contexts tear down on the agent channel; others keep refusing. */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'kysely';
@@ -69,6 +69,7 @@ describe('sdk: isTest db lifecycle on the agent channel', () => {
     it('should reset without confirmation for an agent viewer when the config is isTest', async () => {
 
         process.env['NOORM_isTest'] = 'true';
+        await mkdir(join(root, 'db', 'sql'), { recursive: true });
         const { noorm, kysely } = await open();
 
         await noorm.db.reset();

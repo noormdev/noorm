@@ -7,6 +7,8 @@
 import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
+import { connectionOptionProblems, unknownPoolKeyMessage } from '../connection/options.js';
+import type { ConnectionConfig } from '../connection/types.js';
 import { resolveLegacyAccess } from '../policy/index.js';
 import type { ConfigAccess } from '../policy/index.js';
 
@@ -62,12 +64,38 @@ export { PortSchema };
 
 /**
  * Connection pool configuration.
+ *
+ * Every dialect's options are listed; `rejectUnsupportedOptions` narrows them
+ * to the ones the connection's dialect honors. Strict, because an
+ * unknown key that is stripped looks like an option that took effect.
  */
-const PoolSchema = z.object({
+const PoolSchema = z.strictObject({
     min: z.number().int().min(0).optional(),
     max: z.number().int().min(1).optional(),
+    idleTimeoutMs: z.number().int().min(0).optional(),
     idleTimeoutMillis: z.number().int().min(0).optional(),
+    maxLifetimeMs: z.number().int().min(0).optional(),
+    maxUses: z.number().int().min(1).optional(),
+    allowExitOnIdle: z.boolean().optional(),
+    acquireTimeoutMs: z.number().int().positive().optional(),
+    createTimeoutMs: z.number().int().positive().optional(),
+    reapIntervalMs: z.number().int().positive().optional(),
+}, {
+    error: (issue) => issue.code === 'unrecognized_keys' ? issue.keys.map(unknownPoolKeyMessage).join('; ') : undefined,
 });
+
+function rejectUnsupportedOptions(
+    connection: Pick<Partial<ConnectionConfig>, 'dialect' | 'pool' | 'keepAliveInitialDelayMs'>,
+    ctx: z.RefinementCtx,
+): void {
+
+    for (const { path, message } of connectionOptionProblems(connection)) {
+
+        ctx.addIssue({ code: 'custom', path, message });
+
+    }
+
+}
 
 /**
  * SSL configuration - can be boolean or detailed config.
@@ -139,7 +167,9 @@ export const ConnectionSchema = z
         queryTimeoutMs: z.number().int().min(0).optional(),
         applicationName: z.string().optional(),
         keepAlive: z.boolean().optional(),
+        keepAliveInitialDelayMs: z.number().int().min(0).optional(),
     })
+    .superRefine(rejectUnsupportedOptions)
     .refine((conn) => conn.dialect === 'sqlite' || conn.host, {
         message: 'Host is required for non-SQLite databases',
         path: ['host'],
@@ -192,7 +222,8 @@ const PartialConnectionSchema = z.object({
     queryTimeoutMs: z.number().int().min(0).optional(),
     applicationName: z.string().optional(),
     keepAlive: z.boolean().optional(),
-});
+    keepAliveInitialDelayMs: z.number().int().min(0).optional(),
+}).superRefine(rejectUnsupportedOptions);
 
 /**
  * Partial config schema for updates.

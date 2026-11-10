@@ -42,7 +42,7 @@ flowchart TD
 
 ### Revert gates
 
-`revertChange` has a different gate pair: the `hasRevertFiles` throw, then `tracker.canRevert`, which checks recorded status rather than checksum. It runs no `validateChange` and no content gate. After a successful run it calls `tracker.markAsReverted`.
+`revertChange` has a different gate pair: the `hasRevertFiles` throw, then `tracker.canRevert`, which checks recorded status rather than checksum. It runs no `validateChange` and no content gate. Dry runs and previews reach the gate too, but when `tablesExist` finds no tracking tables they skip the `canRevert` query and treat the change as `not applied` (`executor.ts`), so the result is the not-applied outcome instead of a tracking-table error. After a successful run it calls `tracker.markAsReverted`.
 
 ```mermaid
 flowchart TD
@@ -52,15 +52,17 @@ flowchart TD
     B -->|allowed| C{hasRevertFiles}
     C -->|no| X
     C -->|yes| D[computeCombinedChecksum]
-    D --> E{tracker.canRevert}
+    D --> U{"dryRun or preview, and<br/>no tracking tables?"}
+    U -->|yes| H
+    U -->|no| E{tracker.canRevert}
     E -->|no| H["change:skip,<br/>failed result, or<br/>ChangeNotAppliedError"]
     E -->|yes| I["lock, executeFiles,<br/>release"]
     I -->|success| J[tracker.markAsReverted]
 ```
 
-### Dry-run and preview bypass the run gate
+### Dry-run and preview bypass the forward run gate
 
-Policy, `validateChange`, content, and checksum gates still run first. `history.needsRun` and `tracker.canRevert` run only when neither `opts.dryRun` nor `opts.preview` is set (`executor.ts:176` in `executeChange`, `executor.ts:316` in `revertChange`), so both modes render every file's SQL regardless of whether the change already ran:
+Policy, `validateChange`, content, and checksum gates still run first. `history.needsRun` runs only when neither `opts.dryRun` nor `opts.preview` is set (`executor.ts:177` in `executeChange`), so both modes render every file's SQL on a forward run regardless of whether the change already ran. `revertChange` has no such bypass: its gate is described under Revert gates.
 
 ```mermaid
 flowchart TD
@@ -181,7 +183,7 @@ stateDiagram-v2
 
 - **core-runner** ([`src/core/runner/`](../../src/core/runner)): `executeFiles` runs every file's SQL through a `StatementWatcher`; the watcher's lifecycle, dialect probes, and cancel semantics belong there ([`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts)). `executeSqlBody` from [`src/core/runner/mssql-batches.ts`](../../src/core/runner/mssql-batches.ts) executes each file body, so a change in how it reports failures changes what `runFileBatch` records. `computeChecksum`/`computeCombinedChecksum` come from [`src/core/runner/checksum.ts`](../../src/core/runner/checksum.ts); checksum algorithm changes propagate here. `ChangeTracker` extends `Tracker` from [`src/core/runner/tracker.ts`](../../src/core/runner/tracker.ts), so base tracker changes affect revert/stale logic. `processFile`/`isTemplate` from [`src/core/template/`](../../src/core/template) render templated SQL files before execution.
 - **core-policy** ([`src/core/policy/`](../../src/core/policy)): `executeChange`/`revertChange` call `assertPolicy`, gated on `change:run`/`change:revert`; [`src/cli/change/rm.ts`](../../src/cli/change/rm.ts) gates `change:rm` separately: it loads settings, builds the config with `withConfigPolicy(config, new SettingsProvider(settingsManager))`, then calls `checkConfigPolicy`, so settings load failures exit before the policy check. Policy-matrix changes in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) affect which roles can run/revert/rm changes.
-- [`src/core/lock`](../../src/core/lock) (no wiki domain owns it) ([`src/core/lock/`](../../src/core/lock)): `executeChange`/`revertChange` take and release the operation lock through `getLockManager()`.
+- [`src/core/lock`](../../src/core/lock) (no wiki domain owns it) ([`src/core/lock/`](../../src/core/lock)): `executeChange`/`revertChange` take and release the operation lock through `getLockManager()`. The executor applies no `lock:acquire` check of its own; that permission gates the SDK `lock` namespace ([`src/sdk/namespaces/lock.ts`](../../src/sdk/namespaces/lock.ts)) and the TUI lock screens. The executor never calls `LockManager.status`; lock status reads belong to the SDK and TUI pages.
 - **core-identity**: `formatIdentity` from [`src/core/identity/resolver.ts`](../../src/core/identity/resolver.ts) names the lock holder.
 - [`src/core/shared`](../../src/core/shared) (no wiki domain owns it), approval scope ([`src/core/shared/approved-content.ts`](../../src/core/shared/approved-content.ts)): the approval-scope helpers called from `executor.ts` and `manager.ts` live there; the server that establishes the scope belongs to mcp-rpc.
 - **core-state** ([`src/core/observer.ts`](../../src/core/observer.ts)): emits `change:*` events (`change:start`, `change:file`, `change:complete`, `change:skip`, `change:created`, `file:dry-run`) through the shared observer.

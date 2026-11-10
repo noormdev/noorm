@@ -652,4 +652,261 @@ describe('cli: components/form-navigation', () => {
 
     });
 
+    /**
+     * A screen can offer a second way to submit (the config forms use it to save
+     * without testing the connection). It must be reachable from anywhere in
+     * browse mode, visible on the hint row, and held to the same field
+     * validation as the submit button, or it becomes a way around validation.
+     */
+    describe('alternate submit', () => {
+
+        const CTRL_S = '\x13';
+
+        const hostField: FormField = { key: 'host', label: 'Host', type: 'text', defaultValue: 'localhost' };
+
+        it('should advertise the alternate submit key on the hint row', async () => {
+
+            const { lastFrame, unmount } = render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField]}
+                        onSubmit={() => {}}
+                        altSubmit={{ key: 's', label: 'save without verifying', onSubmit: () => {} }}
+                    />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+
+            expect(lastFrame()).toContain('ctrl+s save without verifying');
+
+            unmount();
+
+        });
+
+        it('should hand the values to the alternate handler on its Ctrl chord, from a field', async () => {
+
+            let primary = false;
+            let received: Record<string, string | boolean> | null = null;
+
+            const { lastFrame, stdin, unmount } = render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField]}
+                        onSubmit={() => {
+
+                            primary = true;
+
+                        }}
+                        altSubmit={{
+                            key: 's',
+                            label: 'save without verifying',
+                            onSubmit: (values) => {
+
+                                received = values;
+
+                            },
+                        }}
+                    />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+            stdin.write(CTRL_S);
+            await waitFor(() => received !== null);
+
+            expect(received).toEqual({ host: 'localhost' });
+            expect(primary).toBe(false);
+
+            unmount();
+
+        });
+
+        it('should run field validation before the alternate handler', async () => {
+
+            let called = false;
+
+            const { lastFrame, stdin, unmount } = render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField, { key: 'database', label: 'Database', type: 'text', required: true }]}
+                        onSubmit={() => {}}
+                        altSubmit={{
+                            key: 's',
+                            label: 'save without verifying',
+                            onSubmit: () => {
+
+                                called = true;
+
+                            },
+                        }}
+                    />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => getActiveField(lastFrame() ?? '', ['Host', 'Database']) === 'Host');
+            stdin.write(CTRL_S);
+            await waitFor(() => Boolean(lastFrame()?.includes('Required')));
+
+            expect(called).toBe(false);
+            expect(getActiveField(lastFrame() ?? '', ['Host', 'Database'])).toBe('Database');
+
+            unmount();
+
+        });
+
+        it('should ignore the plain letter, so typing over a field in browse mode cannot submit', async () => {
+
+            let called = false;
+
+            const { lastFrame, stdin, unmount } = render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField]}
+                        onSubmit={() => {}}
+                        altSubmit={{
+                            key: 's',
+                            label: 'save without verifying',
+                            onSubmit: () => {
+
+                                called = true;
+
+                            },
+                        }}
+                    />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+            stdin.write('s');
+            await waitFor(() => called, 100);
+
+            expect(called).toBe(false);
+
+            unmount();
+
+        });
+
+        it('should leave the chord to the field while it is being edited', async () => {
+
+            let called = false;
+
+            const { lastFrame, stdin, unmount } = render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField]}
+                        onSubmit={() => {}}
+                        altSubmit={{
+                            key: 's',
+                            label: 'save without verifying',
+                            onSubmit: () => {
+
+                                called = true;
+
+                            },
+                        }}
+                    />
+                </TestWrapper>,
+            );
+
+            await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+            stdin.write(KEYS.ENTER);
+            await waitFor(() => Boolean(lastFrame()?.includes('↵ commit')));
+
+            // The hint row must not promise a key that does nothing here.
+            expect(lastFrame()).not.toContain('ctrl+s');
+
+            stdin.write(CTRL_S);
+            await waitFor(() => called, 100);
+
+            expect(called).toBe(false);
+
+            // Inert means inert: the chord's letter must not land in the field,
+            // where the next save would store `localhosts`.
+            stdin.write(KEYS.ENTER);
+            await waitFor(() => !lastFrame()?.includes('↵ commit'));
+
+            expect(lastFrame()).toContain('localhost');
+            expect(lastFrame()).not.toContain('localhosts');
+
+            unmount();
+
+        });
+
+        /**
+         * On its own row: the error is a finished sentence, and appending the
+         * hint to it produced `running.. Press`.
+         */
+        describe('named under a status error', () => {
+
+            const REFUSED = 'Connection refused at 127.0.0.1:5432: nothing is listening there. '
+                + 'Check the host and port, and that the server is running.';
+
+            const suggestion = (frame: string | undefined) =>
+                (frame ?? '').split('\n').map((line) => line.trim()).filter((line) => line.startsWith('Press Ctrl+'));
+
+            const renderFailed = () => render(
+                <TestWrapper>
+                    <Form
+                        fields={[hostField]}
+                        onSubmit={() => {}}
+                        statusError={REFUSED}
+                        altSubmit={{ key: 's', label: 'save without verifying', suggest: true, onSubmit: () => {} }}
+                    />
+                </TestWrapper>,
+            );
+
+            it('should name the chord on its own row, after the error and not inside it', async () => {
+
+                const { lastFrame, unmount } = renderFailed();
+
+                await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+
+                expect(suggestion(lastFrame())).toEqual(['Press Ctrl+S to save without verifying.']);
+                expect(lastFrame()).not.toContain('..');
+
+                unmount();
+
+            });
+
+            it('should not name the chord for an error it does not get past', async () => {
+
+                const { lastFrame, unmount } = render(
+                    <TestWrapper>
+                        <Form
+                            fields={[hostField]}
+                            onSubmit={() => {}}
+                            statusError="Config name already exists"
+                            altSubmit={{ key: 's', label: 'save without verifying', onSubmit: () => {} }}
+                        />
+                    </TestWrapper>,
+                );
+
+                await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+
+                expect(suggestion(lastFrame())).toEqual([]);
+
+                unmount();
+
+            });
+
+            it('should stop naming the chord while a field is open, where it does nothing', async () => {
+
+                const { lastFrame, stdin, unmount } = renderFailed();
+
+                await waitFor(() => getActiveField(lastFrame() ?? '', ['Host']) === 'Host');
+                stdin.write(KEYS.ENTER);
+                await waitFor(() => Boolean(lastFrame()?.includes('↵ commit')));
+
+                expect(lastFrame()).toContain('Connection refused');
+                expect(suggestion(lastFrame())).toEqual([]);
+
+                unmount();
+
+            });
+
+        });
+
+    });
+
 });

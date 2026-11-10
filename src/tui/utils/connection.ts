@@ -30,6 +30,15 @@ import { createConnection, testConnection } from '../../core/connection/index.js
 export const STOPPED_WAITING_MESSAGE = 'Stopped waiting for the database. Nothing was saved.';
 
 /**
+ * The config forms' second submit. A Ctrl chord, not a plain letter: browse
+ * mode sits on text fields, and typing there must not save by accident.
+ *
+ * @example
+ * <Form altSubmit={{ ...SAVE_UNVERIFIED, onSubmit: (values) => save(values, false) }} />
+ */
+export const SAVE_UNVERIFIED = { key: 's', label: 'save without verifying' } as const;
+
+/**
  * Execute a callback with a managed database connection.
  *
  * Tests connectivity, creates a connection, runs the callback,

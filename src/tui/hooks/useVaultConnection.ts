@@ -1,7 +1,7 @@
 /**
  * Vault connection lifecycle hook.
  *
- * Encapsulates the connect → ensureSchemaVersion → ready pattern
+ * Encapsulates the connect → prepare tracking schema → ready pattern
  * shared by all vault screens. Delegates to the shared useConnection
  * hook for connection management.
  *

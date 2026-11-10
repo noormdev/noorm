@@ -7,6 +7,7 @@ import type {
     NoormDatabase, NoormPipelineRun, NoormPipelineStep,
     PipelineRunStatus, PipelineStepStatus, PipelineTransactionOutcome,
 } from '../shared/tables.js';
+import { readerRemedy, requireCurrentSchema } from '../version/tracking.js';
 import { exactIdentifier } from './exact-identifier.js';
 import { isHistoryLimit, isRunId } from './parse.js';
 
@@ -260,6 +261,13 @@ export async function finalizePipelineRun(
 
 }
 
+/** Readers never write: no tracking tables means no history, and older tables are refused instead of migrated. */
+function hasHistory(context: PipelineHistoryContext): Promise<boolean> {
+
+    return requireCurrentSchema(context.db, context.dialect, readerRemedy('pipeline history'));
+
+}
+
 /** Loads one run and its steps for the active config; `null` when the id is unknown or belongs to another config. */
 export async function getPipelineRun(
     context: PipelineHistoryContext,
@@ -267,6 +275,7 @@ export async function getPipelineRun(
 ): Promise<PipelineHistoryRecord | null> {
 
     assertRunId(id);
+    if (!(await hasHistory(context))) return null;
     const tables = getNoormTables(context.dialect);
     const db = noormDb(context.db, context.dialect);
     const run = await db.selectFrom(tables.pipelineRun).selectAll()
@@ -296,6 +305,7 @@ export async function listPipelineHistory(
 
     const limit = options.limit ?? DEFAULT_HISTORY_LIMIT;
     assertHistoryLimit(limit);
+    if (!(await hasHistory(context))) return [];
     const tables = getNoormTables(context.dialect);
     const db = noormDb(context.db, context.dialect);
     const runs = await db.selectFrom(tables.pipelineRun).selectAll()

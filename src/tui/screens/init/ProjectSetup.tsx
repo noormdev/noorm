@@ -142,10 +142,6 @@ export function ProjectSetup({
                             <Text>• </Text>
                             <Text>.noorm/.gitignore</Text>
                         </Text>
-                        <Text dimColor>
-                            <Text>• </Text>
-                            <Text>.noorm/state/state.enc</Text>
-                        </Text>
                     </Box>
                 </Box>
             </Panel>

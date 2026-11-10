@@ -2,6 +2,7 @@
  * Tests for schema version manager.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
 
@@ -66,14 +67,15 @@ describe('version: schema', () => {
 
         });
 
-        it('should detect legacy tables even when dialect is postgres', async () => {
+        it('should propagate a failed probe instead of reporting no tables', async () => {
 
-            // Tables in legacy location (prefixed), but dialect is postgres
-            // Step 1 (legacy fallback) should find them before Step 2
             await bootstrapSchema(db, 'sqlite');
-            const exists = await tablesExist(db, 'postgres');
+            await db.destroy();
 
-            expect(exists).toBe(true);
+            const [exists, err] = await attempt(() => tablesExist(db, 'sqlite'));
+
+            expect(err).toBeInstanceOf(Error);
+            expect(exists).toBeNull();
 
         });
 
@@ -639,7 +641,7 @@ describe('version: schema', () => {
 
         it('should return null when tables do not exist', async () => {
 
-            const record = await getFullVersionRecord(db);
+            const record = await getFullVersionRecord(db, 'sqlite');
 
             expect(record).toBeNull();
 
@@ -649,7 +651,7 @@ describe('version: schema', () => {
 
             await bootstrapSchema(db, 'sqlite');
 
-            const record = await getFullVersionRecord(db);
+            const record = await getFullVersionRecord(db, 'sqlite');
 
             expect(record).not.toBeNull();
             expect(record!.cliVersion).toBe(getCurrentVersion());
@@ -678,7 +680,7 @@ describe('version: schema', () => {
                 })
                 .execute();
 
-            const record = await getFullVersionRecord(db);
+            const record = await getFullVersionRecord(db, 'sqlite');
 
             expect(record).not.toBeNull();
             // Latest row's data

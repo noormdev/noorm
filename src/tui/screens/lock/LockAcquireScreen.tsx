@@ -23,15 +23,21 @@ import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
-import { Panel, Spinner, Form, useToast } from '../../components/index.js';
+import { Panel, Spinner, Form, SmartConfirm, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
 import { createConnection } from '../../../core/connection/index.js';
 import { getLockManager, LockAcquireError } from '../../../core/lock/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 
 /**
  * Screen phase state.
  */
-type Phase = 'loading' | 'blocked' | 'form' | 'running' | 'done' | 'error';
+type Phase = 'loading' | 'blocked' | 'form' | 'confirm' | 'running' | 'done' | 'error';
+
+interface AcquireRequest {
+    timeout: number;
+    reason?: string;
+}
 
 /**
  * LockAcquireScreen component.
@@ -44,16 +50,18 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
     const { isFocused } = useFocusScope('LockAcquire');
     const { activeConfig, activeConfigName, identity: cryptoIdentity } = useAppContext();
     const { showToast } = useToast();
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'lock:acquire') : null;
 
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
+    const [pending, setPending] = useState<AcquireRequest | null>(null);
 
     const {
         status: lockStatus,
         identityStr,
         loading: lockLoading,
         error: lockError,
-    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity);
+    } = useLockStatus(activeConfig, activeConfigName, cryptoIdentity, check?.allowed !== false);
 
     // Derive phase from lock status loading state
     useEffect(() => {
@@ -91,16 +99,12 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
 
     }, [lockLoading, lockError, lockStatus, identityStr, activeConfig, activeConfigName]);
 
-    // Execute lock acquisition
-    const handleSubmit = useCallback(
-        (values: Record<string, string | boolean>) => {
+    const acquire = useCallback(
+        ({ timeout, reason }: AcquireRequest) => {
 
             if (!activeConfig || !activeConfigName) return;
 
             setPhase('running');
-
-            const timeout = parseInt(String(values['timeout'] ?? '5'), 10) * 60 * 1000; // Convert to ms
-            const reason = values['reason'] ? String(values['reason']) : undefined;
 
             const execute = async () => {
 
@@ -152,6 +156,29 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
         [activeConfig, activeConfigName, identityStr],
     );
 
+    const handleSubmit = useCallback(
+        (values: Record<string, string | boolean>) => {
+
+            const request: AcquireRequest = {
+                timeout: parseInt(String(values['timeout'] ?? '5'), 10) * 60 * 1000,
+                reason: values['reason'] ? String(values['reason']) : undefined,
+            };
+
+            if (!check?.requiresConfirmation) {
+
+                acquire(request);
+
+                return;
+
+            }
+
+            setPending(request);
+            setPhase('confirm');
+
+        },
+        [acquire, check?.requiresConfirmation],
+    );
+
     // Handle cancel
     const handleCancel = useCallback(() => {
 
@@ -171,6 +198,14 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
     useInput((input, key) => {
 
         if (!isFocused) return;
+
+        if (check && !check.allowed) {
+
+            if (key.return || key.escape) back();
+
+            return;
+
+        }
 
         if (phase === 'done' || phase === 'error' || phase === 'blocked') {
 
@@ -200,6 +235,22 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
             <Panel title="Acquire Lock" borderColor="red" paddingX={1} paddingY={1}>
                 <Text color="red">No active configuration selected.</Text>
             </Panel>
+        );
+
+    }
+
+    if (check && !check.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Acquire Lock" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -291,6 +342,23 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                     />
                 </Panel>
             </Box>
+        );
+
+    }
+
+    if (phase === 'confirm' && pending) {
+
+        return (
+            <SmartConfirm
+                requiresConfirmation={true}
+                confirmationPhrase={check?.confirmationPhrase}
+                configName={activeConfigName ?? 'unknown'}
+                action="acquire the lock on"
+                message="Acquire this lock?"
+                onConfirm={() => acquire(pending)}
+                onCancel={handleCancel}
+                focusLabel="LockAcquireConfirm"
+            />
         );
 
     }

@@ -31,6 +31,7 @@ import { getIdentityForConfig } from '../core/identity/index.js';
 import { loadIdentityFromEnv } from '../core/identity/env.js';
 import { setKeyOverride, setIdentityOverride } from '../core/identity/storage.js';
 import { resolveConfig, SettingsProvider } from '../core/config/resolver.js';
+import { driverOptionsFor } from '../core/connection/options.js';
 import type { ConfigInput } from '../core/config/types.js';
 
 import { Context } from './context.js';
@@ -134,11 +135,19 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
         inline.ssl = serializableSsl;
 
     }
+    const driver = inline?.driver;
+    if (driver !== undefined && (typeof driver !== 'object' || driver === null || Array.isArray(driver))) {
+
+        throw new Error('connection.driver must be an object of driver options');
+
+    }
+    if (inline) delete inline.driver;
 
     // Use resolver - applies full priority chain:
     // defaults <- stage <- stored <- env <- flags
     const config = resolveConfig(state, {
         name: options.config,
+        unstoredName: options.name,
         stage: options.stage,
         settings: toSettingsProvider(settingsManager),
         flags: inline ? { connection: inline } as ConfigInput : undefined,
@@ -147,8 +156,10 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     if (!config) {
 
         throw new Error(
-            options.config
-                ? `Config "${options.config}" not found`
+            options.config === false
+                ? 'No connection available for { config: false }. Either:\n' +
+                  '  - Pass { connection } with at least dialect and database\n' +
+                  '  - Set NOORM_CONNECTION_DIALECT and NOORM_CONNECTION_DATABASE'
                 : 'No config available. Either:\n' +
                   '  - Pass { config: "name" } to use a stored config\n' +
                   '  - Set NOORM_CONFIG env var\n' +
@@ -168,6 +179,15 @@ export async function createContext<DB = unknown, Procs = object, Funcs = object
     if (password && config.connection.dialect === 'sqlite') {
 
         throw new Error('Dynamic passwords are not supported for SQLite');
+
+    }
+    if (driver !== undefined) {
+
+        const dialect = config.connection.dialect;
+
+        if (dialect === 'sqlite') throw new Error('Driver options are not supported for SQLite');
+
+        driverOptionsFor(dialect, { driver });
 
     }
     if (verifier && config.connection.dialect !== 'postgres') {
@@ -215,6 +235,7 @@ export {
 // Types
 export type {
     CreateContextOptions,
+    InlineConnection,
     BuildOptions,
     ExportOptions,
     ImportOptions,
@@ -234,8 +255,10 @@ export { tvp } from './tvp.js';
 export type { TvpValue } from './tvp.js';
 
 // Guards (errors for catching)
-export { RequireTestError, ProtectedConfigError, NotConnectedError } from './guards.js';
+export { RequireTestError, ProtectedConfigError, NotConnectedError, ResetBuildError, DisconnectedError } from './guards.js';
 export { VaultAccessError } from './namespaces/vault.js';
+export { DatabaseConnectionError } from '../core/connection/errors.js';
+export { VersionMismatchError, MigrationError } from '../core/version/types.js';
 
 // Impersonation
 export { ImpersonationError } from './impersonate/index.js';
@@ -270,7 +293,17 @@ export type { NoormEvents, NoormEventNames } from '../core/observer.js';
 export type { Config } from '../core/config/types.js';
 export type { Settings } from '../core/settings/index.js';
 export type { Identity } from '../core/identity/index.js';
-export type { Dialect } from '../core/connection/index.js';
+export type {
+    Dialect,
+    DialectConnectionConfig,
+    ConnectionRetryOptions,
+    PoolOpts,
+    PgPoolOpts,
+    TarnPoolOpts,
+    MysqlPoolOpts,
+    MssqlPoolOpts,
+    PinnedConnection,
+} from '../core/connection/index.js';
 export type {
     TableSummary,
     TableDetail,

@@ -4,7 +4,7 @@
  * One central policy check for every channel (CLI/TUI/SDK, MCP) and every
  * config-scoped action.
  */
-export { assertPolicy, attachPolicyContext, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, getConfigPermission, getPolicyContext, getPolicyFingerprint, guarded, isVisibleToChannel, policyTargetIdentity, withPolicyConfirmation } from './check.js';
+export { assertPolicy, attachPolicyContext, checkConfigPolicy, checkPolicy, confirmationPhraseFor, formatAccessTag, getConfigPermission, getPolicyContext, getPolicyFingerprint, guarded, isVisibleToChannel, mayWriteTracking, policyTargetIdentity, TRACKED_WRITES, withPolicyConfirmation } from './check.js';
 export { UnknownAccessRoleError } from './errors.js';
 export { resolveChannel } from './channel.js';
 export { classifyStatements, sqlPermissionsFor } from './classify.js';
@@ -12,7 +12,7 @@ export { AGENT_HARNESSES, detectAgentHarness, isAgentSession } from './harness.j
 export type { AgentHarness } from './harness.js';
 export type { SqlClass } from './classify.js';
 export { DEFAULT_ACCESS, GUARDED_ACCESS, resolveLegacyAccess } from './legacy-access.js';
-export { BUILTIN_ROLES, compareCells, isBuiltinRole, MATRIX, USER_ALWAYS_ALLOWED } from './matrix.js';
+export { BUILTIN_ROLES, compareCells, isBuiltinRole, MATRIX, RECORDS_TO_TRACKING, USER_ALWAYS_ALLOWED } from './matrix.js';
 export type {
     Channel,
     BuiltinRole,

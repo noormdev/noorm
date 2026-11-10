@@ -114,6 +114,7 @@ import {
     IdentityExportScreen,
     KnownUsersScreen,
     IdentityInitScreen,
+    requireIdentity,
 } from './screens/identity/index.js';
 import {
     RunListScreen,
@@ -187,7 +188,7 @@ const SCREENS: ScreenRegistry = {
         label: 'Configurations',
     },
     'config/add': {
-        component: ConfigAddScreen,
+        component: requireIdentity(ConfigAddScreen),
         label: 'Add Config',
     },
     'config/edit': {
@@ -215,7 +216,7 @@ const SCREENS: ScreenRegistry = {
         label: 'Export Config',
     },
     'config/import': {
-        component: ConfigImportScreen,
+        component: requireIdentity(ConfigImportScreen),
         label: 'Import Config',
     },
     'config/more': {

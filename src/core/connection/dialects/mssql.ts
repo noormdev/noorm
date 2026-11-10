@@ -15,6 +15,9 @@ import type { ConnectionConfiguration } from 'tedious';
 
 import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
+import { guardPasswordCallback, trackPoolLogins } from '../login.js';
+import { assertConnectionOptions, driverOptionsFor, tarnPoolOptions } from '../options.js';
+import { trackPinnedConnections } from '../pinned.js';
 import { explainMssqlLoginFailure } from '../errors.js';
 import type { MssqlServerError } from '../errors.js';
 import { MssqlLimitPlugin } from './mssql-limit-plugin.js';
@@ -123,11 +126,14 @@ export function resolveTlsServerName(config: ConnectionConfig): string | undefin
  *
  * Kept separate from the pool so the TLS and timeout choices can be asserted
  * without a server.
+ * `runtime.driver` lands in the `options` block, under the keys noorm owns.
  *
  * @example
  * const options = buildTediousOptions(config);
  */
-export function buildTediousOptions(config: ConnectionConfig): ConnectionConfiguration {
+export function buildTediousOptions(config: ConnectionConfig, runtime?: RuntimeConnectionOptions): ConnectionConfiguration {
+
+    assertConnectionOptions(config);
 
     return {
         server: config.host ?? 'localhost',
@@ -139,6 +145,7 @@ export function buildTediousOptions(config: ConnectionConfig): ConnectionConfigu
             },
         },
         options: {
+            ...driverOptionsFor('mssql', runtime),
             port: config.port ?? DEFAULT_PORTS.mssql,
             database: config.database,
             trustServerCertificate: !config.ssl,
@@ -164,9 +171,10 @@ function buildTediousConnection(
     Tedious: typeof import('tedious'),
     config: ConnectionConfig,
     loginErrors: MssqlServerError[],
+    runtime?: RuntimeConnectionOptions,
 ) {
 
-    const connection = new Tedious.Connection(buildTediousOptions(config));
+    const connection = new Tedious.Connection(buildTediousOptions(config, runtime));
     const record = (token: MssqlServerError) => loginErrors.push({ number: token.number, message: token.message });
 
     // Pooled connections live on, and their query errors are not login errors.
@@ -195,7 +203,11 @@ function buildTediousConnection(
  * })
  * ```
  */
-export async function createMssqlConnection(config: ConnectionConfig, runtime?: RuntimeConnectionOptions): Promise<ConnectionResult> {
+export async function createMssqlConnection(
+    config: ConnectionConfig,
+    runtime?: RuntimeConnectionOptions,
+    configName = '__default__',
+): Promise<ConnectionResult> {
 
     // Dynamic import to avoid compile-time dependency. Normalize CJS interop:
     // when bundled (tsup), the module's exports land under `.default`, so a
@@ -206,16 +218,55 @@ export async function createMssqlConnection(config: ConnectionConfig, runtime?: 
     const Tedious = TediousImport.default ?? TediousImport;
     const Tarn = TarnImport.default ?? TarnImport;
     let loginErrors: MssqlServerError[] = [];
+    const logins = trackPoolLogins(configName, 'MSSQL');
+    const password = runtime?.password ? guardPasswordCallback(runtime.password) : () => config.password;
+    const pins = trackPinnedConnections();
+
+    // Kysely builds the pool from this class and keeps it private, so the
+    // class is the only place its checkouts and releases can be seen.
+    class Pool<R> extends Tarn.Pool<R> {
+
+        override acquire() {
+
+            const pinTo = pins.claim();
+            const pending = super.acquire();
+
+            pending.promise = pending.promise.then((resource) => {
+
+                pinTo(resource);
+
+                return resource;
+
+            });
+
+            return pending;
+
+        }
+
+        override release(resource: R): boolean {
+
+            const index = pins.isDiscarded(resource) ? this.used.findIndex((used) => used.resource === resource) : -1;
+
+            if (index === -1) return super.release(resource);
+
+            // Tarn's own release with the resource destroyed, not freed;
+            // it has no public call that closes a checked-out resource.
+            this.used.splice(index, 1)[0]?.resolve();
+            void this._destroy(resource);
+            this._tryAcquireOrCreate();
+
+            return true;
+
+        }
+
+    }
 
     const db = new Kysely<unknown>({
         dialect: new MssqlDialect({
             tarn: {
                 ...Tarn,
-                options: {
-                    min: config.pool?.min ?? 0,
-                    max: config.pool?.max ?? 10,
-                    propagateCreateError: true,
-                },
+                Pool,
+                options: tarnPoolOptions(config),
             },
             tedious: {
                 ...Tedious,
@@ -223,9 +274,26 @@ export async function createMssqlConnection(config: ConnectionConfig, runtime?: 
 
                     loginErrors = [];
 
-                    const password = runtime?.password ? await runtime.password() : config.password;
+                    const [credential, passwordErr] = await attempt(async () => password());
 
-                    return buildTediousConnection(Tedious, { ...config, password }, loginErrors);
+                    if (passwordErr) {
+
+                        logins.failed();
+
+                        throw passwordErr;
+
+                    }
+
+                    const connection = buildTediousConnection(Tedious, { ...config, password: credential }, loginErrors, runtime);
+
+                    connection.once('connect', (err?: Error) => {
+
+                        if (err) logins.failed();
+                        else logins.opened();
+
+                    });
+
+                    return connection;
 
                 },
             },
@@ -239,7 +307,9 @@ export async function createMssqlConnection(config: ConnectionConfig, runtime?: 
 
         await db.destroy();
 
-        throw runtime?.password ? connectErr : explainMssqlLoginFailure(loginErrors, connectErr, config);
+        // A password callback's own error left no server errors behind, so
+        // it comes back unchanged.
+        throw explainMssqlLoginFailure(loginErrors, connectErr, config);
 
     }
 
@@ -247,6 +317,7 @@ export async function createMssqlConnection(config: ConnectionConfig, runtime?: 
         db,
         dialect: 'mssql',
         destroy: () => db.destroy(),
+        withConnection: pins.withConnection(db),
     };
 
 }

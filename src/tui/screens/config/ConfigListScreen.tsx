@@ -87,50 +87,36 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
             if (!stateManager) return;
 
-            if (!item.value.isActive) {
-
-                const selected = stateManager.getConfig(item.value.name);
-                if (!selected || !settingsManager) return;
-                const [, policyErr] = attemptSync(() => withConfigPolicy(selected, new SettingsProvider(settingsManager)));
-                if (policyErr) {
-
-                    showToast({ message: policyErr.message, variant: 'error' });
-
-                    return;
-
-                }
-
-            }
-
-            // If already active, go to edit
             if (item.value.isActive) {
 
                 navigate('config/edit', { name: item.value.name });
 
-            }
-            else {
-
-                // Set as active
-                await stateManager.setActiveConfig(item.value.name);
-
-                // Sync identity with the database
-                const config = stateManager.getConfig(item.value.name);
-
-                if (config) {
-
-                    const syncResult = await syncIdentityWithConfig(config);
-
-                    if (syncResult.ok && syncResult.knownUsers?.length) {
-
-                        await stateManager.addKnownUsers(syncResult.knownUsers);
-
-                    }
-
-                }
-
-                await refresh();
+                return;
 
             }
+
+            const selected = stateManager.getConfig(item.value.name);
+            if (!selected || !settingsManager) return;
+            const [bound, policyErr] = attemptSync(() => withConfigPolicy(selected, new SettingsProvider(settingsManager)));
+            if (policyErr) {
+
+                showToast({ message: policyErr.message, variant: 'error' });
+
+                return;
+
+            }
+
+            await stateManager.setActiveConfig(item.value.name);
+
+            const syncResult = await syncIdentityWithConfig(bound, 'user');
+
+            if (syncResult.ok && syncResult.knownUsers?.length) {
+
+                await stateManager.addKnownUsers(syncResult.knownUsers);
+
+            }
+
+            await refresh();
 
         },
         [stateManager, settingsManager, navigate, refresh, showToast],

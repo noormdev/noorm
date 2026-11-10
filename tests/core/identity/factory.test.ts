@@ -1,7 +1,10 @@
 /**
  * Identity factory tests.
  */
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, afterEach, afterAll } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir, userInfo } from 'node:os';
+import { join } from 'node:path';
 import {
     detectIdentityDefaults,
     createCryptoIdentity,
@@ -60,6 +63,56 @@ describe('identity: factory', () => {
 
             // Email is string (may be empty)
             expect(typeof defaults.email).toBe('string');
+
+        });
+
+        /**
+         * The TUI calls this while rendering identity setup and the CLI calls
+         * it before creating an identity. A machine without git, or with git
+         * never configured, has to get the fallbacks, not a crash.
+         */
+        describe('without usable git', () => {
+
+            const GIT_ENV = ['PATH', 'GIT_DIR', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'] as const;
+            const saved = Object.fromEntries(GIT_ENV.map((key) => [key, process.env[key]]));
+            const emptyDir = mkdtempSync(join(tmpdir(), 'noorm-no-git-'));
+
+            afterEach(() => {
+
+                for (const key of GIT_ENV) {
+
+                    if (saved[key] === undefined) delete process.env[key];
+                    else process.env[key] = saved[key];
+
+                }
+
+            });
+
+            afterAll(() => rmSync(emptyDir, { recursive: true, force: true }));
+
+            it('should fall back to the OS username and no email when git is not installed', () => {
+
+                process.env['PATH'] = emptyDir;
+
+                const defaults = detectIdentityDefaults();
+
+                expect(defaults.name).toBe(userInfo().username);
+                expect(defaults.email).toBe('');
+
+            });
+
+            it('should fall back the same way when git has no user configured', () => {
+
+                process.env['GIT_DIR'] = emptyDir;
+                process.env['GIT_CONFIG_GLOBAL'] = '/dev/null';
+                process.env['GIT_CONFIG_SYSTEM'] = '/dev/null';
+
+                const defaults = detectIdentityDefaults();
+
+                expect(defaults.name).toBe(userInfo().username);
+                expect(defaults.email).toBe('');
+
+            });
 
         });
 
