@@ -372,7 +372,7 @@ export class DbNamespace {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'reset');
 
-        // isTest does not relax run:build; fail before dropping anything a rebuild could not restore.
+        // Fail before dropping anything a rebuild could not restore.
         if (this.#buildFn) checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'reset');
 
         // Full teardown — deliberately does NOT honor preserveTables.

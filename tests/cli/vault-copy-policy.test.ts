@@ -37,7 +37,7 @@ describe('cli: vault copy destination read policy', () => {
         for (const name of ['source', 'destination']) {
 
             const config: Config = {
-                name, type: 'local', isTest: true,
+                name, type: 'local', isTest: false,
                 access: name === 'source' ? { user: 'admin', agent: 'admin' } : { user: 'writer', agent: 'writer' },
                 connection: { dialect: 'sqlite', database: join(dir, `${name}.db`) },
             };

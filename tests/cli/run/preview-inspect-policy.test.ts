@@ -46,7 +46,7 @@ async function setupRoleProject(role: Role): Promise<TestProject> {
     const config: Config = {
         name: 'guarded',
         type: 'local',
-        isTest: true,
+        isTest: false,
         access: { user: role, agent: role },
         connection: {
             dialect: 'sqlite',

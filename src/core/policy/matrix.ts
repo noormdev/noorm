@@ -64,7 +64,7 @@ export const MATRIX: Record<Permission, Record<BuiltinRole, PolicyCell>> = {
     'debug:write': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 };
 
-/** Cells an `isTest` config allows for every role, so a test harness can rebuild its own database: `docs/spec/config-access-roles.md`. */
+/** Permissions an `isTest` config allows outright, even where admin's cell is `confirm`: `docs/spec/config-access-roles.md`. */
 export const TEST_DB_LIFECYCLE: readonly Permission[] = ['db:create', 'db:reset', 'db:truncate', 'db:teardown', 'db:destroy'];
 
 /** Reads the user channel always holds: the keyboard owner can loosen any role, so gating them adds friction only. */

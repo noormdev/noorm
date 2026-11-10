@@ -74,6 +74,14 @@ Priority chain (highest wins):
 
 Env-only mode (no stored config needed): set `NOORM_CONNECTION_DIALECT` + `NOORM_CONNECTION_DATABASE` as environment variables. This is the standard approach for CI/CD pipelines.
 
+An agent session (Claude Code, Codex, MCP) runs on the agent channel, whose default role is `viewer`: it reads but cannot build or write. A test database gives every role admin, so an agent builds and tests against one. With no active config (a clean checkout or CI), the CLI runs env-only with `NOORM_isTest=true`:
+
+    NOORM_CONNECTION_DIALECT=sqlite NOORM_CONNECTION_DATABASE=./test.db NOORM_isTest=true noorm run build
+
+Env-only applies only when no config name resolves, and MCP cannot use it. Otherwise a person checks Test Database on a config (`noorm ci init --test` or the TUI), and the agent passes `--config <name>`; over MCP, it names that config.
+
+Every other config keeps the agent's role, and only a person can create a stored `isTest` config.
+
 Inline SDK resolution, runtime credentials, and the exact environment field spelling are covered in the linked SDK and CLI references. `--config` selects a stored record; `--force` is not a connection override.
 
 ### Error Handling
@@ -102,6 +110,7 @@ These are the patterns LLMs get wrong most often with noorm:
 | Query before `connect()` | Call `ctx.connect()` first | Context starts disconnected |
 | Forget `disconnect()` | Always call `ctx.disconnect()` | Leaks connection pool |
 | `config: 'production'` in tests | Use `requireTest: true` | Safety guard prevents test code from touching production |
+| Stop at `role: viewer` when the task needs a database to build or test against | Point noorm at a database created for the test (env-only `NOORM_isTest=true`, or a person's `isTest` config), never an existing config's database; on a real config, stop and hand the command to the human | A test database gives agents admin; every other config keeps the agent's role |
 | Hardcode deployment credentials or environment-specific hosts | Supply them through `NOORM_*` variables or an injected inline `connection` | Keeps application code portable between local and CI environments |
 | Mutate `process.env` between concurrent contexts | Pass each context its own inline `connection` | Environment changes are process-global and can race |
 | `ctx.proc()` on SQLite | Check `ctx.dialect` first | SQLite has no stored procedures, functions, or TVFs |

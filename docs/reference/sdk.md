@@ -655,7 +655,7 @@ Guarded methods require the resolved config's non-enumerable policy context. Spr
 Five exceptions to the plain rule:
 
 - `explore` is checked on the `agent` channel only; the `user` channel always passes.
-- On a config with `isTest: true`, the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` cells read `allow` for every role and channel, protected stage included, so an `agent` context can call `db.teardown()` without confirmation. `db.reset()` still checks `run:build` first, before it drops anything. Transfer and vault destinations and `dt.importFile` follow the same rule. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+- On a config with `isTest: true`, every role on both channels gets the admin cell, protected stage included, and the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` cells read `allow`. An `agent` context can build, reset and tear down its test database without confirmation. Admin's other `confirm` cells (`config:write`, `vault:propagate` and the like) still need a human. Transfer and vault destinations and `dt.importFile` follow the same rule. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
 - `db.truncate` and `db.teardown` with `dryRun: true` check for denial but skip confirmation, so a role that may run the operation can always look first. A role that may not run it cannot preview it either. `db.previewTeardown()` follows the same rule for `db:teardown`.
 - Denials raised below the SDK seam throw a plain `Error` with the same message, not `ProtectedConfigError`. That covers `run.preview`, `transfer.plan`, and `vault.copy`. Match on the message there.
 - `transfer.to` and `transfer.plan` check the destination config, not the source, because the destination is the write target. `vault.copy` checks `vault:read` on the source and `vault:write` on the destination, and requires destination `vault:read` when unsealing an existing destination key.
@@ -928,7 +928,7 @@ The destructive methods:
 |---|---|---|---|
 | `truncate(options?)` | `Promise<TruncateResult>` | `db:truncate` | Wipes data, keeps the schema. Disables foreign keys, deletes or truncates each target, re-enables them |
 | `teardown(options?)` | `Promise<TeardownResult>` | `db:teardown` | Drops every object except noorm's own tables (change tracking, locks, vault, identities), and marks applied changes `stale` |
-| `reset()` | `Promise<void>` | `db:reset` | Teardown, then `run.build({ force: true })`, which also passes the `run:build` gate |
+| `reset()` | `Promise<void>` | `db:reset` | Checks `db:reset` and `run:build` before teardown, then `run.build({ force: true })` |
 
 ```typescript
 await ctx.noorm.db.truncate({ preserve: ['party_type', 'product'] });

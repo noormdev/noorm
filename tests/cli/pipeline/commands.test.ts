@@ -114,7 +114,7 @@ describe('cli: actual pipeline commands', () => {
             const state = new StateManager(project.dir, { privateKey });
             await state.load();
             await state.setConfig('__test__', {
-                name: '__test__', type: 'local', isTest: true,
+                name: '__test__', type: 'local', isTest: false,
                 access: { user: 'admin', agent: 'admin' },
                 connection: { dialect: 'sqlite', database: project.dbPath },
             });
@@ -229,7 +229,7 @@ describe('cli: actual pipeline commands', () => {
         const state = new StateManager(project.dir, { privateKey });
         await state.load();
         await state.setConfig('__test__', {
-            name: '__test__', type: 'local', isTest: true,
+            name: '__test__', type: 'local', isTest: false,
             access: { user: access, agent: access },
             connection: { dialect: 'sqlite', database: project.dbPath },
         });

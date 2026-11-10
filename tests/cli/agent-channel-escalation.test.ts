@@ -266,7 +266,7 @@ describe('cli: agent channel escalation', () => {
             await manager.setConfig(CONFIG_NAME, {
                 name: CONFIG_NAME,
                 type: 'local',
-                isTest: true,
+                isTest: false,
                 access: { user: 'admin', agent: 'blind' },
                 connection: { dialect: 'sqlite', database: dbPath },
             } as unknown as Config);
@@ -379,6 +379,21 @@ describe('cli: agent channel escalation', () => {
             expect(existsSync(dbPath)).toBe(true);
             expect(asAgent(['db', 'drop', '--yes']).status).toBe(0);
             expect(existsSync(dbPath)).toBe(false);
+
+        });
+
+        it('should let an agent build a stored isTest config without a human', async () => {
+
+            await seedStockConfig(true);
+            mkdirSync(join(tmpDir, 'sql'));
+            writeFileSync(join(tmpDir, 'sql', 'gadget.sql'), 'CREATE TABLE gadget (id INTEGER PRIMARY KEY);');
+
+            const agent = asAgent(['run', 'build']);
+
+            expect(agent.status).toBe(0);
+            const db = new Database(dbPath);
+            expect(db.query("SELECT name FROM sqlite_master WHERE name = 'gadget'").get()).not.toBeNull();
+            db.close();
 
         });
 

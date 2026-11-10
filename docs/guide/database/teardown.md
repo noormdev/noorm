@@ -34,7 +34,7 @@ The counts come from a project with `party`, `product`, `sales_order`, `order_li
 
 On the `agent` channel every `confirm` is a `deny`. A stage with `protected: true` caps a config at `operator`, so teardown and drop are refused there. [Concepts](/getting-started/concepts#configs-stages-and-roles) defines the roles.
 
-A config with `isTest: true` skips all of this: every role, on both channels and on a protected stage, runs `db create`, `db truncate`, `db teardown`, and `db drop` without the policy asking for confirmation, so a test harness under an agent session can drop and recreate its own database. `db reset` still needs `--yes` and `run:build`. The TUI still asks for the `yes-<config>` phrase on truncate, teardown, and drop. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+A config with `isTest: true` skips all of this: every role, on both channels and on a protected stage, runs `db create`, `db truncate`, `db teardown`, and `db drop` without the policy asking for confirmation, so a test harness under an agent session can drop and recreate its own database. `db reset` still needs `--yes`. The TUI still asks for the `yes-<config>` phrase on truncate, teardown, and drop. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
 
 noorm's tracking tables live in the `noorm` schema on PostgreSQL and MSSQL, and as `__noorm_*__` tables on MySQL and SQLite.
 

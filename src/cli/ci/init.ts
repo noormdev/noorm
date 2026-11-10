@@ -83,7 +83,7 @@ const initCommand = defineCommand({
 
         }
 
-        // isTest relaxes db lifecycle permissions, so an agent must not mint it at a target it chose.
+        // isTest grants admin on its target, so an agent must not mint it at a target it chose.
         if (args.test && resolveChannel() === 'agent') {
 
             outputError(args, '--test is not available on the agent channel: isTest configs are created by a human.');
