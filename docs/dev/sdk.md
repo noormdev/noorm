@@ -102,8 +102,9 @@ Creates an SDK context for programmatic database access.
 import type { CreateContextOptions as SdkOptions } from '@noormdev/sdk'
 
 interface CreateContextOptions {
-    config?: string          // Config name (or use NOORM_CONFIG env var)
-    connection?: SdkOptions['connection'] // Inline fields and runtime hooks; see SDK reference
+    config?: string | false  // Config name (or use NOORM_CONFIG env var); false uses no stored config
+    name?: string            // Name for a context that uses no stored config
+    connection?: SdkOptions['connection'] // Inline fields, pool and driver options, runtime hooks
     projectRoot?: string     // Project root path (see note below)
     requireTest?: boolean    // Refuse if config.isTest !== true
     channel?: Channel        // 'user' (default) or 'agent' — which access role applies
@@ -125,7 +126,41 @@ const ctx = await createContext<MyDatabase>({
 })
 ```
 
-For inline-only resolution, credential callbacks, TLS identity hooks, session controls, and idle-pool events, use the [SDK connection reference](/reference/sdk#createcontext-options). The public `connection` type is indexed from the exported `CreateContextOptions`; callbacks stay outside persisted `Config`.
+The public `connection` type is indexed from the exported `CreateContextOptions`, and is also exported as `InlineConnection`. Callbacks and `driver` stay outside persisted `Config`.
+
+**Which config a context uses:**
+
+A stored config is selected by the `config` option, then `NOORM_CONFIG`, then the active config. The active config counts only when `connection` is absent. With `NOORM_CONFIG=<stored>` and an inline `connection`, the stored config is the base and the inline fields go on top.
+
+`config: false` uses no stored config. It ignores `NOORM_CONFIG` and the active config, so a service that inherits `NOORM_CONFIG` from its environment can still open an unrelated database:
+
+```typescript
+const reports = await createContext({
+    config: false,
+    name: 'reports',
+    connection: { dialect: 'postgres', host: 'reports.internal', database: 'reports', user: 'app' },
+})
+```
+
+`name` names a context that uses no stored config. Without it, two inline contexts in one process are both named `__inline__`, and their events cannot be told apart. The name is reported as `ctx.noorm.config.name` and as `configName` on events and errors. It wins over `NOORM_NAME`. Whichever source names the context, `createContext()` throws when a stored config has that name.
+
+The name is also a key. Change history, run checksums, locks, pipeline history and local secrets are stored under it, so a database reopened under another name shows its applied changes as pending and runs its build again. Pick one name per database and keep it. `createContext()` throws when `name` is passed while a stored config is selected, and when a stored config already has that name, because the context would read and write that config's secrets.
+
+A name restricts and never selects defaults. A stage with the same name still applies its protected ceiling and its `isTest: false`, and so does the stage of the name it displaced (`NOORM_NAME`, `__inline__`, or `__env__`). A stored config under the displaced name still decides whether `isTest` is trusted. A stage's defaults (`isTest: true`, `access`, connection fields) apply only through the `stage` option or `NOORM_NAME`, exactly as they do without `name`.
+
+**Pool, keepalive, and driver options:**
+
+| Option | What it does |
+|---|---|
+| `connection.pool` | Typed per dialect on the inline `connection`. PostgreSQL takes `min`, `max`, `idleTimeoutMs`, `maxLifetimeMs`, `maxUses`, `allowExitOnIdle`. MySQL and MSSQL take `min`, `max`, `idleTimeoutMs`, `acquireTimeoutMs`, `createTimeoutMs`, `reapIntervalMs` |
+| `connection.keepAliveInitialDelayMs` | PostgreSQL and MySQL. Milliseconds of idle before the first TCP keepalive probe |
+| `connection.driver` | Inline only. An object merged into the driver's own options: the `pg` Pool config, the mysql2 connection options, or the tedious `options` block |
+
+Pool options and `keepAliveInitialDelayMs` are also valid in a stored config and as `NOORM_CONNECTION_*` variables. An option the dialect cannot honor fails validation in all three places, and so does a pool key noorm does not know, so a pool setting is never ignored without an error. MySQL pools through Tarn for a string password and a password callback alike.
+
+`driver` cannot select the target, the credentials, or TLS. Keys such as `host`, `database`, `user`, `password`, and `ssl` are rejected by `createContext()`, because a trusted `isTest` config's access is bound to the connection target noorm resolved. SQLite accepts no driver options.
+
+The [SDK connection reference](/reference/sdk#createcontext-options) has the per-dialect tables: [pool options](/reference/sdk#pool-options), [driver options](/reference/sdk#driver-options), [runtime credentials](/reference/sdk#runtime-credentials), TLS identity hooks, session controls, and [pool failure events](/reference/sdk#pool-connection-failures).
 
 **Safety Options:**
 
@@ -209,7 +244,14 @@ Establishes the database connection.
 
 ```typescript
 await ctx.connect()
+
+// One attempt, no wait
+await ctx.connect({ retries: 1, delay: 0 })
 ```
+
+The argument is `ConnectionRetryOptions` (`retries`, `delay`, `backoff`), exported as a type. A failed connect throws `DatabaseConnectionError` when noorm can explain the driver's or server's error. It carries the original error as `cause`, plus `serverCode` and `serverMessage`.
+
+A connection with a password callback behaves differently in two ways. noorm does not retry it, because a retry would ask the callback for another credential. An error the callback itself throws comes back as the same object, so the provider's error class still matches `instanceof`.
 
 #### `disconnect()`
 
@@ -272,6 +314,26 @@ flowchart TD
 ```
 
 `CALL` resolves to a function when one name is both kinds and the arguments match a function overload, or a function sits earlier on `search_path` than the procedure. The lookup matches on name only, so `trx.tvf` is the call that reaches the function in every case.
+
+
+### Pinned Connections
+
+`withConnection(fn)` keeps one pooled connection for the whole callback. Call `connection.discard()` when the session should not be reused, for example after a query on it timed out while it held a session-level lock. The SDK then closes that connection when the callback ends.
+
+```typescript
+await ctx.withConnection(async (db, connection) => {
+    await sql`select pg_advisory_lock(${lockKey})`.execute(db)
+
+    const [, err] = await attempt(() => syncPrices(db))
+
+    if (err) {
+        connection.discard()
+        throw err
+    }
+})
+```
+
+A thrown error does not discard the connection by itself. `discard()` does nothing on SQLite. [The reference](/reference/sdk#pinned-connections) lists every case.
 
 
 ### Schema Scoping
@@ -451,14 +513,20 @@ const preview = await ctx.noorm.db.previewTeardown()
 
 ##### `db.reset()`
 
-Full rebuild: teardown + build.
+Full rebuild: teardown + build. Resolves with the build's `BatchResult` and throws `ResetBuildError` when the rebuild does not succeed. Works on a database that has no tracking tables yet. Before it drops anything it checks the tracking schema and reads the schema directory, and throws if either fails.
 
 ```typescript
-await ctx.noorm.db.reset()
+const { filesRun } = await ctx.noorm.db.reset()
 ```
 
 
 #### File Runner
+
+`file`, `files`, `dir` and `build` create or migrate the tracking tables before they run. With
+`dryRun` or `preview` they write nothing: a database with no tracking tables passes, and tables
+that need a migration throw `tracking tables are at schema version N and this version needs M. A dry run does not migrate them: run a command without --dry-run first, such as "noorm change history".`
+The message uses the CLI's wording; from the SDK, call the method once without `dryRun`. The
+`changes` writes (`apply`, `revert`, `ff`, `next`, `rewind`) follow the same rule.
 
 ##### `run.file(filepath, options?)`
 
@@ -682,7 +750,9 @@ console.log(`Tables: ${overview.tables}, Views: ${overview.views}`)
 
 ##### `lock.acquire(options?)`
 
-Acquire a database lock.
+Acquire a database lock. `acquire`, `withLock` and `release` are gated on the config's
+`lock:acquire` permission: `viewer` is denied, `operator` and `admin` are allowed. The check
+runs before the tracking tables are created.
 
 ```typescript
 const lock = await ctx.noorm.lock.acquire({ timeout: 60000 })
@@ -698,7 +768,9 @@ await ctx.noorm.lock.release()
 
 ##### `lock.status()`
 
-Get current lock status.
+Get current lock status. `status` has no permission gate and never creates or migrates the
+tracking tables. It throws on a config hidden from the channel, and on tables that need a
+migration (`... Reading lock status does not migrate them: a role that can write must run a command once first.`). It deletes an expired lock only for a caller with `lock:acquire`.
 
 ```typescript
 const status = await ctx.noorm.lock.status()
@@ -941,6 +1013,8 @@ noormObserver.on('change:complete', (event) => {
 Event names and payload types are exported as `NoormEventNames` and `NoormEvents`
 (both from `src/core/observer.ts`, which is the authoritative payload list).
 
+After `connect()` returns, a pool failure has no `connect()` caller to report to, so it arrives as `connection:error` with a `phase`: `idle` (PostgreSQL, MySQL), `checked-out` (PostgreSQL), or `login` (PostgreSQL, MySQL, MSSQL). `login` is a physical connect the pool makes after its first successful one, such as a replacement connection whose credential has expired. The query that needed the connection still rejects to its caller. [Pool connection failures](/reference/sdk#pool-connection-failures) lists the fixed messages.
+
 Multi-context filtering is only possible on the events that actually carry
 `configName` — `file:before`, `run:*`, `lock:*`, `db:*`, `secret:*`,
 `connection:*`, `sql-terminal:*`, `identity:synced`. Notably `file:after`,
@@ -1066,12 +1140,18 @@ import {
     RequireTestError,
     ProtectedConfigError,
     LockAcquireError,
+    DatabaseConnectionError,
 } from '@noormdev/sdk'
 
 // attempt() used deliberately — inspect the named error and react.
 const [ctx, err] = await attempt(() => createContext({ config: 'prod', requireTest: true }))
 if (err instanceof RequireTestError) {
     console.error('Cannot use production config in tests')
+}
+
+const [, connectErr] = await attempt(() => ctx.connect())
+if (connectErr instanceof DatabaseConnectionError) {
+    console.error(connectErr.message, connectErr.serverCode)
 }
 
 const [, truncateErr] = await attempt(() => ctx.noorm.db.truncate())

@@ -7,6 +7,7 @@
  * admin and so asked nothing of the default config
  * (see `checkProtectedConfig` in ../guards.ts).
  */
+import { attempt } from '@logosdx/utils';
 import type { Kysely } from 'kysely';
 
 import type { Dialect } from '../../core/connection/index.js';
@@ -35,9 +36,11 @@ import { checkConfigPolicy } from '../../core/policy/index.js';
 import type { Permission } from '../../core/policy/index.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection, runGatedExplore } from '../state.js';
+import { ensureTracking, requireConnection, runGatedExplore, schemaPath } from '../state.js';
 import type { BuildOptions } from '../types.js';
-import { checkProtectedConfig, ProtectedConfigError } from '../guards.js';
+import { checkProtectedConfig, ProtectedConfigError, ResetBuildError } from '../guards.js';
+import type { BatchResult } from '../../core/runner/index.js';
+import { discoverFiles } from '../../core/runner/index.js';
 
 /** Internal: explore reads that need options the public methods lack (schema filter, triggers, locks, connections). */
 export const gatedExplore = Symbol('gatedExplore');
@@ -49,9 +52,9 @@ export const gatedExplore = Symbol('gatedExplore');
 export class DbNamespace {
 
     #state: ContextState;
-    #buildFn: ((opts?: BuildOptions) => Promise<unknown>) | null;
+    #buildFn: ((opts?: BuildOptions) => Promise<BatchResult>) | null;
 
-    constructor(state: ContextState, buildFn?: (opts?: BuildOptions) => Promise<unknown>) {
+    constructor(state: ContextState, buildFn?: (opts?: BuildOptions) => Promise<BatchResult>) {
 
         this.#state = state;
         this.#buildFn = buildFn ?? null;
@@ -361,19 +364,36 @@ export class DbNamespace {
     }
 
     /**
-     * Full rebuild: teardown + build.
+     * Full rebuild: teardown + build. Resolves with the build's result.
+     *
+     * Policy, the tracking schema and the schema directory are checked before anything is dropped.
+     *
+     * @throws ResetBuildError when the rebuild does not succeed, since the schema is already gone.
      *
      * @example
      * ```typescript
-     * await ctx.noorm.db.reset()
+     * const { filesRun } = await ctx.noorm.db.reset()
      * ```
      */
-    async reset(): Promise<void> {
+    async reset(): Promise<BatchResult> {
+
+        const build = this.#buildFn;
+        const sqlPath = schemaPath(this.#state);
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'db:reset', 'reset');
 
-        // isTest does not relax run:build; fail before dropping anything a rebuild could not restore.
-        if (this.#buildFn) checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'reset');
+        // Fail before dropping anything a rebuild could not restore.
+        if (!build) throw new Error('db.reset() has no build to run');
+        checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'reset');
+        await ensureTracking(this.#state);
+
+        const [, unreadable] = await attempt(() => discoverFiles(sqlPath));
+
+        if (unreadable) {
+
+            throw new Error(`db.reset() cannot read the schema directory ${sqlPath}. Nothing was dropped.`, { cause: unreadable });
+
+        }
 
         // Full teardown — deliberately does NOT honor preserveTables.
         // reset() rebuilds the entire schema from sql/, so any table left
@@ -387,11 +407,11 @@ export class DbNamespace {
             postScript: this.#state.settings.teardown?.postScript,
         });
 
-        if (this.#buildFn) {
+        const result = await build({ force: true });
 
-            await this.#buildFn({ force: true });
+        if (result.status !== 'success') throw new ResetBuildError(result);
 
-        }
+        return result;
 
     }
 

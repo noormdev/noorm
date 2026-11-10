@@ -65,6 +65,7 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
         fakeHome = mkdtempSync(join(tmpdir(), 'noorm-db-reset-home-'));
         mkdirSync(join(tmpDir, '.noorm'), { recursive: true });
         writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'paths:\n    sql: ./sql\n');
+        mkdirSync(join(tmpDir, 'sql'));
 
         dbPath = join(tmpDir, 'target.db');
         writeFileSync(dbPath, '');
@@ -153,6 +154,20 @@ describe('cli: noorm db reset — pre-gate + yes threading', () => {
 
     });
 
+    // A reset that dropped the schema and did not rebuild it must not exit 0 in a deploy script.
+    it.each([['text', []], ['--json', ['--json']]])('should exit 1 with the rebuild failure in %s output', async (_mode, flags) => {
+
+        await seedConfig({ user: 'admin', agent: 'admin' });
+        writeFileSync(join(tmpDir, 'sql', 'broken.sql'), 'CREATE TABLE (;');
+
+        const result = runReset(['--yes', ...flags]);
+
+        expect(result.status).toBe(1);
+        expect(result.stdout + result.stderr).toContain('Reset tore down the database but the rebuild failed');
+        expect(result.stdout + result.stderr).toContain('broken.sql');
+
+    });
+
 });
 
 describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless success (ticket acceptance criterion)', () => {
@@ -169,6 +184,7 @@ describe('cli: noorm db truncate/teardown/reset — operator-role --yes headless
         fakeHome = mkdtempSync(join(tmpdir(), 'noorm-db-yes-home-'));
         mkdirSync(join(tmpDir, '.noorm'), { recursive: true });
         writeFileSync(join(tmpDir, '.noorm', 'settings.yml'), 'paths:\n    sql: ./sql\n');
+        mkdirSync(join(tmpDir, 'sql'));
 
         dbPath = join(tmpDir, 'target.db');
         writeFileSync(dbPath, '');

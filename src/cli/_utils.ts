@@ -13,7 +13,7 @@ import { Logger, DEFAULT_LOGGER_CONFIG, type LoggerOptions, type LogLevel } from
 import { getSettingsManager } from '../core/settings/index.js';
 import { getSqlErrorMessage } from '../core/shared/index.js';
 import { createContext } from '../sdk/index.js';
-import { ensureSchemaVersion, type NoormDatabase } from '../core/version/index.js';
+import { prepareTrackingSchema, type NoormDatabase } from '../core/version/index.js';
 import { loadPrivateKey, loadIdentityMetadata } from '../core/identity/storage.js';
 import { registerIdentity } from '../core/identity/sync.js';
 import { isDev, isEnvTruthy } from '../core/environment.js';
@@ -164,6 +164,16 @@ export async function createCliLogger(projectRoot: string, json: boolean): Promi
 
 }
 
+function prepareTracking(ctx: Context<NoormDatabase>, args: CliArgs): Promise<boolean> {
+
+    return prepareTrackingSchema(ctx.kysely, ctx.dialect, {
+        channel: resolveChannel(),
+        config: ctx.noorm.config,
+        dryRun: !!args.dryRun,
+    });
+
+}
+
 /**
  * Run a function against a connected SDK context.
  *
@@ -212,12 +222,7 @@ export async function withContext<T>(opts: {
 
     }
 
-    const [, schemaError] = await attempt(() =>
-        ensureSchemaVersion(
-            ctx.kysely,
-            ctx.dialect,
-        ),
-    );
+    const [, schemaError] = await attempt(() => prepareTracking(ctx, args));
     if (schemaError) {
 
         outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
@@ -308,12 +313,7 @@ export async function withVaultContext<T>(opts: {
 
     }
 
-    const [, schemaError] = await attempt(() =>
-        ensureSchemaVersion(
-            ctx.kysely,
-            ctx.dialect,
-        ),
-    );
+    const [tracking, schemaError] = await attempt(() => prepareTracking(ctx, args));
     if (schemaError) {
 
         outputError(args, `Failed to initialize database schema: ${schemaError.message}`, logger);
@@ -324,13 +324,17 @@ export async function withVaultContext<T>(opts: {
 
     }
 
-    await attempt(() =>
-        registerIdentity(
-            ctx.kysely,
-            cryptoIdentity,
-            ctx.dialect,
-        ),
-    );
+    if (tracking) {
+
+        await attempt(() =>
+            registerIdentity(
+                ctx.kysely,
+                cryptoIdentity,
+                ctx.dialect,
+            ),
+        );
+
+    }
 
     const [result, opError] = await attempt(() => fn({
         ctx,

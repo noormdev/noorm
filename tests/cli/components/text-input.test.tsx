@@ -2,8 +2,8 @@
  * TextInput parity and mouse-report tests.
  *
  * `src/tui/components/forms/TextInput.tsx` is a copy of `@inkjs/ui`'s
- * `TextInput` with one deliberate difference: a mouse report is dropped rather
- * than typed into the field. Everything else has to match, because the swap
+ * `TextInput` with two deliberate differences: a mouse report and the letter of
+ * a Ctrl chord are dropped rather than typed into the field. Everything else has to match, because the swap
  * reached 11 files and 21 call sites and none of them asked for a keyboard
  * change.
  *
@@ -37,6 +37,8 @@ const KEYS = {
     BACKSPACE: '\x7F',
     DELETE: `${ESC}[3~`,
 };
+
+const CTRL_S = '\x13';
 
 /** SGR press report. */
 const press = (row = 5, column = 12) => `${ESC}[<0;${column};${row}M`;
@@ -222,7 +224,7 @@ describe('cli: components/TextInput', () => {
 
     });
 
-    describe('the one deliberate difference', () => {
+    describe('the deliberate differences', () => {
 
         it('should drop a press report instead of typing it into the field', async () => {
 
@@ -273,6 +275,18 @@ describe('cli: components/TextInput', () => {
             );
 
             expect(ours.changes.at(-1)).toBe('abXc');
+
+        });
+
+        it('should not type the letter of a Ctrl chord into the field', async () => {
+
+            // Ctrl+S, the config forms' save chord, turned `localhost` into
+            // `localhosts` when pressed while the field was open.
+            const ours = await drive(TextInput, { defaultValue: 'localhost' }, [CTRL_S, 'X']);
+            const upstream = await drive(UpstreamTextInput, { defaultValue: 'localhost' }, [CTRL_S]);
+
+            expect(ours.changes).toEqual(['localhostX']);
+            expect(upstream.changes).toEqual(['localhosts']);
 
         });
 

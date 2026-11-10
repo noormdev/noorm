@@ -48,6 +48,16 @@ describe('core: performProjectInit', () => {
 
     });
 
+    it('should report only files that exist afterwards', async () => {
+
+        const result = await performProjectInit({ projectRoot: tmpDir, force: false, identityInfo: null });
+        const inProject = result.createdFiles.filter((file) => !file.startsWith('~/'));
+
+        expect(inProject).toContain('.noorm/settings.yml');
+        expect(inProject.filter((file) => !existsSync(join(tmpDir, file)))).toEqual([]);
+
+    });
+
     /**
      * The block exists to keep `.noorm/state/` — state.enc and the log file —
      * out of version control. Asserting only that the `# noorm` header landed
@@ -243,6 +253,14 @@ describe('core: scaffoldDbLayout', () => {
         expect(agents).toContain('https://noorm.dev/modeling/');
         expect(agents).toContain('<!-- add user specific LLM steering here -->');
         expect(claude.split('\n')).toContain('@AGENTS.md');
+
+    });
+
+    it('should list a .gitkeep only when it created it', () => {
+
+        scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG);
+
+        expect(scaffoldDbLayout(tmpDir, DEFAULT_PATH_CONFIG)).toEqual([]);
 
     });
 

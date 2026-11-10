@@ -90,7 +90,7 @@ noorm ui
 
 Press `c`, then `a`. Enter name `dev`, type PostgreSQL, host `localhost`, port `5432`, database `noorm_dev`, and your server's username and password. Leave User Role at `admin`, Agent Role at `viewer`, and Test Database unchecked.
 
-The form tests the server connection before it saves, and the first config you save becomes the active one. Quit with `ctrl + c`.
+The form tests the server connection before it saves, and the first config you save becomes the active one. If the test fails for a server you know is right, `Ctrl+S` saves without testing. Quit with `ctrl + c`.
 
 
 ## Create the database

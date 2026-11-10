@@ -10,8 +10,11 @@ import React from 'react';
 import { FocusProvider } from '../../../../src/tui/focus.js';
 import { IdentitySetup } from '../../../../src/tui/screens/init/IdentitySetup.js';
 
-// Pre-import actual module for restoration
 const actualIdentity = await import('../../../../src/core/identity/index.js');
+
+// Copied by value: `mock.module` rewrites the namespace in place, so reading
+// `actualIdentity.detectIdentityDefaults` afterwards hands back the mock.
+const realDetectIdentityDefaults = actualIdentity.detectIdentityDefaults;
 
 // Mock the identity module
 mock.module('../../../../src/core/identity/index.js', () => ({
@@ -43,10 +46,12 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
 
 describe('cli: screens/init/IdentitySetup', () => {
 
-    // Restore mocked module to prevent pollution of subsequent test files
     afterAll(() => {
 
-        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
+        mock.module('../../../../src/core/identity/index.js', () => ({
+            ...actualIdentity,
+            detectIdentityDefaults: realDetectIdentityDefaults,
+        }));
 
     });
 
@@ -142,7 +147,7 @@ describe('cli: screens/init/IdentitySetup', () => {
 
     });
 
-    it('should show keypair generation message', async () => {
+    it('should not promise a new keypair, because an existing private key is kept', async () => {
 
         const { lastFrame } = render(
             <TestWrapper>
@@ -152,7 +157,27 @@ describe('cli: screens/init/IdentitySetup', () => {
 
         await waitForEffects();
 
-        expect(lastFrame()).toContain('keypair');
+        expect(lastFrame()).not.toContain('keypair');
+
+    });
+
+    it('should say why setup appeared and why the last attempt failed', async () => {
+
+        const { lastFrame } = render(
+            <TestWrapper>
+                <IdentitySetup
+                    onComplete={() => {}}
+                    onCancel={() => {}}
+                    reason="Saving a config needs an identity."
+                    error="Failed to write identity metadata"
+                />
+            </TestWrapper>,
+        );
+
+        await waitForEffects();
+
+        expect(lastFrame()).toContain('Saving a config needs an identity.');
+        expect(lastFrame()).toContain('✘ Failed to write identity metadata');
 
     });
 

@@ -99,9 +99,10 @@ describe('modern MCP protocol and authorization', () => {
     let handle: StdioServerHandle;
     let restoreDiagnostics: () => void;
     let previousCwd: string;
+    let isTest: boolean;
 
     const configFor = (name: string) => parseConfig({
-        name, type: 'local', isTest: true,
+        name, type: 'local', isTest,
         connection: { dialect: 'sqlite', database: join(root, `${name}.db`), password, user, ssl },
         access: { user: 'admin', agent: role },
     });
@@ -165,6 +166,7 @@ describe('modern MCP protocol and authorization', () => {
         setKeyOverride((await generateKeyPair()).privateKey);
         settings = parseSettings({ access: { roles: { operator: { permissions: { 'sql:ddl': 'confirm' } } } } });
         role = 'operator';
+        isTest = false;
         password = undefined;
         user = undefined;
         ssl = undefined;
@@ -472,6 +474,23 @@ describe('modern MCP protocol and authorization', () => {
         expect(JSON.parse(text(result))).toMatchObject({ status: 'success' });
         expect(existsSync(marker)).toBe(true);
         expect(await tables()).toContain('trusted_template');
+
+    });
+
+    it('builds an isTest config for a viewer agent without asking for approval', async () => {
+
+        isTest = true;
+        role = 'viewer';
+        settings = parseSettings({ paths: { sql: 'sql', changes: 'changes' } });
+        await initializeTracker();
+        await mkdir(join(root, 'sql'));
+        await writeFile(join(root, 'sql', 'widget.sql'), 'CREATE TABLE widget (id INTEGER);');
+
+        const result = await wire.request('tools/call', { name: 'run_build', arguments: { config: 'test' } });
+
+        expect(result.result?.['resultType']).not.toBe('input_required');
+        expect(result.result?.['isError']).not.toBe(true);
+        expect(await tables()).toContain('widget');
 
     });
 

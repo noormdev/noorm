@@ -28,7 +28,7 @@ Each operational module keeps its dialect contract separate from the implementat
 
 ### Opening a connection
 
-`createConnection` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) lazy-loads the driver, probes with `SELECT 1`, and tracks successful connections for shutdown. Static credentials use selective retries and explained connection errors. Supplying `RuntimeConnectionOptions.password` disables factory retries and error rewriting for the whole connection attempt. The liveness probe also catches a socket that opens successfully and then becomes silent, a failure that the driver's connect timeout no longer covers. The factory probes before tracking, and aborts reclaim connections that arrive after the caller stops waiting. `retry` inside `openConnection` re-runs the dialect factory and probe while `shouldRetry` matches.
+`createConnection` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) lazy-loads the driver, probes with `SELECT 1`, and tracks successful connections for shutdown. Static credentials use selective retries and explained connection errors. Supplying `RuntimeConnectionOptions.password` disables factory retries for the whole connection attempt, and a failure thrown by the callback itself is neither reworded nor copied into events. `createConnection` throws `Driver options are not supported for SQLite` when `runtime.driver` is set on a SQLite config. The liveness probe also catches a socket that opens successfully and then becomes silent, a failure that the driver's connect timeout no longer covers. The factory probes before tracking, and aborts reclaim connections that arrive after the caller stops waiting. `retry` inside `openConnection` re-runs the dialect factory and probe while `shouldRetry` matches.
 
 ```mermaid
 sequenceDiagram
@@ -64,7 +64,7 @@ sequenceDiagram
 
 Without a dynamic password, `shouldRetry` excludes abort failures and errors whose message contains `authentication`, `password`, `missing driver`, `login failed`, `failed to open`, `does not exist`, `unknown database`, or `access denied`. It retries errors containing `ECONNREFUSED`, `ETIMEDOUT`, `too many connections`, or `connection reset`. `explainConnectionError` in [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) maps static driver failures into diagnostics. The missing-database wording also controls `testConnection`'s server-only fallback.
 
-With a dynamic password, a callback or driver failure reaches the caller unchanged, including the original error object. `connection:error` instead receives `Runtime credential connection failed`, without the original message or server fields. The factory does not distinguish provider failures from driver failures on this path. Query failures after opening propagate through the query caller.
+With a dynamic password, `trackCallbackFailure` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) wraps the callback and records what it throws. A failure that is the callback's own error reaches the caller unchanged, including the original error object, and `connection:error` receives `Runtime credential connection failed` without the original message or server fields. A driver failure on the same path still goes through `explainConnectionError`, but its event message is `Runtime credential connection failed` and carries no `serverCode` or `serverMessage`. `guardPasswordCallback` in [`src/core/connection/login.ts`](../../src/core/connection/login.ts) turns a non-object rejection into `PasswordCallbackRejection` so drivers do not read it as a successful login; the factory rethrows its `cause`. Query failures after opening propagate through the query caller.
 
 ### Refreshing credentials for physical connections
 
@@ -94,18 +94,61 @@ sequenceDiagram
 
 | Dialect | Credential integration | Pool behavior |
 |---|---|---|
-| PostgreSQL | Passes `runtime.password` unchanged as the native `pg.Pool` password callback | `pg` invokes the callback for new clients. |
-| MySQL | Awaits the callback in a Tarn `create` function before calling `mysql2.createConnection` | The dynamic path adapts Tarn to Kysely's `MysqlPool`; the static path retains `mysql2.createPool`. |
-| MSSQL | Awaits the callback in `MssqlDialect`'s async `connectionFactory` before constructing a tedious connection | Tarn uses `propagateCreateError: true`; dynamic failures bypass MSSQL login-error explanation. |
+| PostgreSQL | Passes `runtime.password`, wrapped by `guardPasswordCallback`, as the native `pg.Pool` password callback | `pg` invokes the callback for new clients. |
+| MySQL | Awaits the callback (or the static password) in a Tarn `create` function before calling `mysql2.createConnection` | Tarn adapts to Kysely's `MysqlPool` for static and dynamic passwords alike, because mysql2's own pool creates connections synchronously and has no `min`. |
+| MSSQL | Awaits the callback in `MssqlDialect`'s async `connectionFactory` before constructing a tedious connection | Tarn uses `propagateCreateError: true`; a callback failure leaves no server login errors, so `explainMssqlLoginFailure` returns it unchanged. |
 | SQLite | Rejects a password callback before opening | Throws `Dynamic passwords are not supported for SQLite` without invoking the callback. |
 
-### Reporting idle connection failures
+### Reporting idle and login failures
+
+`trackPoolLogins` in [`src/core/connection/login.ts`](../../src/core/connection/login.ts) reports logins a pool makes after its first. Once one login has opened, a later failed login emits `connection:error` with `phase: 'login'` and `PostgreSQL pool login failed`, `MySQL pool login failed`, or `MSSQL pool login failed`. The first connect reports through its caller instead.
 
 PostgreSQL installs a `pg.Pool` error listener that emits `connection:error` with `phase: 'idle'` and `PostgreSQL idle pool connection failed`. It does not forward the driver's message or error object.
 
 Each PostgreSQL client retains an error listener after checkout. Pool acquire/release events track checkout state; checked-out failures emit `phase: 'checked-out'` with `PostgreSQL checked-out connection failed`. A failed client is reported once, including during disposal. The pool constructs clients with `ConnectionClient`, which destroys the stream and ends a client whose `connect` fails, because pg-pool drops failed clients without closing password-auth sockets. A pinned session or transaction remains failed rather than silently reconnecting; pool release removes the dead client before reuse.
 
-MySQL's dynamic pool records established, checked-out, and failed connections separately. Only an established connection that is not checked out emits `MySQL idle pool connection failed` with `phase: 'idle'`. Handshake failures and failures on checked-out connections are not idle events. Failed connections fail validation, so later acquisition creates a replacement and resolves credentials again. This handler belongs to the dynamic Tarn path, not the static mysql2 pool.
+MySQL's dynamic pool records established, checked-out, and failed connections separately. Only an established connection that is not checked out emits `MySQL idle pool connection failed` with `phase: 'idle'`. Handshake failures and failures on checked-out connections are not idle events. Failed connections fail validation, so later acquisition creates a replacement and resolves credentials again. The handler belongs to the Tarn pool, which both static and dynamic MySQL passwords use.
+
+### Pool options and driver passthrough
+
+[`src/core/connection/options.ts`](../../src/core/connection/options.ts) is the single rule source for the config schema and the adapters. `connectionOptionProblems` lists options the dialect cannot honor, and each adapter calls `assertConnectionOptions` because a config can reach it without passing the schema.
+
+| Option | PostgreSQL | MySQL and MSSQL | SQLite |
+|---|---|---|---|
+| `pool.min`, `pool.max`, `pool.idleTimeoutMs` | yes | yes (idle must be positive) | `min`, `max`, and the deprecated `idleTimeoutMillis` |
+| `pool.maxLifetimeMs`, `pool.maxUses`, `pool.allowExitOnIdle` | yes (`pgPoolOptions`; lifetime converts to seconds) | rejected | rejected |
+| `pool.acquireTimeoutMs`, `pool.createTimeoutMs`, `pool.reapIntervalMs` | rejected | yes (`tarnPoolOptions`) | rejected |
+
+`tarnPoolOptions` defaults the acquire and create timeouts to the larger of `30_000` ms and `connectTimeoutMs` plus `5_000` ms, so the driver's own timeout error is the one reported. `connectionOptionProblems` rejects `pool.min` above `pool.max` on pooled dialects only, not SQLite. An unknown key whose lowercase form matches a known one gets a message naming the camelCase spelling, since an all-caps environment variable segment is lowercased.
+
+`RuntimeConnectionOptions.driver` merges extra options into the `pg` Pool config, the mysql2 connection options, or the tedious `options` block. `driverOptionsFor` copies only own enumerable keys and throws `driver.<key> is not allowed on <dialect>` for keys that select the target, credentials, or TLS (`host`, `port`, `database`, `user`, `password`, `connectionString`, `ssl`, `__proto__`, plus per-dialect keys such as `socketPath`, `flags`, `server`, `authentication`, `encrypt`). In all three adapters `driver` precedes the keys noorm owns, so the owned keys win. PostgreSQL (`buildPostgresPoolOptions`) merges flat config fields, then typed `pool` (`pgPoolOptions`), then `driver`, then owned keys. MySQL (`buildMysqlOptions`) puts the flat keepalive fields first, then `driver`, then owned keys in the connection options, and builds the Tarn `pool` separately with `tarnPoolOptions`. MSSQL (`buildTediousOptions`) spreads `driver` first inside the tedious `options` block, ahead of the owned keys.
+
+### Closing a pinned connection instead of releasing it
+
+`ConnectionResult.withConnection` runs a callback on one pooled connection and hands it a `PinnedConnection` whose `discard()` closes that connection when the callback ends. It is absent on SQLite. `trackPinnedConnections` in [`src/core/connection/pinned.ts`](../../src/core/connection/pinned.ts) links each call to its driver connection through `AsyncLocalStorage`, because Kysely does not say which connection it pinned and always releases it.
+
+```mermaid
+sequenceDiagram
+    %% source: src/core/connection/pinned.ts, src/core/connection/dialects/postgres.ts, mysql.ts, mssql.ts
+    participant Caller
+    participant Pins as trackPinnedConnections
+    participant Kysely
+    participant Pool as pg.Pool / Tarn.Pool
+    participant Conn as driver connection
+
+    Caller->>Pins: withConnection(fn)
+    Pins->>Kysely: db.connection().execute
+    Kysely->>Pool: acquire
+    Pool-->>Pins: first checkout becomes the pin
+    Pins->>Caller: fn(db, handle)
+    Caller->>Pins: handle.discard()
+    Note over Pins: marked only after fn returns
+    Kysely->>Pool: release
+    Pool->>Pins: isDiscarded(conn)
+    Pool->>Conn: destroy, not return to pool
+```
+
+`withConnection` marks the discard in a `finally` after the callback, so a handle kept past its callback cannot close someone else's connection. Each dialect closes the connection differently: PostgreSQL calls `release(true)` and destroys the stream; MySQL marks the connection failed and calls `closeMysqlConnection` with no goodbye; MSSQL's `Pool` subclass of Tarn destroys the resource on release.
 
 ### TLS identity and connection controls
 
@@ -114,14 +157,19 @@ The adapters map controls explicitly; a field in `ConnectionConfig` is not a pro
 | Control | Implemented behavior |
 |---|---|
 | `connectTimeoutMs` | PostgreSQL, MySQL, and MSSQL use `connectTimeoutFor`; invalid or non-positive values fall back to `15_000` ms. The factory probe adds `2_000` ms of grace. |
-| PostgreSQL `pool.idleTimeoutMillis` | Forwards to `pg.Pool`; zero disables the idle timeout. |
+| `pool.idleTimeoutMs` | Forwards to the pool's idle timeout; zero disables it on PostgreSQL, while MySQL and MSSQL require a positive value. `pool.idleTimeoutMillis` is a deprecated alias; setting both to different values is an error. |
 | PostgreSQL `statementTimeoutMs`, `queryTimeoutMs` | Forward to `statement_timeout` and `query_timeout`; zero disables the corresponding timeout. |
-| PostgreSQL `applicationName`, `keepAlive` | Forward to `application_name` and `keepAlive`. |
+| PostgreSQL `applicationName` | Forwards to `application_name`. |
+| `keepAlive`, `keepAliveInitialDelayMs` | PostgreSQL and MySQL. The delay forwards to `keepAliveInitialDelayMillis` (pg) or `keepAliveInitialDelay` (mysql2) and implies keepalive unless `keepAlive` is `false`. MSSQL and SQLite reject the delay. |
 | PostgreSQL `tlsServerName` | Verifies the configured certificate identity even when the dial host differs. It supplies SNI for an IP dial host; `pg` uses the dial host as SNI for DNS dial hosts. |
 | PostgreSQL `runtime.checkServerIdentity` | Calls the supplied verifier with `tlsServerName ?? host` and the certificate. Identity options require explicit SSL and reject `rejectUnauthorized: false`. |
 | MSSQL `tlsServerName` | Uses `resolveTlsServerName` as tedious's certificate hostname. A supplied name cannot be an IP literal. A validating IP connection requires a hostname override; an unverified IP connection uses `UNVERIFIED_TLS_SERVER_NAME`. Encryption stays enabled. |
 | MySQL TLS | Maps a truthy `ssl` to `{}`; it does not forward certificate fields, `tlsServerName`, or `runtime.checkServerIdentity`. |
 | MSSQL runtime verifier | The adapter does not consume `runtime.checkServerIdentity`; its TLS identity control is `tlsServerName`. |
+
+### Gating a transfer
+
+`transferData` and `getTransferPlan` in [`src/core/transfer/index.ts`](../../src/core/transfer/index.ts) gate on the destination config before opening any connection: `transferData` asserts `db:reset` and `getTransferPlan` asserts `transfer:plan`, on `options.channel ?? 'user'`. An `isTest` destination passes for an agent whose role would deny it, but the agent's role must resolve (`roleResolves` in [`src/core/policy/check.ts`](../../src/core/policy/check.ts): a built-in role or one defined in the policy context) before the `isTest` allowance applies; with an unresolved role the ordinary role cell decides. Neither entry point passes `tracking` to `withDualConnection`, so a transfer never creates or migrates tracking tables on the destination.
 
 ### Choosing a transfer strategy per table
 
@@ -218,11 +266,14 @@ sequenceDiagram
 | [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) | `ConnectionManager` singleton (`getConnectionManager`) — cached and tracked connections, `WorkerBridge` instances, `closeAll`; the lifecycle manager's `releasing` phase calls it, and the `app:shutdown` listener only sets the shutting-down flag |
 | [`src/core/connection/session.ts`](../../src/core/connection/session.ts) | `SESSION_ID_SQL`, `SERVER_CANCEL`, `readSessionId`, `hasServerSideCancel` — per-dialect session-id read and server-side cancel |
 | [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) | `explainConnectionError`, `explainMssqlLoginFailure` — per-dialect error code tables, `DatabaseConnectionError` |
+| [`src/core/connection/options.ts`](../../src/core/connection/options.ts) | `connectionOptionProblems`, `assertConnectionOptions`, `pgPoolOptions`, `tarnPoolOptions`, `driverOptionsFor` — per-dialect pool, keepalive, and driver-option rules |
+| [`src/core/connection/pinned.ts`](../../src/core/connection/pinned.ts) | `trackPinnedConnections` — `withConnection` and `discard()` support for pooled dialects |
+| [`src/core/connection/login.ts`](../../src/core/connection/login.ts) | `guardPasswordCallback`, `PasswordCallbackRejection`, `trackPoolLogins` |
 | [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts) | `DEFAULT_PORTS`, `PortSchema` shared with `core/config` and `core/settings` |
 | `src/core/connection/dialects/*.ts` | Physical connection factories, runtime credentials, TLS mapping, idle-error handling, and MSSQL tedious login diagnostics; `mssql-limit-plugin.ts` rewrites `LimitNode` to `TopNode` before Kysely's MSSQL compiler generates SQL |
 | [`src/core/db/operations.ts`](../../src/core/db/operations.ts) | `checkDbStatus`, `createDb`, `destroyDb` |
 | [`src/core/db/policy.ts`](../../src/core/db/policy.ts) | `assertDbPolicy` — shared destructive-lifecycle gate for `core/db` and `core/teardown` |
-| [`src/core/db/dual.ts`](../../src/core/db/dual.ts) | `withDualConnection` — generic two-connection lifecycle used by `transfer` and vault-copy |
+| [`src/core/db/dual.ts`](../../src/core/db/dual.ts) | `withDualConnection` — generic two-connection lifecycle used by `transfer` and vault-copy; the `tracking` option makes it call `prepareTrackingSchema` on the destination, and omitting it leaves the destination's tracking tables untouched |
 | `src/core/db/dialects/*.ts` | Per-dialect `databaseExists`/`createDatabase`/`dropDatabase`/`getSystemDatabase` |
 | [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) | `fetchOverview`, `fetchList`, `fetchDetail`, `fetchRowPeek`, `userGate`, `GATED_BY_CALLER`, `ExploreGate` |
 | [`src/core/explore/peek.ts`](../../src/core/explore/peek.ts) | `peekQuery`, `readPeekRows`, `MAX_PEEK_ROWS` — row-window query builder and cap used by `fetchRowPeek` |
@@ -243,26 +294,30 @@ sequenceDiagram
 | Constraint | What breaks if ignored |
 |---|---|
 | Runtime password callbacks refresh only new physical sessions | Code expecting a rotated or revoked credential to reach pooled sessions keeps running on the old credential until that physical connection is replaced. |
-| A dynamic password disables factory retries and diagnostic rewriting for that connection attempt | Applying static retry or error-mapping assumptions loses provider error identity or repeats credential issuance. Caller errors can contain secrets; the sanitized observer event is not the original diagnostic. |
+| A dynamic password disables factory retries, and the callback's own errors are not reworded | Retrying repeats credential issuance. Callback errors can contain secrets; the sanitized observer event is not the original diagnostic. Driver failures on the same path are still explained but emit no server fields. |
 | PostgreSQL identity hooks require SSL with certificate verification | `createPostgresConnection` throws `PostgreSQL TLS identity options require ...` before any socket opens when SSL is not enabled explicitly or certificate verification is off. |
 | Runtime TLS verification hooks are PostgreSQL-specific in the adapters | Assuming MySQL or MSSQL consumes `checkServerIdentity` leaves the custom verification unenforced. |
 | MySQL idle reporting depends on established and checkout state | Classifying every socket error as idle mislabels handshake or active-query failures; a failed connection that passes `validate` is handed to the next query. |
 | `PostgreSQL` is never same-server ([`src/core/transfer/same-server.ts`](../../src/core/transfer/same-server.ts)) | Treating it as same-server would, when both configs name the same database, run `INSERT INTO t SELECT ... FROM t`, copying the destination into itself instead of transferring data |
 | `readSessionId` requires a positive integer | Skipping the guard would let a driver's unexpected result flow straight into the mysql `kill query <id>` raw SQL |
 | Session SQL and cancellation map entries are optional: `SESSION_ID_SQL` lacks sqlite, `SERVER_CANCEL` lacks sqlite and mssql | Passing an undefined `SESSION_ID_SQL[dialect]` to `sql.raw(undefined)` sends the literal statement `undefined`, which the server rejects as a syntax error. Calling an undefined `SERVER_CANCEL[dialect]` throws `TypeError`. |
-| Static `explainConnectionError` diagnostics reserve "does not exist" for a missing database | The TUI create prompt and `testConnection`'s server-only fallback key off that phrase. Dynamic-password failures bypass this diagnostic contract. |
+| Static `explainConnectionError` diagnostics reserve "does not exist" for a missing database | The TUI create prompt and `testConnection`'s server-only fallback key off that phrase. A callback's own failure bypasses this diagnostic contract. |
 | `truncateData` re-enables FKs after a failed disable/truncate phase | An enable statement can still fail, leaving FK enforcement off. |
 | `teardownSchema` drops FKs, then MSSQL CHECK constraints, then procedures/functions/views, before tables | Dropping tables first fails on MSSQL schema-bound objects, and a CHECK constraint on a scalar UDF blocks dropping that function while its table exists |
 | `__noorm_*` prefix matching alone does not exclude noorm's tracking tables on postgres/mssql | On postgres and mssql, noorm's tracking tables live in a `noorm` schema without the `__noorm_` prefix. A prefix-only filter lists them in explore and makes transfer's `listUserTables` ([`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts)) copy them into the destination; `EXCLUDED_SCHEMAS` (explore) and the `!== 'noorm'` schema filter (transfer) keep them out |
+| A pool or keepalive option the dialect cannot honor throws when the adapter builds | Passing `pool.maxUses` to MySQL, `pool.acquireTimeoutMs` to PostgreSQL, or `keepAliveInitialDelayMs` to MSSQL or SQLite fails instead of being ignored. The messages are `pool.<key> is not supported on <dialect>` and `keepAliveInitialDelayMs is not supported on <dialect>: <reason>`. |
+| `driver` may not name the target, credentials, or TLS | `driverOptionsFor` throws `driver.<key> is not allowed on <dialect>`; the keys come from `ConnectionConfig`. SQLite accepts no `driver` options. |
+| `discard()` takes effect only after the `withConnection` callback returns | A handle used later does nothing, so it cannot close a connection another caller has checked out. |
+| `transferData` does not bootstrap the destination | A transfer copies user tables and never creates the destination's tracking tables. Code that needs them afterward, such as a later build or change run, must bootstrap the destination separately. |
 | `gate` is required on explore reads | Omitting it is a type error; passing `GATED_BY_CALLER` outside an operation that runs its own `db:*` check leaves the read ungated. |
 | `policy` is optional on `core/db` and `core/teardown` options ([`src/core/db/types.ts`](../../src/core/db/types.ts), [`src/core/teardown/types.ts`](../../src/core/teardown/types.ts)) | Without it, `assertDbPolicy` returns without enforcing policy (its `if (!policy) return` guard in [`src/core/db/policy.ts`](../../src/core/db/policy.ts)); callers that omit it (the SDK `db` namespace, the TUI `DbCreateScreen`, `DbDestroyScreen`, `DbTeardownScreen`, `DbTruncateScreen`) gate with `checkConfigPolicy` themselves instead. `core/transfer` has no such gap: its options take `channel?` and every entry point always gates via `assertPolicy(options.channel ?? 'user', ...)` |
 
 ## Coupling
 
 - **core-runner**: [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) imports `SESSION_ID_SQL`, `SERVER_CANCEL`, and `readSessionId` from [`src/core/connection/session.ts`](../../src/core/connection/session.ts) to pin a connection, read its session id, and cancel a running statement's file from a side connection; [`src/core/runner/statement-probes.ts`](../../src/core/runner/statement-probes.ts) polls through its own `STATEMENT_PROBES` table and does not reference `session.ts`.
-- **core-identity**: [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `createConnection` for identity sync; [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) imports the same `session.ts` exports (plus `hasServerSideCancel`) to cancel a query the SQL terminal is running; [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) calls `withDualConnection` ([`src/core/db/dual.ts`](../../src/core/db/dual.ts)) to hold source and destination connections open for a vault copy.
-- **core-policy**: `assertDbPolicy` ([`src/core/db/policy.ts`](../../src/core/db/policy.ts)), `checkConfigPolicy` ([`src/cli/db/create.ts`](../../src/cli/db/create.ts), [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts)), and `assertPolicy` ([`src/core/transfer/index.ts`](../../src/core/transfer/index.ts)) resolve against `Permission` values (`db:create`, `db:reset`, `db:destroy`, `db:truncate`, `db:teardown`, `transfer:plan`) and the role matrix in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) and [`src/core/policy/types.ts`](../../src/core/policy/types.ts); [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) takes a required `gate` in `fetchOverview`/`fetchList`/`fetchDetail` (checks `explore`, skipped for `GATED_BY_CALLER`; see Gating explore reads) and `fetchRowPeek` (checks `sql:read`), and throws when the cell is blocked or requires confirmation; [`src/cli/db/transfer.ts`](../../src/cli/db/transfer.ts) loads settings and wraps the destination config with `withConfigPolicy` before transferring.
-- **core-state**: [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) calls `getConnectionManager`; [`src/core/db/operations.ts`](../../src/core/db/operations.ts) and [`src/core/db/dual.ts`](../../src/core/db/dual.ts) call `bootstrapSchema`/`tablesExist`/`ensureSchemaVersion` from [`src/core/version/`](../../src/core/version); [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) subscribes to `app:shutdown` from [`src/core/observer.ts`](../../src/core/observer.ts) only to mark itself shutting down, while the lifecycle manager's releasing phase calls `closeAll`; [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts), which owns the connection config type.
+- **core-identity**: [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `createConnection` for identity sync; [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) imports the same `session.ts` exports (plus `hasServerSideCancel`) to cancel a query the SQL terminal is running; [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) calls `withDualConnection` ([`src/core/db/dual.ts`](../../src/core/db/dual.ts)) with `tracking: { channel, dryRun }` to hold source and destination connections open for a vault copy.
+- **core-policy**: `assertDbPolicy` ([`src/core/db/policy.ts`](../../src/core/db/policy.ts)), `checkConfigPolicy` ([`src/cli/db/create.ts`](../../src/cli/db/create.ts), [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts)), and `assertPolicy` ([`src/core/transfer/index.ts`](../../src/core/transfer/index.ts)) resolve against `Permission` values (`db:create`, `db:reset`, `db:destroy`, `db:truncate`, `db:teardown`, `transfer:plan`; transfer gating is described in Gating a transfer, and a trusted `isTest` config allows the `db:*` lifecycle permissions outright) and the role matrix in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) and [`src/core/policy/types.ts`](../../src/core/policy/types.ts); [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) takes a required `gate` in `fetchOverview`/`fetchList`/`fetchDetail` (checks `explore`, skipped for `GATED_BY_CALLER`; see Gating explore reads) and `fetchRowPeek` (checks `sql:read`), and throws when the cell is blocked or requires confirmation; [`src/cli/db/transfer.ts`](../../src/cli/db/transfer.ts) loads settings and wraps the destination config with `withConfigPolicy` before transferring.
+- **core-state**: [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) calls `getConnectionManager`; [`src/core/db/operations.ts`](../../src/core/db/operations.ts) and [`src/core/db/dual.ts`](../../src/core/db/dual.ts) call `bootstrapSchema`/`tablesExist` and `prepareTrackingSchema` (in `tracking.ts`) from [`src/core/version/`](../../src/core/version); [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) subscribes to `app:shutdown` from [`src/core/observer.ts`](../../src/core/observer.ts) only to mark itself shutting down, while the lifecycle manager's releasing phase calls `closeAll`; [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts), which owns the connection config type.
 - **core-change**: [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) imports `ChangeHistory`/`ChangeTracker` from [`src/core/change/`](../../src/core/change) to mark changes stale and record a reset event.
 - **sdk**: [`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts) and `executor.ts` depend on `buildDtSchema`, `DtStreamer`, `createKeysetPager`, `queryDatabaseVersion` from [`src/core/dt/`](../../src/core/dt) for cross-dialect type conversion and streaming; [`src/sdk/namespaces/db.ts`](../../src/sdk/namespaces/db.ts), `dt.ts`, `transfer.ts` wrap `core/explore`, `core/teardown`, `core/transfer`, `core/dt` directly, and `core/db` is reached only transitively, through `transfer/index.ts`'s use of `db/dual.ts`. [`src/sdk/context.ts`](../../src/sdk/context.ts) calls `createConnection`. [`tsup.sdk.config.ts`](../../tsup.sdk.config.ts) bundles Tarn into the SDK, so Tarn is not a consumer peer dependency. [`docs/wiki/sdk.md`](sdk.md) owns the public SDK connection surface and [`docs/wiki/infra.md`](infra.md) owns package construction.
 - **worker-bridge**: [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) tracks `WorkerBridge<ConnectionEvents>` instances so they shut down alongside regular connections; [`src/workers/connection.ts`](../../src/workers/connection.ts) imports `core/connection` to own the Kysely instance off the main thread.

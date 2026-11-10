@@ -133,7 +133,7 @@ describe('sdk: createContext factory', () => {
         const writer = new StateManager(projectRoot);
         await writer.load();
         const config = {
-            name: 'dev', type: 'local' as const, isTest: true,
+            name: 'dev', type: 'local' as const, isTest: false,
             access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite' as const, database: ':memory:' },
         };
@@ -165,7 +165,7 @@ describe('sdk: createContext factory', () => {
     it('rebinds a prebound config to the supplied project, roles and protected stage', () => {
 
         const config = parseConfig({
-            name: 'production', type: 'local', isTest: true,
+            name: 'production', type: 'local', isTest: false,
             access: { user: 'admin', agent: 'deployer' },
             connection: { dialect: 'sqlite', database: ':memory:' },
         });
@@ -199,7 +199,7 @@ describe('sdk: createContext factory', () => {
         const writer = new StateManager(projectRoot);
         await writer.load();
         await writer.setConfig('dev', {
-            name: 'dev', type: 'local', isTest: true,
+            name: 'dev', type: 'local', isTest: false,
             access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: ':memory:' },
         });
@@ -222,7 +222,7 @@ describe('sdk: createContext factory', () => {
         const writer = new StateManager(projectRoot);
         await writer.load();
         await writer.setConfig('production', {
-            name: 'production', type: 'local', isTest: true,
+            name: 'production', type: 'local', isTest: false,
             access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: ':memory:' },
         });
@@ -242,7 +242,7 @@ describe('sdk: createContext factory', () => {
         const writer = new StateManager(projectRoot);
         await writer.load();
         await writer.setConfig('prod', {
-            name: 'prod', type: 'local', isTest: true,
+            name: 'prod', type: 'local', isTest: false,
             access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: ':memory:' },
         });

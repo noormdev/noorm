@@ -22,7 +22,6 @@ noorm init --yes
     db/CLAUDE.md
     .noorm/.gitignore
     .noorm/settings.yml
-    .noorm/state/state.enc
 ```
 
 ```
@@ -31,7 +30,7 @@ noorm init --yes
 ├── .noorm/
 │   ├── .gitignore           # state/
 │   ├── settings.yml         # paths: ./db/sql, ./db/changes
-│   └── state/state.enc      # configs and secrets, encrypted with your identity key
+│   └── state/               # state.enc lands here when the first config is saved
 └── db/
     ├── AGENTS.md            # points coding agents at the /noorm skill
     ├── CLAUDE.md            # imports AGENTS.md

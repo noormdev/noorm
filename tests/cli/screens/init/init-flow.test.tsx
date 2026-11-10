@@ -1,389 +1,121 @@
 /**
  * Init flow integration tests.
  *
- * Tests the complete initialization flow from identity setup through project creation.
+ * The complete initialization flow, from identity setup through project
+ * creation. Each case runs the real screen in a child process with a throwaway
+ * HOME and project directory, and reads what it left on disk.
  */
-import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
-import { render } from 'ink-testing-library';
-import React from 'react';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { access, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import { FocusProvider } from '../../../../src/tui/focus.js';
-import { RouterProvider } from '../../../../src/tui/router.js';
-import { AppContextProvider } from '../../../../src/tui/app-context.js';
-import { InitScreen } from '../../../../src/tui/screens/init/InitScreen.js';
+import { attempt } from '@logosdx/utils';
 
-// Create a unique test directory for each test run
-const _TEST_PROJECT_ROOT = join(tmpdir(), `noorm-test-${Date.now()}`);
+import { createThrowawayHome, type ThrowawayHome } from '../../fixtures/throwaway-home.js';
 
-// Track mock state
-let mockNoormExists = false;
-let mockHasKeyFiles = false;
-let mockHasMetadata = false;
-let createdDirs: string[] = [];
-let writtenFiles: string[] = [];
-
-// Pre-import actual modules to avoid circular await inside mock.module
-const actualFs = await import('fs');
-const actualIdentity = await import('../../../../src/core/identity/index.js');
-const actualState = await import('../../../../src/core/state/index.js');
-const actualSettings = await import('../../../../src/core/settings/manager.js');
-
-// Mock fs
-mock.module('fs', () => ({
-    ...actualFs,
-    existsSync: vi.fn((path) => {
-
-        if (typeof path === 'string') {
-
-            if (path.includes('.noorm')) {
-
-                return mockNoormExists;
-
-            }
-
-            if (path.includes('.gitignore')) {
-
-                return false;
-
-            }
-
-        }
-
-        return false;
-
-    }),
-    mkdirSync: vi.fn((path) => {
-
-        createdDirs.push(path as string);
-
-    }),
-    writeFileSync: vi.fn((path) => {
-
-        writtenFiles.push(path as string);
-
-    }),
-    readFileSync: vi.fn(() => ''),
-    appendFileSync: vi.fn(),
-}));
-
-// Mock identity module
-mock.module('../../../../src/core/identity/index.js', () => ({
-    hasKeyFiles: vi.fn(() => Promise.resolve(mockHasKeyFiles)),
-    loadIdentityMetadata: vi.fn(() =>
-        Promise.resolve(
-            mockHasMetadata
-                ? {
-                    identityHash: 'abc123',
-                    name: 'Test User',
-                    email: 'test@example.com',
-                    publicKey: 'pubkey123',
-                    machine: 'test-machine',
-                    os: 'darwin 24.5.0',
-                    createdAt: new Date().toISOString(),
-                }
-                : null,
-        ),
-    ),
-    detectIdentityDefaults: vi.fn(() => ({
-        name: 'Test User',
-        email: 'test@example.com',
-        machine: 'test-machine',
-        os: 'darwin 24.5.0',
-    })),
-    createCryptoIdentity: vi.fn(() =>
-        Promise.resolve({
-            identity: {
-                identityHash: 'abc123',
-                name: 'Test User',
-                email: 'test@example.com',
-                publicKey: 'pubkey123',
-                machine: 'test-machine',
-                os: 'darwin 24.5.0',
-                createdAt: new Date().toISOString(),
-            },
-            keypair: {
-                publicKey: 'pubkey123',
-                privateKey: 'privkey123',
-            },
-        }),
-    ),
-    loadExistingIdentity: vi.fn().mockResolvedValue(null),
-}));
-
-// Mock state manager singleton - the code uses getStateManager from index.js
-mock.module('../../../../src/core/state/index.js', () => {
-
-    const mockStateManager = {
-        load: vi.fn(() => Promise.resolve()),
-        setIdentity: vi.fn(() => Promise.resolve()),
-        hasPrivateKey: vi.fn(() => true),
-        reloadPrivateKey: vi.fn(() => Promise.resolve(true)),
-    };
-
-    return {
-        StateManager: class MockStateManager {
-
-            load = vi.fn(() => Promise.resolve());
-            setIdentity = vi.fn(() => Promise.resolve());
-            hasPrivateKey = vi.fn(() => true);
-            reloadPrivateKey = vi.fn(() => Promise.resolve(true));
-
-        },
-        getStateManager: vi.fn(() => mockStateManager),
-        initState: vi.fn(() => Promise.resolve(mockStateManager)),
-        resetStateManager: vi.fn(),
-    };
-
-});
-
-// Mock settings manager - must be a proper class
-mock.module('../../../../src/core/settings/manager.js', () => {
-
-    return {
-        SettingsManager: class MockSettingsManager {
-
-            init = vi.fn(() => Promise.resolve());
-            setPaths = vi.fn(() => Promise.resolve());
-            load = vi.fn(() => Promise.resolve());
-            exists = vi.fn(() => Promise.resolve(false));
-            isLoaded = true;
-            settings = {};
-
-        },
-    };
-
-});
-
-/**
- * Wait for async effects.
- */
-async function waitForEffects(ms = 50): Promise<void> {
-
-    await new Promise((r) => setTimeout(r, ms));
-
-}
-
-/**
- * Submit the identity form.
- *
- * The Form browses by default and reserves Enter for opening a field, so
- * submitting means walking past the three identity fields onto the action row
- * first. Index 3 is the submit button whether or not a Cancel button follows it.
- */
-async function submitIdentityForm(stdin: { write: (data: string) => void }): Promise<void> {
-
-    for (let i = 0; i < 3; i++) {
-
-        stdin.write('\x1b[B');
-        await waitForEffects(30);
-
-    }
-
-    stdin.write('\r');
-
-}
-
-/**
- * Test wrapper with all required providers.
- */
-function TestWrapper({ children }: { children: React.ReactNode }) {
-
-    return (
-        <AppContextProvider autoLoad={false}>
-            <RouterProvider>
-                <FocusProvider>{children}</FocusProvider>
-            </RouterProvider>
-        </AppContextProvider>
-    );
-
-}
+const INIT = join(import.meta.dir, '..', '..', 'fixtures', 'init-screen-home.tsx');
 
 describe('cli: screens/init - flow integration', () => {
 
-    beforeEach(() => {
+    let home: ThrowawayHome;
 
-        vi.clearAllMocks();
-        mockNoormExists = false;
-        mockHasKeyFiles = false;
-        mockHasMetadata = false;
-        createdDirs = [];
-        writtenFiles = [];
+    beforeEach(async () => {
+
+        home = await createThrowawayHome();
 
     });
 
-    afterEach(() => {
+    afterEach(async () => {
 
-        vi.restoreAllMocks();
-
-    });
-
-    // Restore mocked modules to prevent pollution of subsequent test files
-    afterAll(() => {
-
-        mock.module('fs', () => actualFs);
-        mock.module('../../../../src/core/identity/index.js', () => actualIdentity);
-        mock.module('../../../../src/core/state/index.js', () => actualState);
-        mock.module('../../../../src/core/settings/manager.js', () => actualSettings);
+        await home.remove();
 
     });
+
+    const flow = (mode: string): { settled: string; project: string; final: string } => JSON.parse(home.run(INIT, mode));
+
+    async function exists(path: string): Promise<boolean> {
+
+        const [, err] = await attempt(() => access(path));
+
+        return !err;
+
+    }
+
+    /** The paths the completion panel says init created, resolved to where they would be on disk. */
+    function listedAsCreated(final: string): string[] {
+
+        return final.split('\n')
+            .map((row) => row.match(/•\s+(\S+)/)?.[1])
+            .filter((listed): listed is string => listed !== undefined)
+            .map((listed) => listed.startsWith('~/') ? join(home.noormHome, '..', listed.slice(2)) : join(home.projectRoot, listed));
+
+    }
+
+    async function expectInitialized(final: string): Promise<void> {
+
+        const { projectRoot } = home;
+        const listed = listedAsCreated(final);
+
+        expect(listed).toContain(join(projectRoot, '.noorm', 'settings.yml'));
+        expect(listed).toContain(join(projectRoot, 'db', 'sql', '.gitkeep'));
+        expect(listed).toContain(home.keyPath);
+
+        for (const path of listed) expect({ path, exists: await exists(path) }).toEqual({ path, exists: true });
+
+        expect(await exists(join(projectRoot, '.noorm', 'settings.yml'))).toBe(true);
+        expect(await exists(join(projectRoot, '.noorm', 'state'))).toBe(true);
+        expect(await readFile(join(projectRoot, '.noorm', '.gitignore'), 'utf8')).toBe('state/\n');
+        expect(await readFile(join(projectRoot, '.gitignore'), 'utf8')).toContain('# noorm');
+        expect(await exists(join(projectRoot, 'db', 'sql', '.gitkeep'))).toBe(true);
+        expect(await exists(home.keyPath)).toBe(true);
+        expect(await exists(home.pubPath)).toBe(true);
+        expect(JSON.parse(await readFile(home.metadataPath, 'utf8')).email).toBe('git@example.com');
+
+    }
 
     it('should transition from identity to project setup on form submission', async () => {
 
-        mockNoormExists = false;
-        mockHasKeyFiles = false;
+        const { settled, project } = flow('identity');
 
-        const { stdin, lastFrame, unmount } = render(
-            <TestWrapper>
-                <InitScreen params={{}} />
-            </TestWrapper>,
-        );
-
-        await waitForEffects(100);
-
-        // Should show identity setup
-        expect(lastFrame()).toContain('Welcome to noorm');
-
-        // Walk onto the action row and submit the pre-filled form
-        await submitIdentityForm(stdin);
-
-        await waitForEffects(100);
-
-        // Should now show project setup
-        expect(lastFrame()).toContain('Initialize noorm');
-        expect(lastFrame()).toContain('set up my first config');
-
-        unmount();
+        expect(settled).toContain('Welcome to noorm');
+        expect(project).toContain('Initialize noorm');
+        expect(project).toContain('set up my first config');
+        expect(await exists(home.keyPath)).toBe(false);
 
     });
 
-    it('should complete init flow when add config is selected', { retry: 2 }, async () => {
+    it('should complete init flow when add config is selected', async () => {
 
-        mockNoormExists = false;
-        mockHasKeyFiles = false;
+        const { settled, project, final } = flow('add');
 
-        const { stdin, lastFrame, unmount } = render(
-            <TestWrapper>
-                <InitScreen params={{}} />
-            </TestWrapper>,
-        );
-
-        await waitForEffects(100);
-
-        // Should show identity setup
-        expect(lastFrame()).toContain('Welcome to noorm');
-
-        // Walk onto the action row and submit the identity form
-        await submitIdentityForm(stdin);
-
-        await waitForEffects(100);
-
-        // Should show project setup
-        expect(lastFrame()).toContain('Initialize noorm');
-
-        // Press Enter to select "Add Config" (first option)
-        stdin.write('\r');
-
-        // Wait longer for async init operations
-        await waitForEffects(500);
-
-        // Should show creating progress or complete
-        const frame = lastFrame();
-
-        // Debug: Log the frame if test fails
-        if (
-            !(
-                frame?.includes('Creating') ||
-                frame?.includes('Initializing') ||
-                frame?.includes('Complete') ||
-                frame?.includes('success')
-            )
-        ) {
-
-            console.log('DEBUG frame:', frame);
-
-        }
-
-        // Should either be in creating or complete state
-        expect(
-            frame?.includes('Creating') ||
-                frame?.includes('Initializing') ||
-                frame?.includes('Complete') ||
-                frame?.includes('success'),
-        ).toBe(true);
-
-        unmount();
+        expect(settled).toContain('Welcome to noorm');
+        expect(project).toContain('Initialize noorm');
+        expect(final).toContain('Initialization Complete');
+        expect(final).toContain('to add your first database config');
+        await expectInitialized(final);
 
     });
 
     it('should complete init flow when skip config is selected', async () => {
 
-        mockNoormExists = false;
-        mockHasKeyFiles = false;
+        const { settled, project, final } = flow('skip');
 
-        const { stdin, lastFrame, unmount } = render(
-            <TestWrapper>
-                <InitScreen params={{}} />
-            </TestWrapper>,
-        );
-
-        await waitForEffects(100);
-
-        // Should show identity setup
-        expect(lastFrame()).toContain('Welcome to noorm');
-
-        // Walk onto the action row and submit the identity form
-        await submitIdentityForm(stdin);
-
-        await waitForEffects(100);
-
-        // Should show project setup
-        expect(lastFrame()).toContain('Initialize noorm');
-
-        // Press down arrow to move to "Skip" option
-        stdin.write('\x1b[B');
-
-        await waitForEffects(50);
-
-        // Press Enter to select "Skip"
-        stdin.write('\r');
-
-        await waitForEffects(200);
-
-        // Should show creating progress or complete
-        const frame = lastFrame();
-
-        expect(
-            frame?.includes('Creating') ||
-                frame?.includes('Initializing') ||
-                frame?.includes('Complete') ||
-                frame?.includes('success'),
-        ).toBe(true);
-
-        unmount();
+        expect(settled).toContain('Welcome to noorm');
+        expect(project).toContain('Initialize noorm');
+        expect(final).toContain('Initialization Complete');
+        expect(final).toContain('to go to home screen');
+        await expectInitialized(final);
 
     });
 
     it('should skip identity setup when identity already exists', async () => {
 
-        mockNoormExists = false;
-        mockHasKeyFiles = true; // Key files exist
-        mockHasMetadata = true; // Metadata exists - full identity present
+        await home.writeIdentity();
 
-        const { lastFrame, unmount } = render(
-            <TestWrapper>
-                <InitScreen params={{}} />
-            </TestWrapper>,
-        );
+        const { settled } = JSON.parse(home.run(INIT, 'show'));
 
-        await waitForEffects(100);
-
-        // Should skip directly to project setup
-        expect(lastFrame()).toContain('Initialize noorm');
-        expect(lastFrame()).not.toContain('Welcome to noorm');
-
-        unmount();
+        expect(settled).toContain('Initialize noorm');
+        expect(settled).not.toContain('Welcome to noorm');
 
     });
 

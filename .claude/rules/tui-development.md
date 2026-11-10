@@ -186,7 +186,7 @@ Registered: `TextInput` (while not `isDisabled`, which also covers `SearchableLi
 
 | Component | Use it? | Reason |
 |-----------|---------|--------|
-| `TextInput` | No — use ours | `src/tui/components/forms/TextInput.tsx` is upstream's, plus the mouse-report guard. Still display-only when `isDisabled`, so the focus stack stays authoritative |
+| `TextInput` | No — use ours | `src/tui/components/forms/TextInput.tsx` is upstream's, plus the mouse-report guard and the Ctrl-chord guard. Still display-only when `isDisabled`, so the focus stack stays authoritative |
 | `Spinner`, `Badge`, `ProgressBar`, `Alert`, `StatusMessage` | Yes | Display-only, no input handling |
 | `Select`, `MultiSelect`, `ConfirmInput` | No | Drive Ink's internal focus, which our stack never sees |
 
@@ -391,6 +391,16 @@ There is no `k` on Home. Secrets belong to a config, so `k` opens them from the 
 | `D` | toggle dry-run mode |
 | `F` | toggle force mode |
 
+**Forms with a second submit (`Form`'s `altSubmit` prop, browse mode only; in edit mode the chord does nothing, and `forms/TextInput.tsx` drops its letter):**
+
+| Key | Screen | Action |
+|-----|--------|--------|
+| `Ctrl+S` | config add, config edit | save without testing the connection (`SAVE_UNVERIFIED` in `src/tui/utils/connection.ts`) |
+
+The hint row carries `ctrl+s save without verifying` in browse mode. `altSubmit.suggest` adds `Press Ctrl+S to save without verifying.` on its own row under `statusError`; the config forms set it only after a failed connection test, and `Form` hides it in edit mode. `Form` measures the error (`useBoxMetrics`) and gives it the rows it wraps to, so pass the error as it is and never append to it.
+
+`config/add` and `config/import` are wrapped in `requireIdentity` (`src/tui/screens/identity/IdentityOnboarding.tsx`): without an identity they render identity setup first, on the same route, then the screen. Setup goes through `ensureIdentity` (`src/core/identity/factory.ts`), which never replaces an existing private key; a key file that will not load shows `loadPrivateKey()`'s error instead of the form. `IdentitySetup` has to fit the 20 rows the shell leaves on an 80x24 terminal.
+
 Pass `numberNav` to `SelectList` for 1-9 quick selection in lists.
 
 
@@ -415,7 +425,7 @@ It is **on** unless `ui.mouse` is false in `.noorm/settings.yml`. Off means iner
 | API | What it covers |
 |-----|----------------|
 | `usePaste` | Bracketed paste delivered as a single string. `SqlInput` currently submits only the first line of a multi-line paste. |
-| `useBoxMetrics` | Measured box width/height/left/top, instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
+| `useBoxMetrics` | Used once, for the height of `Form`'s status error. Still unused for measured box width/height/left/top instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
 | `useAnimation`, `suspendTerminal()`, `interactive` | No current need. |
 
 `<Text>` no longer accepts `wrap="end"` or `wrap="middle"`. Both were undocumented no-ops on 6.8.0 and were dropped from the type in 7.0.0. This codebase uses only `wrap="wrap"` and `wrap="truncate"`, so nothing changed.

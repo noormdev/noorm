@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { shouldSkipConfirmations } from '../environment.js';
 import { DEFAULT_ACCESS } from './legacy-access.js';
-import { compareCells, isBuiltinRole, MATRIX, TEST_DB_LIFECYCLE, USER_ALWAYS_ALLOWED } from './matrix.js';
+import { compareCells, isBuiltinRole, MATRIX, RECORDS_TO_TRACKING, TEST_DB_LIFECYCLE, USER_ALWAYS_ALLOWED } from './matrix.js';
 import type { Channel, ConfigAccess, Permission, PolicyCell, PolicyCheck, PolicyContext, PolicyTarget } from './types.js';
 
 const POLICY_CONTEXT = Symbol('noorm.policyContext');
@@ -47,7 +47,7 @@ function effectiveCell(role: string, permission: Permission, context: PolicyCont
 
 }
 
-/** Effective cell with the protected-stage ceiling; `USER_ALWAYS_ALLOWED` reads `allow` on the user channel, `TEST_DB_LIFECYCLE` on isTest. */
+/** Effective cell with the protected-stage ceiling. On an isTest config a role reads at least admin's cell, past the ceiling. */
 export function getConfigPermission(channel: Channel, config: ConfigTarget, permission: Permission): PolicyCell {
 
     if (channel === 'user' && USER_ALWAYS_ALLOWED.includes(permission)) return 'allow';
@@ -58,12 +58,37 @@ export function getConfigPermission(channel: Channel, config: ConfigTarget, perm
     const context = access[POLICY_CONTEXT];
     if (!context) return 'deny';
     const roleResolves = isBuiltinRole(role) || (context.roles !== undefined && Object.hasOwn(context.roles, role));
-    if (context.isTest === true && roleResolves && TEST_DB_LIFECYCLE.includes(permission)) return 'allow';
     const cell = effectiveCell(role, permission, context);
+    if (context.isTest === true && roleResolves) {
+
+        if (TEST_DB_LIFECYCLE.includes(permission)) return 'allow';
+        const admin = effectiveCell('admin', permission, context);
+
+        return compareCells(cell, admin) >= 0 ? cell : admin;
+
+    }
     if (!context.protectedStage) return cell;
     const ceiling = MATRIX[permission][channel === 'user' ? 'operator' : 'viewer'];
 
     return compareCells(cell, ceiling) <= 0 ? cell : ceiling;
+
+}
+
+/** The permissions whose operations record to the tracking tables. */
+export const TRACKED_WRITES: readonly Permission[] = Object.keys(RECORDS_TO_TRACKING)
+    .filter((name): name is Permission => Object.hasOwn(MATRIX, name))
+    .filter((permission) => RECORDS_TO_TRACKING[permission]);
+
+/**
+ * Whether the caller may record to the tracking tables. One that may not must never create or migrate them.
+ * A `confirm` cell counts where the channel can confirm: the user channel, or an agent holding a human approval.
+ *
+ * @example
+ * if (mayWriteTracking('user', config)) await ensureSchemaVersion(db, dialect);
+ */
+export function mayWriteTracking(channel: Channel, config: ConfigTarget): boolean {
+
+    return TRACKED_WRITES.some((permission) => checkConfigPolicy(channel, config, permission).allowed);
 
 }
 

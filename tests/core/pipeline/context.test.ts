@@ -33,9 +33,11 @@ describe('pipeline: buildPipelineContext', () => {
                 createQueryCompiler: () => new SqliteQueryCompiler(),
             },
         });
-        spyOn(version, 'ensureSchemaVersion').mockImplementation(async () => {
+        spyOn(version, 'prepareTrackingSchema').mockImplementation(async () => {
 
             controller.abort();
+
+            return true;
 
         });
         const resolveVaultKey = spyOn(vault, 'resolveVaultKey').mockResolvedValue(null);

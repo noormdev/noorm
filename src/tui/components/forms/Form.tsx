@@ -33,10 +33,11 @@
  * ```
  */
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Box, Text, useInput, useWindowSize } from 'ink';
+import { Box, Text, useBoxMetrics, useInput, useWindowSize } from 'ink';
 import { TextInput } from './TextInput.js';
 
 import type { ReactElement } from 'react';
+import type { DOMElement } from 'ink';
 
 import { useFocusScope } from '../../focus.js';
 
@@ -272,6 +273,9 @@ export interface FormProps {
     /** Callback when form is submitted with valid values */
     onSubmit: (values: FormValues) => void;
 
+    /** Second submit path. Browse mode only: in edit mode the chord does nothing. */
+    altSubmit?: FormAltSubmit;
+
     /** Callback when form is cancelled. Omit it and the Cancel button is not rendered. */
     onCancel?: () => void;
 
@@ -296,7 +300,7 @@ export interface FormProps {
      */
     onCancelBusy?: () => void;
 
-    /** Error message to show in toolbar (right side) */
+    /** Error message, under the hints so neither truncates the other. Wraps to as many rows as it needs. */
     statusError?: string;
 
     /**
@@ -305,6 +309,21 @@ export interface FormProps {
      * a budget from the terminal height.
      */
     height?: number;
+}
+
+/** A second way to submit a form, bound to a Ctrl chord. */
+export interface FormAltSubmit {
+    /** Letter pressed with Ctrl, lowercase. */
+    key: string;
+
+    /** What the chord does, as shown on the hint row. */
+    label: string;
+
+    /** Called with the values once they pass the same validation as `onSubmit`. */
+    onSubmit: (values: FormValues) => void;
+
+    /** Name the chord on a row under `statusError`. Set only while the chord gets past that error. */
+    suggest?: boolean;
 }
 
 /**
@@ -366,6 +385,7 @@ function displayValue(field: FormField, value: string | boolean | undefined): st
 export function Form({
     fields,
     onSubmit,
+    altSubmit,
     onCancel,
     submitLabel = 'Submit',
     focusLabel = 'Form',
@@ -415,6 +435,9 @@ export function Form({
     const [errors, setErrors] = useState<FormErrors>({});
     const [submitted, setSubmitted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    const errorRef = useRef<DOMElement>(null);
+    const { height: measuredErrorRows } = useBoxMetrics(errorRef);
 
     const actions: FormAction[] = useMemo(
         () => (onCancel ? ['submit', 'cancel'] : ['submit']),
@@ -511,7 +534,7 @@ export function Form({
 
     }, [fields, values]);
 
-    const handleSubmit = useCallback(() => {
+    const handleSubmit = useCallback((submit: (values: FormValues) => void = onSubmit) => {
 
         if (busy || submitting) return;
 
@@ -524,7 +547,7 @@ export function Form({
 
         if (firstInvalid === -1) {
 
-            onSubmit(values);
+            submit(values);
 
         }
         else {
@@ -644,6 +667,14 @@ export function Form({
 
         }
 
+        if (altSubmit && key.ctrl && input === altSubmit.key) {
+
+            handleSubmit(altSubmit.onSubmit);
+
+            return;
+
+        }
+
         if (key.tab) {
 
             moveBy(key.shift ? -1 : 1);
@@ -748,8 +779,16 @@ export function Form({
 
     }, [fields, editingKey]);
 
+    // Hidden in edit mode, where the chord does nothing.
+    const altSuggestion = altSubmit?.suggest && statusError && !isEditing
+        ? `Press Ctrl+${altSubmit.key.toUpperCase()} to ${altSubmit.label}.`
+        : undefined;
+
+    // Measured, because a real connection error wraps to three or four rows
+    // and rows the budget does not know about get drawn over the fields.
     const budget = height ?? Math.max(terminalRows - SCREEN_CHROME_ROWS, MIN_FORM_ROWS);
-    const visibleCount = Math.max(1, budget - FORM_CHROME_ROWS - expandedExtraRows);
+    const errorRows = statusError ? Math.max(1, measuredErrorRows) + (altSuggestion ? 1 : 0) : 0;
+    const visibleCount = Math.max(1, budget - FORM_CHROME_ROWS - expandedExtraRows - errorRows);
 
     // Same windowing as SelectList: centre the focused row, clamp to the ends.
     const startIndex = useMemo(() => {
@@ -787,21 +826,24 @@ export function Form({
 
         }
 
+        // Last, so a narrow terminal truncates its label and not the keys before it.
+        const alt = altSubmit ? `   ctrl+${altSubmit.key} ${altSubmit.label}` : '';
+
         if (activeAction) {
 
-            return '↑↓ move   ←→ button   ↵ activate   esc cancel';
+            return `↑↓ ←→ move   ↵ activate   esc cancel${alt}`;
 
         }
 
         if (currentField?.type === 'checkbox') {
 
-            return '↑↓ field   ↵/space toggle   esc cancel';
+            return `↑↓ field   ↵/space toggle   esc cancel${alt}`;
 
         }
 
-        return '↑↓ field   ↵ edit   esc cancel';
+        return `↑↓ field   ↵ edit   esc cancel${alt}`;
 
-    }, [isEditing, fields, editingKey, activeAction, currentField]);
+    }, [isEditing, fields, editingKey, activeAction, currentField, altSubmit]);
 
     return (
         <Box flexDirection="column">
@@ -900,11 +942,15 @@ export function Form({
                 )}
             </Box>
 
-            <Box justifyContent="space-between">
-                <Text dimColor wrap="truncate">{'  '}{hintText}</Text>
+            <Text dimColor wrap="truncate">{'  '}{hintText}</Text>
 
-                {statusError && <Text color="red">✘ {statusError}</Text>}
-            </Box>
+            {statusError && (
+                <Box ref={errorRef} flexShrink={0} paddingLeft={2}>
+                    <Text color="red">✘ {statusError}</Text>
+                </Box>
+            )}
+
+            {altSuggestion && <Text wrap="truncate">{'  '}{altSuggestion}</Text>}
         </Box>
     );
 

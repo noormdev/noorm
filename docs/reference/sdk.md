@@ -103,8 +103,9 @@ createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
 
 | Option | Type | Default | Effect |
 |---|---|---|---|
-| `config` | `string` | `NOORM_CONFIG`, then the active config only when `connection` is absent, then inline/env-only mode | Stored config to use |
-| `connection` | `CreateContextOptions['connection']` | — | Non-persisted connection overrides, including runtime credential and PostgreSQL TLS callbacks |
+| `config` | `string \| false` | `NOORM_CONFIG`, then the active config only when `connection` is absent, then inline/env-only mode | Stored config to use. `false` uses no stored config and ignores `NOORM_CONFIG` and the active config |
+| `name` | `string` | `NOORM_NAME`, then `__inline__` or `__env__` | Name of a context that uses no stored config. Throws when a stored config is selected |
+| `connection` | `CreateContextOptions['connection']` | — | Non-persisted connection overrides, including runtime credential and PostgreSQL TLS callbacks, [pool options](#pool-options), and [driver options](#driver-options) |
 | `projectRoot` | `string` | `process.cwd()` | Directory that holds `.noorm/` and the paths in `settings.yml` |
 | `requireTest` | `boolean` | `false` | Throws `RequireTestError` unless the resolved config has `isTest: true` |
 | `channel` | `'user' \| 'agent'` | `'user'` | Which half of the config's `access` applies; see [Access policy](#access-policy) |
@@ -118,15 +119,45 @@ The resolver selects a stored name before considering a synthetic config:
 
 ```mermaid
 flowchart TD
-    A["createContext(options)"] --> B{"config named?"}
+    A["createContext(options)"] --> B{"stored config<br/>selected?"}
     B -->|"yes: config or NOORM_CONFIG,<br/>or active without connection"| C["stored config<br/>(unknown name throws)"]
-    B -->|"no, inline or env connection"| D["synthetic config"]
-    B -->|"no"| E["throws: No config<br/>available"]
+    B -->|"no or config: false,<br/>inline or env connection"| D["synthetic config"]
+    B -->|"no or config: false,<br/>no connection"| E["throws: No config available,<br/>or No connection available<br/>for { config: false }"]
     C --> F["merge: defaults, stage,<br/>stored, env, inline"]
     D --> G["merge: defaults, stage,<br/>env, inline"]
 ```
 
-The later layer wins. With no selected stored config and no `NOORM_NAME`, inline mode uses `__inline__` and env-only mode uses `__env__`. `NOORM_NAME` changes the synthetic config's name; it does not select a stored config. A missing state file needs no identity key. A name selected by `config` or `NOORM_CONFIG` must exist, even when inline connection fields are complete. Without either selector, `connection` skips the active stored config, including its connection fields, access roles, and `isTest` flag. `requireTest: true` rejects unless the remaining configuration layers explicitly supply `isTest: true`.
+The later layer wins. Three sources can select a stored config, in this order:
+
+| Order | Source | Applies when |
+|---|---|---|
+| 1 | `config: '<name>'` | Always. `config: false` stops here and selects nothing |
+| 2 | `NOORM_CONFIG` | `config` is unset |
+| 3 | The active config | `config` and `NOORM_CONFIG` are unset and `connection` is absent |
+
+A selected name must exist, even when inline connection fields are complete. `NOORM_CONFIG=<stored>` with an inline `connection` uses the stored config as the base and puts the inline fields on top. That context keeps the stored config's access roles, and keeps its trusted `isTest` only while the inline fields leave the connection target unchanged. Without `config` and `NOORM_CONFIG`, `connection` skips the active stored config, including its connection fields, access roles, and `isTest` flag. `config: false` skips all three sources, so the context has no stored config. Stage defaults still apply through `stage` and `NOORM_NAME`, and `NOORM_isTest`, `NOORM_ACCESS_*` and the `NOORM_CONNECTION_*` variables still apply. `requireTest: true` rejects unless the remaining configuration layers explicitly supply `isTest: true`. A missing state file needs no identity key.
+
+A synthetic config takes its name from the first of these that is set:
+
+| Order | Source | Name |
+|---|---|---|
+| 1 | `name` option | The string passed |
+| 2 | `NOORM_NAME` | The variable's value |
+| 3 | Neither | `__inline__` with an inline `connection`, otherwise `__env__` |
+
+The name is `ctx.noorm.config.name` and the `configName` on the context's events and errors. It is also the key for change history, run checksums, locks, pipeline history and local secrets: a database reopened under another name reports its applied changes as pending and runs its build again. Use one name per database.
+
+Neither `name` nor `NOORM_NAME` selects a stored config. `name` with a selected stored config throws `Cannot apply the name "<name>" to stored config "<config>"`, because a stored config's name decides its stage and its protected-stage ceiling. A synthetic config whose name a stored config has throws `Cannot name a context "<name>": a stored config is named "<name>"`, because the context would read and write that config's secrets. This applies to `name`, to `NOORM_NAME`, and to the `__inline__` and `__env__` fallbacks. Select the stored config with `config` or `NOORM_CONFIG=<name>`, or use another name. With a stored config selected, `NOORM_NAME` can rename the context to a name no stored config has; naming another stored config throws `An env or flag name cannot rename config "<selected>" to the name of stored config "<name>"`.
+
+`name` adds restriction and selects no defaults. Both the name in use and the name it displaced (`NOORM_NAME`, or the `__inline__` or `__env__` fallback) are checked:
+
+| Found | Effect on the context |
+|---|---|
+| A protected stage under either name | Its permission ceiling applies |
+| A stage declaring `isTest: false` under either name | The context is not a trusted test config |
+| A stored config under the `NOORM_NAME` or fallback name | The context is a trusted test config only if that stored config has `isTest: true` and the same connection target |
+
+Stage defaults (`isTest: true`, `access`, connection fields) come from the `stage` option, else from the stage named by `NOORM_NAME`. A stage named by `name` supplies none.
 
 Synthetic config names appear in errors and event payloads. With no state file, an inline or environment-only context needs no `.noorm/` directory. [Deploying an application](/guide/deployment) covers packaging and pool sizing for that setup.
 
@@ -162,12 +193,12 @@ finally {
 
 ### Runtime credentials
 
-`CreateContextOptions['connection']` extends partial connection settings with `password?: string | (() => string | Promise<string>)` and a runtime PostgreSQL SSL verifier. The internal `RuntimeConnectionOptions` holds those functions separately from serializable config; it is not a package-root export. Persisted `Config.connection.password` remains a string.
+`CreateContextOptions['connection']` is `InlineConnection<DialectConnectionConfig>`: partial connection settings whose `pool` is typed for the `dialect`, plus `password?: string | (() => string | Promise<string>)`, a runtime PostgreSQL SSL verifier, and [`driver`](#driver-options). `InlineConnection` and `DialectConnectionConfig` are exported. The internal `RuntimeConnectionOptions` holds the functions and `driver` separately from serializable config; it is not a package-root export. Persisted `Config.connection.password` remains a string.
 
 | Dialect | How a new physical connection gets its password |
 |---|---|
-| PostgreSQL | The SDK forwards the function unchanged to pg's native `password` option |
-| MySQL | A bundled Tarn pool awaits the function before creating a mysql2 connection |
+| PostgreSQL | The SDK hands the function to pg's native `password` option |
+| MySQL | The Tarn pool awaits the function before creating a mysql2 connection. A string password goes through the same pool |
 | MSSQL | Kysely's Tarn-backed connection factory awaits the function before creating a tedious connection |
 | SQLite | Callable passwords are rejected by `createContext()` |
 
@@ -199,11 +230,12 @@ A runtime callback takes precedence over stored and environment passwords. The S
 
 | Failure path | Caller sees | Observer sees | Automatic retries |
 |---|---|---|---|
-| `connect()` with a runtime password callback, whether the provider or driver fails | The original thrown object, without translation or replacement | `connection:error` with `configName` and fixed `error: 'Runtime credential connection failed'`, without server details | None, even for transient-looking messages |
-| `connect()` with a static password | The connection factory's translated error where applicable | The normal connection error payload | Only the transient failures described in [Lifecycle](#lifecycle) |
-| Query on an established connection | The query's error | No connection-failure event solely because the query failed | No query retries |
+| `connect()` where the password callback throws | The callback's error, the same object, not reworded or wrapped | `connection:error` with `configName` and fixed `error: 'Runtime credential connection failed'`, without server details | None |
+| `connect()` with a password callback where the driver or server fails | `DatabaseConnectionError` with a worded message, the original error as `cause`, and `serverCode` and `serverMessage`. An error with no code and no known explanation comes back unchanged | The same fixed payload as the row above, without `serverCode` or `serverMessage` | None, even for transient-looking messages |
+| `connect()` with a static password | `DatabaseConnectionError` under the same rule | `connection:error` with the worded `error`, plus `serverCode` and `serverMessage` | Only the transient failures described in [Lifecycle](#lifecycle) |
+| Query on an established connection | The query's error | No event for the query itself; see [Pool connection failures](#pool-connection-failures) | No query retries |
 
-Provider errors may contain secrets. Sanitize them before logging in application code; observer sanitization does not change the thrown error. The connection factory cannot distinguish a native callback error from a driver error, so callback-backed connection attempts fail without automatic retries.
+The connection factory records what the callback throws and `connect()` rejects with exactly that value, so a provider's error class survives `instanceof`. This holds for a value that is not an `Error` too, such as a string or the `undefined` of a bare `Promise.reject()`; no login is attempted without a credential. A login the pool makes after `connect()` has no `connect()` caller: there, a rejection that is not an object reaches the failing query as an `Error` with the rejected value as its `cause`, and an object reaches it unchanged. Provider errors may contain secrets. Sanitize them before logging in application code; the fixed event payload does not change the thrown error. A connection with a callback is not retried, because a retry would ask the provider to issue another credential.
 
 ### PostgreSQL TLS identity
 
@@ -211,36 +243,126 @@ For PostgreSQL through an IP tunnel, set `ssl: { ca: trustedCa }` and `tlsServer
 
 Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at runtime. It receives the configured TLS name when present, otherwise Node's hostname, and the peer certificate. Returning an error rejects the connection. This callback replaces Node's standard identity check and must implement any checks the application requires; it does not replace CA chain verification. It cannot be stored in YAML.
 
-### Idle pool failures
+### Pool connection failures
 
-An idle PostgreSQL pool client that fails emits `connection:error` on the process-global `noormObserver`, with `{ configName, phase: 'idle', error }`. Its fixed error is `PostgreSQL idle pool connection failed`. The dynamic-credential MySQL pool emits the same shape with `MySQL idle pool connection failed` only for an established connection that is not checked out. Failed clients are removed or discarded before reuse; replacement physical connections obtain credentials again. Active query failures reject to their callers rather than producing idle events.
+After `connect()` succeeds, the pool reports a connection it loses, or cannot open, as `connection:error` on the process-global `noormObserver`. The payload is `{ configName, phase, error }` with a fixed `error` string. Driver messages and error objects are not forwarded to the observer.
 
-### Checked-out PostgreSQL failures
+| `phase` | Dialects | Fixed `error` | Emitted when |
+|---|---|---|---|
+| `idle` | PostgreSQL | `PostgreSQL idle pool connection failed` | An idle pool client fails |
+| `idle` | MySQL | `MySQL idle pool connection failed` | An established connection that is not checked out fails |
+| `checked-out` | PostgreSQL | `PostgreSQL checked-out connection failed` | A checked-out session fails |
+| `login` | PostgreSQL | `PostgreSQL pool login failed` | A physical connect the pool makes after its first successful one fails |
+| `login` | MySQL | `MySQL pool login failed` | Same |
+| `login` | MSSQL | `MSSQL pool login failed` | Same |
 
-PostgreSQL clients also emit `connection:error` with `phase: 'checked-out'` and the fixed error `PostgreSQL checked-out connection failed` when a checked-out session fails. This includes pinned connections and transactions waiting for application work. The process stays alive, but the session is lost: subsequent queries on that connection reject, and the pool discards it on release. A replacement connection does not restore session advisory locks or the interrupted transaction. Driver messages and error objects are not forwarded to the observer.
+A failed `connect()` emits `connection:error` without `phase`; [Runtime credentials](#runtime-credentials) lists that payload.
 
-### PostgreSQL session controls
+**Idle.** The pool removes or discards a failed client before reuse, and the replacement physical connection obtains credentials again. Active query failures reject to their callers and produce no idle event.
 
-PostgreSQL connection settings can be stored or passed inline:
+**Checked-out.** This includes pinned connections and transactions waiting for application work. The process stays alive, but the session is lost: subsequent queries on that connection reject, and the pool discards it on release. A replacement connection does not restore session advisory locks or the interrupted transaction.
 
-| noorm field | pg option | Meaning |
+**Login.** A pool opens more physical connections as demand grows and as old ones are replaced. When one of those logins fails (an expired credential, a throwing password callback, a server that stopped accepting connections), the query that needed the connection still rejects to its caller with the driver's error. The event exists because the first `connect()` has already returned, so no `connect()` caller is left to report the failure.
+
+### Pool options
+
+`connection.pool` sizes and recycles the pool. PostgreSQL uses `pg`'s pool. MySQL and MSSQL use Tarn, for a string password and a password callback alike.
+
+| `pool` option | PostgreSQL (`pg` Pool option) | MySQL, MSSQL (Tarn option) | SQLite | Meaning |
+|---|---|---|---|---|
+| `min` | `min` | `min` | accepted, unused | Connections the pool keeps open; default 0 |
+| `max` | `max` | `max` | accepted, unused | Most connections the pool opens; default 10 |
+| `idleTimeoutMs` | `idleTimeoutMillis`; zero disables the timeout | `idleTimeoutMillis`; must be greater than zero | rejected; the `idleTimeoutMillis` alias is accepted, unused | Milliseconds a connection may sit idle before the pool closes it |
+| `maxLifetimeMs` | `maxLifetimeSeconds`; converted exactly, so 1500 is 1.5 seconds | rejected | rejected | Milliseconds a connection may live before the pool replaces it |
+| `maxUses` | `maxUses`; at least 1 | rejected | rejected | Checkouts after which the pool replaces a connection |
+| `allowExitOnIdle` | `allowExitOnIdle` | rejected | rejected | Let the process exit while only idle connections remain |
+| `acquireTimeoutMs` | rejected | `acquireTimeoutMillis`; positive; default below | rejected | Milliseconds a checkout may wait for a free connection |
+| `createTimeoutMs` | rejected | `createTimeoutMillis`; positive; default below | rejected | Milliseconds opening one physical connection may take |
+| `reapIntervalMs` | rejected | `reapIntervalMillis`; positive | rejected | Milliseconds between sweeps that close idle connections |
+
+Every value is an integer except `allowExitOnIdle`, which is a boolean. On PostgreSQL, MySQL and MSSQL, `min` above `max` fails validation with `pool.min (<min>) must not be greater than pool.max (<max>)`.
+
+`pool.idleTimeoutMillis` is a deprecated alias of `pool.idleTimeoutMs`. One source that sets both to different values fails validation. Across sources they are one setting: an inline or environment value under either name replaces a stored value under either name.
+
+When `acquireTimeoutMs` or `createTimeoutMs` is unset on MySQL or MSSQL, noorm sets it to 30000, Tarn's own default, or to `connectTimeoutMs` plus 5000 when that is larger. A `connectTimeoutMs` above 30000 is therefore not cut off by the pool.
+
+The options are accepted in a stored config, inline, and from the environment as `NOORM_CONNECTION_POOL_<option>`. Keep the camelCase of the option in the variable name:
+
+```bash
+NOORM_CONNECTION_POOL_MAX=20
+NOORM_CONNECTION_POOL_idleTimeoutMs=30000
+NOORM_CONNECTION_POOL_maxLifetimeMs=900000
+```
+
+A key that is not a pool option fails validation with `pool.<key> is not a pool option`, from any of the three sources. The environment reader lowercases an all-caps segment, so `NOORM_CONNECTION_POOL_MAXUSES` arrives as `maxuses` and fails with a message that names `NOORM_CONNECTION_POOL_maxUses`. `MIN` and `MAX` are unaffected.
+
+"Rejected" means the config fails validation with `pool.<option> is not supported on <dialect>`, whichever of the three sources supplied it. The inline type is narrower still: `connection.pool` is typed per dialect (`PgPoolOpts`, `MysqlPoolOpts`, `MssqlPoolOpts`, and `min` and `max` only for SQLite), so an unsupported option on an inline `connection` with a literal `dialect` is a compile error first. Each connected context owns a separate pool, so pool maxima are per context, not process-wide.
+
+### Session and keepalive controls
+
+These connection settings can be stored, set in the environment, or passed inline:
+
+| noorm field | Dialects | Driver option | Meaning |
+|---|---|---|---|
+| `statementTimeoutMs` | PostgreSQL | `statement_timeout` | Server statement limit in ms; zero disables |
+| `queryTimeoutMs` | PostgreSQL | `query_timeout` | Client wait limit in ms; zero disables |
+| `applicationName` | PostgreSQL | `application_name` | Session name; pg may inherit `PGAPPNAME` when omitted |
+| `keepAlive` | PostgreSQL | `keepAlive` | Enable or disable TCP keepalive |
+| `keepAlive` | MySQL | `enableKeepAlive` | Same. mysql2 enables keepalive unless this is `false` |
+| `keepAliveInitialDelayMs` | PostgreSQL | `keepAliveInitialDelayMillis`; also sets `keepAlive: true` unless `keepAlive` is `false` | Milliseconds a socket stays idle before the first keepalive probe |
+| `keepAliveInitialDelayMs` | MySQL | `keepAliveInitialDelay`; also sets `enableKeepAlive: true` unless `keepAlive` is `false` | Same |
+
+Timeouts are nonnegative integers. Omitted statement and query limits are unlimited by pg default; a server may impose its own policy. These controls do not change `connectTimeoutMs`.
+
+With `keepAlive: true` alone, the first probe waits for the operating system default, about two hours, so a socket left half-open by a failover is found that late. `keepAliveInitialDelayMs` sets the wait. MSSQL rejects it because tedious fixes the delay at 30 seconds, and SQLite rejects it because it has no socket.
+
+### Driver options
+
+`connection.driver` passes options noorm does not model to the database driver. It is inline only: no environment variable or YAML field sets it, and noorm does not store it, add it to the resolved config, or put it in its own events. A driver that rejects a value can quote it in its error, and that error is the `connect()` failure and the `connection:error` text: `driver: { charset: 'X' }` on MySQL fails with `Unknown charset 'X'`.
+
+```typescript
+const ctx = await createContext({
+    connection: {
+        dialect: 'postgres',
+        host: 'db.example.com',
+        database: 'orders',
+        user: 'app',
+        driver: { lock_timeout: 500 },
+    },
+});
+```
+
+| Dialect | `driver` is merged into | Later entries win |
 |---|---|---|
-| `pool.idleTimeoutMillis` | `idleTimeoutMillis` | Idle client lifetime in ms; default 10,000, zero disables eviction |
-| `statementTimeoutMs` | `statement_timeout` | Server statement limit in ms; zero disables |
-| `queryTimeoutMs` | `query_timeout` | Client wait limit in ms; zero disables |
-| `applicationName` | `application_name` | Session name; pg may inherit `PGAPPNAME` when omitted |
-| `keepAlive` | `keepAlive` | Enable or disable TCP keepalive; timing and effect depend on the OS |
+| PostgreSQL | The `pg` Pool config | Flat config fields, `pool`, `driver`, then `host`, `port`, `user`, `password`, `database`, `min`, `max`, `ssl`, `connectionTimeoutMillis` |
+| MySQL | The mysql2 connection options | Keepalive fields, `driver`, then `host`, `port`, `user`, `database`, `ssl`, `connectTimeout` |
+| MSSQL | The tedious `options` block | `driver`, then `port`, `database`, `trustServerCertificate`, `encrypt`, `serverName`, `connectTimeout` |
+| SQLite | Nothing | `createContext()` throws `Driver options are not supported for SQLite` |
 
-Timeouts are nonnegative integers. Omitted statement and query limits are unlimited by pg default; a server may impose its own policy. These controls do not change `connectTimeoutMs`. Each connected context owns a separate pool, so pool maxima are per context, not process-wide.
+A key in the last group of each row is overwritten by noorm's value. A key that selects the target, the credentials, or TLS is rejected instead: `createContext()` throws `driver.<key> is not allowed on <dialect>`. `connect()` throws the same error, and the SQLite one, for a `Context` constructed directly, before the driver opens a connection.
+
+| Dialect | Rejected `driver` keys |
+|---|---|
+| All three | `host`, `port`, `database`, `user`, `password`, `connectionString`, `ssl`, `__proto__` |
+| PostgreSQL, also | `Client`, `stream`, `connection` |
+| MySQL, also | `uri`, `socketPath`, `stream`, `password1`, `password2`, `password3`, `passwordSha1`, `authPlugins`, `authSwitchHandler`, `flags`, `isServer` |
+| MSSQL, also | `server`, `authentication`, `instanceName`, `connector`, `serverName`, `encrypt`, `trustServerCertificate`, `cryptoCredentialsDetails`, `fallbackToDefaultDb` |
+
+Only the object's own enumerable keys are checked and passed on. Keys it inherits from a prototype are not passed to the driver.
+
+The rejection exists because a trusted `isTest` config's access is bound to the connection target noorm resolved. A driver option that moved the connection, changed who logs in, or weakened TLS would carry that access to a database noorm never checked. `createContext()` throws `connection.driver must be an object of driver options` for any other value.
 
 ### Environment overrides
 
 | Variable | Effect |
 |---|---|
-| `NOORM_CONFIG` | Config name when `options.config` is unset |
+| `NOORM_CONFIG` | Config name when `options.config` is unset. Ignored with `config: false` |
+| `NOORM_NAME` | Name of a synthetic config when `options.name` is unset. Selects no stored config, and throws when a stored config has that name |
 | `NOORM_CONNECTION_DIALECT` | `postgres`, `mysql`, `sqlite`, or `mssql`. Any other value throws |
 | `NOORM_CONNECTION_DATABASE` | With the dialect, switches on env-only mode |
-| `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_SSL`, `_POOL_MIN`, `_POOL_MAX` | Override the matching `connection` field of the resolved config |
+| `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_SSL` | Override the matching `connection` field of the resolved config |
+| `NOORM_CONNECTION_POOL_<option>` | Set a [pool option](#pool-options) |
+| `NOORM_CONNECTION_keepAliveInitialDelayMs` | Set `connection.keepAliveInitialDelayMs`; see [Session and keepalive controls](#session-and-keepalive-controls) |
 | `NOORM_PATHS_SQL`, `NOORM_PATHS_CHANGES` | Override `paths.sql` and `paths.changes` from `settings.yml` |
 | `NOORM_IDENTITY_PRIVATE_KEY`, `_NAME`, `_EMAIL` | CI identity. All three are required, otherwise they are ignored. They let the context decrypt state and vault keys with no key file on disk |
 | `NOORM_YES` | Any value except empty, `0`, or `false` confirms `confirm` cells on the `user` channel, like `yes: true` |
@@ -251,6 +373,14 @@ An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }
 |---|---|
 | `Config "<name>" not found` | The name matches no stored config |
 | `No config available...` | No selected name and no inline connection, and environment/stage fields cannot supply a dialect and database |
+| `Cannot name a context "<name>"...` | `name` equals the name of a stored config |
+| `Cannot apply the name "<name>" to stored config "<config>"...` | `name` was passed while a stored config is selected |
+| `connection.driver must be an object of driver options` | `connection.driver` is not a plain object |
+| `driver.<key> is not allowed on <dialect>...` | `connection.driver` has a key that selects the target, the credentials, or TLS |
+| `Driver options are not supported for SQLite` | `connection.driver` was passed with a SQLite connection |
+| `No connection available for { config: false }...` | `config: false`, no inline connection, and environment/stage fields cannot supply a dialect and database |
+| `Cannot apply the name "<name>" to stored config "<config>"...` | `name` was passed and `config`, `NOORM_CONFIG`, or the active config selected a stored config |
+| An error named `ConfigValidationError` (the class is not exported) | The resolved config fails validation, for example a [pool option](#pool-options) its dialect rejects |
 | `RequireTestError` | `requireTest: true` on a config without `isTest: true` |
 | `Private key required to decrypt state` | A `state.enc` exists and no identity key or `NOORM_IDENTITY_*` is available |
 
@@ -292,7 +422,7 @@ await ctx.connect();
 await ctx.connect({ retries: 1, delay: 0 });
 ```
 
-`connect(retryOptions?)` takes `ConnectionRetryOptions` (not exported; declare it inline):
+`connect(retryOptions?)` takes `ConnectionRetryOptions`, exported as a type:
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -300,7 +430,7 @@ await ctx.connect({ retries: 1, delay: 0 });
 | `delay` | `1000` | Milliseconds before the first retry |
 | `backoff` | `2` | Multiplier applied to the delay on each retry |
 
-For connections with runtime password callbacks, see [Runtime credentials](#runtime-credentials). Static-credential connections retry only messages containing `econnrefused`, `etimedout`, `too many connections`, or `connection reset`. Authentication, password, login, access-denied, missing-database, and missing-driver errors fail on the first attempt. After the last attempt, the factory throws the last error, with its normal static-credential translation where applicable.
+For connections with runtime password callbacks, see [Runtime credentials](#runtime-credentials). Static-credential connections retry only messages containing `econnrefused`, `etimedout`, `too many connections`, or `connection reset`. Authentication, password, login, access-denied, missing-database, and missing-driver errors fail on the first attempt. After the last attempt, the factory throws the last error, as a `DatabaseConnectionError` where it can explain it.
 
 `disconnect()` releases any impersonation scope you never reverted, destroys the pool, and clears the connection. Calling it while disconnected is a no-op. A disconnected context can `connect()` again.
 
@@ -351,6 +481,43 @@ const open = await ctx.transaction(async (trx) => {
 | `trx.proc` on postgres | Looks the name up in `pg_catalog.pg_proc` first: a procedure runs `CALL`, anything else runs `SELECT * FROM name(...)`. No `CALL` is attempted against a name with no visible procedure, so calling a function does not abort the transaction. A name that is both a procedure and a function runs `CALL`, which fails with 42809 and aborts the transaction when it resolves to the function: arguments that match a function overload, or a function earlier on `search_path` than the procedure. `trx.tvf` reaches the function in every case |
 | Derived handles | `trx.withSchema(...)`, `trx.withPlugin(...)`, and other Kysely instances derived from `trx` carry no `proc`, `func`, or `tvf` |
 
+
+### Pinned connections
+
+
+`withConnection(fn)` pins one pooled connection for the duration of `fn` and resolves with its return value. `fn` receives a `Kysely<DB>` bound to that connection and a `PinnedConnection` handle. Use it for work that must stay on one session, such as a session-level advisory lock.
+
+`connection.discard()` marks the connection. When `fn` ends, the SDK closes the physical connection, and the pool opens a new one on demand. Closing it ends the server session, which releases any session-level locks it held.
+
+```typescript
+import { sql } from 'kysely';
+import { attempt } from '@logosdx/utils';
+
+await ctx.withConnection(async (db, connection) => {
+    await sql`select pg_advisory_lock(${lockKey})`.execute(db);
+
+    const [, err] = await attempt(() => syncPrices(db));
+
+    if (err) {
+        connection.discard();
+        throw err;
+    }
+
+    await sql`select pg_advisory_unlock(${lockKey})`.execute(db);
+});
+```
+
+| Case | Result |
+|---|---|
+| `fn` returns without `discard()` | The connection goes back to the pool and is reused |
+| `fn` throws without `discard()` | Same. A thrown error does not discard the connection |
+| `discard()` was called | The connection is closed when `fn` ends, whether it returns or throws. No `connection:error` event is emitted |
+| `discard()` called twice | Same as once |
+| SQLite | `discard()` does nothing; there is one in-process connection |
+| `disconnect()` while `fn` is running | `disconnect()` completes, the pinned connection is closed, and `withConnection` rejects with `DisconnectedError`. `fn` itself is not interrupted |
+| Context not connected | Throws `NotConnectedError` |
+
+`ctx.kysely.connection().execute(fn)` still works and always returns its connection to the pool.
 
 ### Impersonation
 
@@ -643,6 +810,7 @@ Guarded methods require the resolved config's non-enumerable policy context. Spr
 | `db:reset` | deny | confirm | allow |
 | `db:truncate` | deny | confirm | confirm |
 | `db:teardown` | deny | deny | confirm |
+| `lock:acquire` | deny | allow | allow |
 | `lock:force` | deny | confirm | confirm |
 | `secret:read` | deny | allow | allow |
 | `secret:write` | deny | confirm | allow |
@@ -655,7 +823,7 @@ Guarded methods require the resolved config's non-enumerable policy context. Spr
 Five exceptions to the plain rule:
 
 - `explore` is checked on the `agent` channel only; the `user` channel always passes.
-- On a config with `isTest: true`, the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` cells read `allow` for every role and channel, protected stage included, so an `agent` context can call `db.teardown()` without confirmation. `db.reset()` still checks `run:build` first, before it drops anything. Transfer and vault destinations and `dt.importFile` follow the same rule. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+- On a config with `isTest: true`, every role on both channels gets the admin cell, protected stage included, and the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` cells read `allow`. An `agent` context can build, reset and tear down its test database without confirmation. Admin's other `confirm` cells (`config:write`, `vault:propagate` and the like) still need a human. Transfer and vault destinations and `dt.importFile` follow the same rule. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
 - `db.truncate` and `db.teardown` with `dryRun: true` check for denial but skip confirmation, so a role that may run the operation can always look first. A role that may not run it cannot preview it either. `db.previewTeardown()` follows the same rule for `db:teardown`.
 - Denials raised below the SDK seam throw a plain `Error` with the same message, not `ProtectedConfigError`. That covers `run.preview`, `transfer.plan`, and `vault.copy`. Match on the message there.
 - `transfer.to` and `transfer.plan` check the destination config, not the source, because the destination is the write target. `vault.copy` checks `vault:read` on the source and `vault:write` on the destination, and requires destination `vault:read` when unsealing an existing destination key.
@@ -691,7 +859,7 @@ The context must be connected. Run and dry run both enforce `pipeline:run`; the 
 
 Results distinguish execution status from transaction outcome and retain primary and secondary errors. They do not return domain query rowsets. Raw input and rendered SQL are not stored in history. See [SQL pipelines](/guide/sql-pipelines) for input, transaction, and recovery semantics.
 
-`run`, `history` and `getRun` migrate an older tracking schema to the current one before touching the tracking tables.
+`run` creates noorm's tracking tables when the database has none and migrates an older tracking schema first. `run` with `dryRun: true` neither creates nor migrates them. `history` and `getRun` never write: on a database without tracking tables they return `[]` and `null`, and on tables that need a migration they throw `tracking tables are at schema version N and this version needs M. Reading pipeline history does not migrate them: a role that can write must run a command once first.`
 
 **Results**
 
@@ -738,6 +906,8 @@ Relative paths resolve against `projectRoot`.
 | `files(filepaths, options?)` | `Promise<BatchResult>` | `run:dir` | Runs in the order given |
 | `dir(dirpath, options?)` | `Promise<BatchResult>` | `run:dir` | Runs every SQL file under the directory, sorted by path. A missing directory returns `status: 'failed'` with `error` |
 | `build(options?)` | `Promise<BatchResult>` | `run:build` | Runs the schema directory. Applies `settings.build.include`, `build.exclude`, and `settings.rules` |
+
+`file`, `files`, `dir` and `build` create noorm's tracking tables when the database has none, and migrate an older tracking schema, before they run. A build therefore works on a database noorm has never touched. `dryRun` and `preview` skip this and leave the database unchanged: a database with no tracking tables passes, and tables that need a migration throw `tracking tables are at schema version N and this version needs M. A dry run does not migrate them: run a command without --dry-run first, such as "noorm change history".` The message uses the CLI's wording; from the SDK, call the method once without `dryRun`. `ctx.noorm.changes` writes, `lock.acquire`, `lock.withLock`, `vault.init` and `db.reset()` do the same. All of them throw `VersionMismatchError` when the tracking schema is newer than this client, and `MigrationError` when a tracking migration fails. On PostgreSQL and MSSQL the first run needs permission to create the `noorm` schema.
 
 `preview` resolves every secret into the returned text, so treat its output as plaintext secrets.
 
@@ -813,14 +983,14 @@ A build over zero files still succeeds, so `unmatchedInclude` is how a mistyped 
 | `parse(name)` | `Promise<Change>` | none | Throws `ChangeNotFoundError`, `ChangeValidationError`, or `ManifestReferenceError` |
 | `validate(change)` | `void` | none | Throws `ChangeValidationError` on duplicate filenames in a folder |
 | `apply(name, options?)` | `Promise<ChangeResult>` | `change:run` | An applied, unchanged change returns `success` with no files |
-| `revert(name, options?)` | `Promise<ChangeResult>` | `change:revert` | Throws `ChangeNotAppliedError` for a never-applied change |
+| `revert(name, options?)` | `Promise<ChangeResult>` | `change:revert` | Throws `ChangeNotAppliedError` for a never-applied change, with `dryRun` and `preview` too |
 | `ff(options?)` | `Promise<BatchChangeResult>` | `change:ff` | Applies every pending change in name order |
 | `next(count = 1, options?)` | `Promise<BatchChangeResult>` | `change:run` | Applies the next `count` pending changes |
 | `rewind(target, options?)` | `Promise<BatchChangeResult>` | `change:revert` | Reverts newest first. `target` is a change name (reverts it and everything after) or a number of changes |
 | `status()` | `Promise<ChangeListItem[]>` | none | Every change, merged from disk and database, sorted by name |
 | `pending()` | `Promise<ChangeListItem[]>` | none | The items a forward run would pick up |
-| `history(limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | Execution records |
-| `historyForChange(name, limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | One change's records, newest first |
+| `history(limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | Execution records. `[]` on a database with no tracking tables. Never migrates: on tables that need a migration it throws `tracking tables are at schema version N and this version needs M. Reading change history does not migrate them: a role that can write must run a command once first.` |
+| `historyForChange(name, limit?)` | `Promise<ChangeHistoryRecord[]>` | `explore` | One change's records, newest first. Same no-tables and older-tables results as `history` |
 | `getFileHistory(operationId)` | `Promise<FileHistoryRecord[]>` | `explore` | Per-file records behind one history `id` |
 
 `apply` and `revert` take the config's lock for the length of each change, with reason `Change: <name>` or `Revert: <name>`. A lock held by another identity throws `LockAcquireError`, and an empty change throws `ChangeValidationError`, out of `ff`, `next`, and `rewind` as well. Per-file failures come back on the result as `status: 'failed'` or `'partial'`.
@@ -845,10 +1015,12 @@ if (result.status !== 'success') {
 
 A `txt` file is a manifest: one path per line, relative to `paths.sql`, that runs those `db/sql/` files in place. [Forward and revert](/guide/changes/forward-revert) covers when to use one.
 
+`apply`, `revert`, `ff`, `next` and `rewind` create noorm's tracking tables when the database has none, as the [run methods](#ctx-noorm-run) do.
+
 | Option | Type | Default | Applies to | Effect |
 |---|---|---|---|---|
 | `force` | `boolean` | `false` | all | Skip the already-applied check |
-| `dryRun` | `boolean` | `false` | all | Render to `tmp/`, leave the tracking tables untouched |
+| `dryRun` | `boolean` | `false` | all | Render to `tmp/`, leave the tracking tables untouched. Throws the dry-run versions error on tables that need a migration, as `preview` does |
 | `preview` | `boolean` | `false` | all | Emit rendered SQL without writing |
 | `output` | `string \| null` | `null` | all | File that receives preview output |
 | `abortOnError` | `boolean` | `true` | `ff`, `next`, `rewind` | Stop at the first failure |
@@ -928,7 +1100,7 @@ The destructive methods:
 |---|---|---|---|
 | `truncate(options?)` | `Promise<TruncateResult>` | `db:truncate` | Wipes data, keeps the schema. Disables foreign keys, deletes or truncates each target, re-enables them |
 | `teardown(options?)` | `Promise<TeardownResult>` | `db:teardown` | Drops every object except noorm's own tables (change tracking, locks, vault, identities), and marks applied changes `stale` |
-| `reset()` | `Promise<void>` | `db:reset` | Teardown, then `run.build({ force: true })`, which also passes the `run:build` gate |
+| `reset()` | `Promise<BatchResult>` | `db:reset` | Checks `db:reset`, `run:build`, the tracking schema and the schema directory before teardown, then `run.build({ force: true })`. Resolves with that build's result; throws `ResetBuildError` when the build does not succeed |
 
 ```typescript
 await ctx.noorm.db.truncate({ preserve: ['party_type', 'product'] });
@@ -958,7 +1130,7 @@ await ctx.noorm.db.teardown({ preserveSchemas: ['app_private'] });
 | `configName`, `executedBy` | set by the SDK, so teardown marks applied changes `stale` and records a reset |
 | `keepViews`, `keepFunctions`, `keepProcedures`, `keepTypes`, `policy` | ignored |
 
-`reset()` takes no options and ignores `settings.teardown.preserveTables`: it rebuilds from `db/sql/`, so a surviving table would collide with its `CREATE TABLE`.
+`reset()` takes no options and ignores `settings.teardown.preserveTables`: it rebuilds from `db/sql/`, so a surviving table would collide with its `CREATE TABLE`. It works on a database with no tracking tables, because it creates them. Before it drops anything, `reset()` throws `VersionMismatchError` on a newer tracking schema and an `Error` when it cannot read the schema directory. When the rebuild fails the schema is already gone, so `reset()` throws `ResetBuildError`, whose `result` is the failed `BatchResult` and whose message names the failing file.
 
 `TruncateResult`: `truncated`, `preserved`, `statements`, `durationMs`. `TeardownResult`: `dropped` (`tables`, `views`, `functions`, `procedures`, `types`, `foreignKeys`), `preserved`, `statements`, `durationMs`, and when they apply `postScriptResult`, `staleCount`, `resetRecordId`. `TeardownPreview.toDrop` groups names by the same six kinds; there is no flat list.
 
@@ -972,10 +1144,10 @@ One lock row per config serializes schema operations across every noorm user of 
 
 | Method | Returns | Gate | Notes |
 |---|---|---|---|
-| `acquire(options?)` | `Promise<Lock>` | none | The same identity can acquire again and extends the lock. Another holder throws `LockAcquireError` unless `wait` is set |
-| `release()` | `Promise<void>` | none | Throws when no lock exists or another identity holds it |
-| `status()` | `Promise<LockStatus>` | none | `{ isLocked, lock }`. Clears an expired lock first |
-| `withLock(fn, options?)` | `Promise<T>` | none | Acquires, runs `fn`, releases in a `finally`. A failed release emits an `error` event instead of throwing |
+| `acquire(options?)` | `Promise<Lock>` | `lock:acquire` | Creates the tracking tables when the database has none. The same identity can acquire again and extends the lock. Another holder throws `LockAcquireError` unless `wait` is set |
+| `release()` | `Promise<void>` | `lock:acquire` | Throws when no lock exists or another identity holds it |
+| `status()` | `Promise<LockStatus>` | none | `{ isLocked, lock }`. Unlocked, and creates nothing, on a database with no tracking tables. Deletes an expired lock first, only for a caller with `lock:acquire`. Throws `ProtectedConfigError` on a config hidden from the channel. On tables that need a migration it throws the versions error ending `Reading lock status does not migrate them: a role that can write must run a command once first.` |
+| `withLock(fn, options?)` | `Promise<T>` | `lock:acquire` | Creates the tracking tables when the database has none. Acquires, runs `fn`, releases in a `finally`. A failed release emits an `error` event instead of throwing |
 | `forceRelease()` | `Promise<ForceReleaseResult>` | `lock:force` | Deletes the lock whoever holds it. `{ released, holder }`; `holder` is `null` when nothing was held |
 
 `ForceReleaseResult` is not exported. The result object is always truthy, so branch on `released`.
@@ -1199,6 +1371,13 @@ Context-scoped events carry `configName`, so filter on it when you run more than
 | DT | `dt:export:start`, `dt:export:progress`, `dt:export:complete`, `dt:import:start`, `dt:import:schema`, `dt:import:progress`, `dt:import:complete`, `dt:stream:start`, `dt:stream:progress`, `dt:stream:complete`, `dt:validate:result`, `dt:modify:start`, `dt:modify:progress`, `dt:modify:complete`, and per-stage `dt:export:loaded`, `dt:export:processed`, `dt:export:saved`, `dt:import:loaded`, `dt:import:processed`, `dt:import:saved` | no |
 | Errors | `error`: `{ source, error, context? }` | no |
 
+`connection:error` carries one of two payload shapes:
+
+| Emitted for | `phase` | `error` | `serverCode`, `serverMessage` |
+|---|---|---|---|
+| A failed `connect()` | absent | The worded failure, or `Runtime credential connection failed` when the connection has a password callback | Present for a `DatabaseConnectionError` on a static password; absent with a callback |
+| A pool failure after the first connect | `idle`, `checked-out`, or `login` | A fixed string per dialect; see [Pool connection failures](#pool-connection-failures) | Absent |
+
 `error` reports problems the SDK absorbs instead of throwing: an unparseable change folder during `discover()`, a failed lock release in `withLock`, an unwritable preview output path. `NoormEvents` also types families the CLI and TUI emit: `state`, `config`, `identity`, `app`, `router`, `version`, `logger`, `sql-terminal`, `settings`, `update`, and `init`. [Teardown events](/dev/teardown#observer-events) give the teardown payloads.
 
 
@@ -1239,6 +1418,11 @@ Every class below is exported from `@noormdev/sdk`:
 | `RequireTestError` | `requireTest: true` and the config lacks `isTest: true` | `configName` |
 | `NotConnectedError` | A call that needs the pool ran before `connect()` or after `disconnect()` | |
 | `ProtectedConfigError` | The access policy denied the call, or it needs a confirmation `yes` did not supply | `configName`, `operation` |
+| `ResetBuildError` | `db.reset()` tore the database down and the rebuild did not succeed | `result` |
+| `VersionMismatchError` | The database's tracking schema is newer than this client | `layer`, `current`, `expected` |
+| `MigrationError` | A tracking schema migration failed | `layer`, `version`, `cause` |
+| `DisconnectedError` | `disconnect()` ran while a `withConnection` callback was still running | |
+| `DatabaseConnectionError` | `connect()` failed and the factory could explain the driver's or server's error; see [Runtime credentials](#runtime-credentials) | `serverCode`, `serverMessage`, `cause` |
 | `VaultAccessError` | `vault.set()` got a key that yields no vault key | `configName` |
 | `ImpersonationError` | `impersonate()` on mysql or sqlite, or with an invalid username | |
 | `LockAcquireError` | Another identity holds the lock | `configName`, `holder`, `heldSince`, `expiresAt`, `reason` |
@@ -1258,6 +1442,7 @@ Every class below is exported from `@noormdev/sdk`:
 |---|---|
 | Factory and classes | `createContext`, `Context`, `NoormOps`, `ChangesNamespace`, `RunNamespace`, `DbNamespace`, `LockNamespace`, `VaultNamespace`, `SecretsNamespace`, `TemplatesNamespace`, `TransferNamespace`, `DtNamespace`, `UtilsNamespace` |
 | Core types | `CreateContextOptions`, `Config`, `Settings`, `Identity`, `Dialect`, `Channel`, `ConfigAccess`, `Role` |
+| Connection | `InlineConnection`, `DialectConnectionConfig`, `PinnedConnection`, `ConnectionRetryOptions`, `PoolOpts`, `PgPoolOpts`, `TarnPoolOpts`, `MysqlPoolOpts`, `MssqlPoolOpts` |
 | Run | `RunOptions`, `BuildOptions`, `FileResult`, `BatchResult` |
 | Changes | `Change`, `ChangeFile`, `ChangeFileType`, `CreateChangeOptions`, `AddFileOptions`, `ChangeOptions`, `ChangeResult`, `BatchChangeResult`, `ChangeListItem`, `ChangeHistoryRecord` |
 | Explore | `ExploreOverview`, `TableSummary`, `TableDetail`, `ViewSummary`, `ViewDetail`, `ProcedureSummary`, `ProcedureDetail`, `FunctionSummary`, `FunctionDetail`, `TypeSummary`, `TypeDetail`, `IndexSummary`, `ForeignKeySummary`, `ColumnDetail`, `ParameterDetail` |
@@ -1268,9 +1453,9 @@ Every class below is exported from `@noormdev/sdk`:
 | Transfer and DT | `TransferOptions`, `TransferPlan`, `TransferTablePlan`, `TransferResult`, `TransferTableResult`, `ConflictStrategy`, `ExportOptions`, `ImportOptions` |
 | Routines | `tvp`, `TvpValue`, `ImpersonatedScope`, `RoutineCalls`, `TransactionScope`, `ExtractArgs`, `ExtractReturn` |
 | Events | `noormObserver`, `NoormEvents`, `NoormEventNames` |
-| Errors | `RequireTestError`, `ProtectedConfigError`, `NotConnectedError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
+| Errors | `RequireTestError`, `ProtectedConfigError`, `NotConnectedError`, `ResetBuildError`, `DisconnectedError`, `DatabaseConnectionError`, `VersionMismatchError`, `MigrationError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
 
-Five shapes that public signatures name are not exported: `BatchChangeOptions` (`changes.ff`, `next`, `rewind`), `FileHistoryRecord` (`changes.getFileHistory`), `TeardownOptions` (`db.teardown`), `ForceReleaseResult` (`lock.forceRelease`), and `ConnectionRetryOptions` (`connect`). Declare them inline, or derive them with `Parameters<>` and `Awaited<ReturnType<>>`.
+Four shapes that public signatures name are not exported: `BatchChangeOptions` (`changes.ff`, `next`, `rewind`), `FileHistoryRecord` (`changes.getFileHistory`), `TeardownOptions` (`db.teardown`), and `ForceReleaseResult` (`lock.forceRelease`). Declare them inline, or derive them with `Parameters<>` and `Awaited<ReturnType<>>`.
 
 
 ## What bites
@@ -1291,6 +1476,12 @@ Five shapes that public signatures name are not exported: `BatchChangeOptions` (
 | One context's handler fires for another tenant's events | `noormObserver` is process-global | Filter on `event.configName`, where the payload has it |
 | `Vault operations require a cryptographic identity` | No `~/.noorm/identity.json` and no `NOORM_IDENTITY_*` | Run `noorm identity init`, or set the three CI variables |
 | `Private key required to decrypt state` in CI | A `state.enc` exists and no key is available | Set `NOORM_IDENTITY_PRIVATE_KEY`, `_NAME`, and `_EMAIL`, or use env-only mode |
+| `Cannot apply the name "..." to stored config "..."` | `name` was passed while `NOORM_CONFIG` or the active config selected a stored config | Pass `config: false` with `name`, or drop `name` |
+| `pool.idleTimeoutMs must be greater than zero on mysql` (or `mssql`) | Tarn cannot disable its idle timeout. A stored `idleTimeoutMillis: 0` on these dialects was accepted and ignored before | Set a positive value, or remove the field |
+| `pool.<key> is not a pool option` | The key is misspelled, or came from an all-caps environment variable segment, which is lowercased | Use the camelCase name the message gives, such as `NOORM_CONNECTION_POOL_maxUses` |
+| `pool.min (<min>) must not be greater than pool.max (<max>)` | A stored, environment, or inline `min` exceeds `max`, counting the default `max` of 10 | Lower `min` or raise `max` |
+| `driver.<key> is not allowed on <dialect>` at `createContext()` | `connection.driver` named a key that selects the target, credentials, or TLS | Set the flat `connection` field instead; see [Driver options](#driver-options) |
+| A provider's error class no longer matches after `connect()` fails | Only an error the password callback itself throws keeps its identity. A driver or server failure on that connection is a `DatabaseConnectionError` | Match `DatabaseConnectionError` and read `cause` |
 | A viewer's context cannot read secrets or the vault | `secret:read` and `vault:read` are denied to `viewer` | Use a context on a role that holds them |
 
 

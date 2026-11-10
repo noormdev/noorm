@@ -46,6 +46,7 @@ Roles belong to a config's `ConfigAccess`, not to an identity. `Channel` identif
 | `db:create`, `db:reset` | deny | confirm | allow |
 | `vault:write`, `secret:write` | deny | confirm | allow |
 | `change:rm`, `config:rm`, `config:write` | deny | confirm | confirm |
+| `lock:acquire` | deny | allow | allow |
 | `db:truncate`, `vault:propagate`, `lock:force` | deny | confirm | confirm |
 | `db:destroy`, `db:teardown`, `debug:write` | deny | deny | confirm |
 
@@ -92,14 +93,16 @@ flowchart TD
 
 ### Protected-stage ceilings and access defaults
 
-On a protected stage (`context.protectedStage` set), `getConfigPermission` caps the effective cell by the original built-in operator cell for users or viewer cell for agents. The stricter of `deny`, `confirm`, and `allow` wins. The assigned role name and `agent: false` visibility remain unchanged. Project overrides and custom roles cannot relax the ceiling.
+On a protected stage (`context.protectedStage` set) that is not a trusted `isTest` config, `getConfigPermission` caps the effective cell by the original built-in operator cell for users or viewer cell for agents. The stricter of `deny`, `confirm`, and `allow` wins. The assigned role name and `agent: false` visibility remain unchanged. Project overrides and custom roles cannot relax the ceiling. The one exception is a trusted `isTest` config (`PolicyContext.isTest`), which `getConfigPermission` resolves before it reaches the protected-stage branch. A resolvable role there reads at least the admin cell for each permission, past the ceiling. `TEST_DB_LIFECYCLE` (`db:create`, `db:reset`, `db:truncate`, `db:teardown`, `db:destroy`) reads `allow`. An unknown role still denies.
 
 The ceiling is the built-in operator or viewer cell, so a project override never ranks above it on a protected stage.
 
 ```mermaid
 flowchart TD
     %% source: src/core/policy/check.ts, src/core/policy/matrix.ts
-    E["effectiveCell"] --> S{"context.protectedStage?"}
+    E["effectiveCell"] --> T{"isTest && roleResolves?"}
+    T -->|yes| A["allow or max(cell, admin cell)"]
+    T -->|no| S{"context.protectedStage?"}
     S -->|no| R["return cell"]
     S -->|yes| M["MATRIX[permission]<br/>[operator|viewer]"]
     M --> K{"compareCells(cell,<br/>ceiling) <= 0?"}
@@ -110,6 +113,10 @@ flowchart TD
 `resolveLegacyAccess` preserves explicit `access`. Otherwise, legacy `protected: true` maps to `GUARDED_ACCESS` (`{ user: 'operator', agent: 'viewer' }`); false or absent maps to `DEFAULT_ACCESS` (`{ user: 'admin', agent: 'viewer' }`). An unrestricted legacy flag does not grant agent admin. Config resolution, stage application, and persistence belong to [`docs/wiki/core-state.md`](core-state.md).
 
 `guarded` returns true when `access.user !== 'admin'`, when the bound `PolicyContext` marks a protected stage, or when any user-channel effective cell ranks below the built-in admin cell; without a bound context it reads only the user role. `formatAccessTag` returns `user:<role> agent:<role|off>`, or `null` for `DEFAULT_ACCESS`. An explicit agent-admin grant remains visible even when the user role is admin.
+
+### Tracking-table write gate
+
+`RECORDS_TO_TRACKING` in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) maps every `Permission` to whether its operations record to the tracking tables; the `Record<Permission, boolean>` type means a new permission cannot go unclassified. `TRACKED_WRITES` lists the permissions marked true. `mayWriteTracking(channel, config)` is true when `checkConfigPolicy` allows any of them; a `confirm` cell counts where the channel can confirm (the user channel, or an agent holding a human approval). A caller that may not write must never create or migrate tracking tables. `prepareTrackingSchema` ([`src/core/version/tracking.ts`](../../src/core/version/tracking.ts)) owns the gate and belongs to [`docs/wiki/core-state.md`](core-state.md); callers also sit in core-runner, core-db, core-identity, cli, tui, and sdk. The permission table is [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts).
 
 ### Raw-SQL classification
 
@@ -143,14 +150,15 @@ On MSSQL the fallback and lexical cross-check share `MSSQL_PRIVILEGED_STATEMENTS
 | Path | Role |
 |---|---|
 | [`src/core/policy/types.ts`](../../src/core/policy/types.ts) | `BuiltinRole` (`viewer`/`operator`/`admin`), `Role` (string), `RoleDefinition`, `PolicyContext`, `Channel` (`user`/`agent`), `ConfigAccess` (`{ user: Role; agent: Role \| false }`), `Permission`, `PolicyTarget`, `PolicyCell`, and `PolicyCheck`. |
-| [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) | `MATRIX`, permission cells for each role and the immutable protected-stage ceilings, plus `BUILTIN_ROLES`, `isBuiltinRole`, `compareCells`, and `USER_ALWAYS_ALLOWED`. |
-| [`src/core/policy/check.ts`](../../src/core/policy/check.ts) | `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `getConfigPermission`, `getPolicyFingerprint`, `withPolicyConfirmation`, `attachPolicyContext`, `getPolicyContext`, `policyTargetIdentity`, `isVisibleToChannel`, `confirmationPhraseFor`, `guarded`, and `formatAccessTag`. |
+| [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) | `MATRIX`, permission cells for each role and the immutable protected-stage ceilings, plus `BUILTIN_ROLES`, `isBuiltinRole`, `compareCells`, `USER_ALWAYS_ALLOWED`, `RECORDS_TO_TRACKING`, and `TEST_DB_LIFECYCLE`. |
+| [`src/core/policy/check.ts`](../../src/core/policy/check.ts) | `checkPolicy`, `checkConfigPolicy`, `assertPolicy`, `getConfigPermission`, `getPolicyFingerprint`, `withPolicyConfirmation`, `attachPolicyContext`, `getPolicyContext`, `policyTargetIdentity`, `TRACKED_WRITES`, `mayWriteTracking`, `isVisibleToChannel`, `confirmationPhraseFor`, `guarded`, and `formatAccessTag`. |
 | [`src/core/policy/channel.ts`](../../src/core/policy/channel.ts), [`src/core/policy/harness.ts`](../../src/core/policy/harness.ts) | `resolveChannel`, `AGENT_HARNESSES`, `detectAgentHarness`, and `isAgentSession`. |
 | [`src/core/policy/legacy-access.ts`](../../src/core/policy/legacy-access.ts) | `DEFAULT_ACCESS`, `GUARDED_ACCESS`, and `resolveLegacyAccess`. |
 | [`src/core/policy/classify.ts`](../../src/core/policy/classify.ts) | `sqlPermissionsFor`, `classifyStatements`, CST and keyword classifiers, and destructive-function detection. |
 | [`src/core/policy/index.ts`](../../src/core/policy/index.ts) | Public policy exports, including `UnknownAccessRoleError` from [`src/core/policy/errors.ts`](../../src/core/policy/errors.ts). |
 | [`tests/core/policy/check.test.ts`](../../tests/core/policy/check.test.ts) | Independently authored `EXPECTED_MATRIX` and `PERMISSIONS` fixtures, confirmation, fail-closed checks, and display behavior. The fixtures exercise explore, SQL, change/run, `pipeline:run`, database create/reset/destroy, and config removal; they do not enumerate the vault/secret, transfer, lock, debug, config-write, truncate, or teardown permissions. |
 | [`tests/core/policy/configurable-roles.test.ts`](../../tests/core/policy/configurable-roles.test.ts) | Raw, detached, and cloned access denial, overridden and inherited roles, ceilings (including `pipeline:run` capped like `run:dir`), fingerprints bound to project and connection, and `withPolicyConfirmation` scoping. |
+| [`tests/core/policy/istest-lifecycle.test.ts`](../../tests/core/policy/istest-lifecycle.test.ts), [`tests/core/policy/tracked-writes.test.ts`](../../tests/core/policy/tracked-writes.test.ts) | `isTest` relaxation past the ceiling and the tracking-write gate. |
 | [`tests/core/policy/channel.test.ts`](../../tests/core/policy/channel.test.ts), [`tests/core/policy/agent-escalation.test.ts`](../../tests/core/policy/agent-escalation.test.ts) | Provenance precedence and matching agent authorization across transport routes. |
 | [`tests/core/policy/default-access.test.ts`](../../tests/core/policy/default-access.test.ts), [`tests/core/policy/visibility.test.ts`](../../tests/core/policy/visibility.test.ts) | Defaults through `parseConfig`/`migrateState`, explicit grants, and fail-closed visibility. |
 | [`tests/core/policy/classify.test.ts`](../../tests/core/policy/classify.test.ts), [`tests/core/policy/classify-corpus.test.ts`](../../tests/core/policy/classify-corpus.test.ts) | CST/fallback classification and an adversarial SQL corpus, including assertions that inputs exercise the intended parser path. |

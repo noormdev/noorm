@@ -35,7 +35,7 @@ import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js'
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection } from '../state.js';
+import { ensureTracking, requireConnection, schemaPath } from '../state.js';
 import type { BuildOptions } from '../types.js';
 import { DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
@@ -123,6 +123,7 @@ export class RunNamespace {
     async file(filepath: string, options?: RunOptions): Promise<FileResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:file', 'run.file');
+        await ensureTracking(this.#state, options);
 
         const context = await this.#createRunContext();
         const absolutePath = this.#resolvePath(filepath);
@@ -142,6 +143,7 @@ export class RunNamespace {
     async files(filepaths: string[], options?: RunOptions): Promise<BatchResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.files');
+        await ensureTracking(this.#state, options);
 
         const context = await this.#createRunContext();
         const absolutePaths = filepaths.map((fp) => this.#resolvePath(fp));
@@ -161,6 +163,7 @@ export class RunNamespace {
     async dir(dirpath: string, options?: RunOptions): Promise<BatchResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:dir', 'run.dir');
+        await ensureTracking(this.#state, options);
 
         const context = await this.#createRunContext();
         const absolutePath = this.#resolvePath(dirpath);
@@ -191,12 +194,10 @@ export class RunNamespace {
     async build(options?: BuildOptions): Promise<BatchResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'run:build', 'run.build');
+        await ensureTracking(this.#state, options);
 
         const context = await this.#createRunContext();
-        const sqlPath = path.join(
-            this.#state.projectRoot,
-            this.#state.settings.paths?.sql ?? DEFAULT_SQL_PATH,
-        );
+        const sqlPath = schemaPath(this.#state);
 
         const configForMatch = {
             name: this.#state.config.name,

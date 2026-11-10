@@ -85,7 +85,7 @@ describe('cli: noorm config delete command -- access policy gate', () => {
         const config: Config = {
             name,
             type: 'local',
-            isTest: true,
+            isTest: false,
             access,
             connection: { dialect: 'sqlite', database: join(tmpDir, `${name}.db`) },
         };

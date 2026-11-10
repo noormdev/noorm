@@ -9,8 +9,12 @@
  * truncate workflow). Standalone teardown() must still preserve them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'kysely';
 
+import type { BatchResult } from '../../../src/core/runner/index.js';
 import { DbNamespace } from '../../../src/sdk/namespaces/db.js';
 import { createTestConnection, skipIfNoContainer } from '../../utils/db.js';
 
@@ -42,7 +46,7 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
 
     });
 
-    function makeState(): ContextState {
+    function makeState(projectRoot = '/tmp'): ContextState {
 
         const state: ContextState = {
             connection: conn,
@@ -60,8 +64,8 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
             // equivalent of `--yes`. Without it these destructive calls are
             // refused, which is the intended behaviour, not a test concern.
             options: { yes: true },
-            projectRoot: '/tmp',
-            stateManager: getStateManager('/tmp'),
+            projectRoot,
+            stateManager: getStateManager(projectRoot),
             changeManager: null,
         };
 
@@ -110,14 +114,21 @@ describe('integration: sdk DbNamespace reset vs preserveTables', () => {
 
         await createMarkers();
 
+        // reset() reads the schema directory before it drops anything, so the project needs one.
+        const projectRoot = await mkdtemp(join(tmpdir(), 'noorm-db-reset-'));
+        await mkdir(join(projectRoot, 'db', 'sql'), { recursive: true });
+
         let buildForced: boolean | undefined;
-        const db = new DbNamespace(makeState(), async (opts?: { force?: boolean }) => {
+        const db = new DbNamespace(makeState(projectRoot), async (opts?: { force?: boolean }): Promise<BatchResult> => {
 
             buildForced = opts?.force;
+
+            return { status: 'success', files: [], filesRun: 0, filesSkipped: 0, filesFailed: 0, durationMs: 0 };
 
         });
 
         await db.reset();
+        await rm(projectRoot, { recursive: true, force: true });
 
         // The build runs (forced) on a fully cleared schema — no collision.
         expect(buildForced).toBe(true);

@@ -24,11 +24,13 @@ import { hostname, platform, release, userInfo } from 'os';
 import { attemptSync } from '@logosdx/utils';
 
 import type { CryptoIdentity, CryptoIdentityInput, KeyPair } from './types.js';
-import { generateKeyPair } from './crypto.js';
+import { derivePublicKeyFromPrivate, generateKeyPair } from './crypto.js';
 import {
     saveKeyPair,
+    savePublicKey,
     saveIdentityMetadata,
     loadIdentityMetadata,
+    loadPrivateKey,
     loadPublicKey,
     getIdentityOverride,
 } from './storage.js';
@@ -64,10 +66,29 @@ export interface CreateIdentityResult {
 }
 
 /**
+ * Result of `ensureIdentity`.
+ */
+export interface EnsureIdentityResult {
+    /** The identity now on disk */
+    identity: CryptoIdentity;
+
+    /** The private key state is encrypted with */
+    privateKey: string;
+
+    /** True when no private key existed and a keypair was generated */
+    createdKeys: boolean;
+
+    /** True when `identity.json` was written */
+    createdMetadata: boolean;
+}
+
+/**
  * Detect identity defaults from system and git.
  *
  * Used to pre-populate the identity setup form.
  * User can edit name, email, and machine; OS is auto-detected.
+ * Never throws: without git, or without a git user, name falls back to the
+ * OS username and email is empty.
  *
  * @example
  * ```typescript
@@ -97,8 +118,11 @@ export function detectIdentityDefaults(): IdentityDefaults {
         }).trim(),
     );
 
+    // Throws when the uid has no passwd entry, which is routine in containers.
+    const [osUsername] = attemptSync(() => userInfo().username);
+
     return {
-        name: gitName || userInfo().username,
+        name: gitName || osUsername || '',
         email: gitEmail || '',
         machine: hostname(),
         os: `${platform()} ${release()}`,
@@ -310,6 +334,60 @@ export async function createIdentityForExistingKeys(
     });
 
     return identity;
+
+}
+
+/**
+ * Set up an identity without ever replacing a private key.
+ *
+ * Every `state.enc` on the machine is encrypted with the private key, so when
+ * one exists the rest is built around it: the public key is derived, and
+ * metadata is written only when absent. A key that cannot be loaded throws
+ * `loadPrivateKey`'s error.
+ *
+ * @param input - Used only for what has to be created; existing metadata wins
+ *
+ * @example
+ * ```typescript
+ * const { privateKey, createdKeys } = await ensureIdentity({ name, email })
+ * const state = new StateManager(projectRoot, { privateKey })
+ * ```
+ */
+export async function ensureIdentity(input: CryptoIdentityInput): Promise<EnsureIdentityResult> {
+
+    const privateKey = await loadPrivateKey();
+
+    if (!privateKey) {
+
+        const { identity, keypair } = await createCryptoIdentity(input);
+
+        return { identity, privateKey: keypair.privateKey, createdKeys: true, createdMetadata: true };
+
+    }
+
+    if (!(await loadPublicKey())) {
+
+        await savePublicKey(derivePublicKeyFromPrivate(privateKey));
+
+    }
+
+    const existing = await loadExistingIdentity();
+
+    if (existing) {
+
+        return { identity: existing, privateKey, createdKeys: false, createdMetadata: false };
+
+    }
+
+    const identity = await createIdentityForExistingKeys(input);
+
+    if (!identity) {
+
+        throw new Error('Failed to read the public key that was just written');
+
+    }
+
+    return { identity, privateKey, createdKeys: false, createdMetadata: true };
 
 }
 

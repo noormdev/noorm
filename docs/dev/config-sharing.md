@@ -195,7 +195,7 @@ Import can fail at several points. Each has a specific error message:
 | File not found | `File not found: {path}` | Path doesn't exist |
 | Unreadable | `Could not read file.` | Path exists but the read failed (permissions, directory) |
 | Invalid format | `Invalid file format. Not a valid noorm export file.` | File isn't JSON or wrong structure |
-| No identity | `No private key found. Run "noorm init" first.` | Missing `~/.noorm/identity.key` |
+| No identity | None. The TUI import screen shows identity setup first, then the import form | Missing `~/.noorm/identity.key` |
 | Wrong recipient | `Could not decrypt file. You may not be the intended recipient.` | Decryption failed - wrong key |
 | Corrupted data | `Decrypted content is invalid. File may be corrupted.` | Decrypted JSON is malformed |
 

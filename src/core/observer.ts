@@ -186,8 +186,8 @@ export interface NoormEvents extends SettingsEvents, UpdateEvents, VaultEvents, 
     'connection:close': { configName: string };
     'connection:error': {
         configName: string;
-        /** Pool client failures are distinct from connection-opening failures. */
-        phase?: 'idle' | 'checked-out';
+        /** Pool failures after the first connect; absent for a failed connect. */
+        phase?: 'idle' | 'checked-out' | 'login';
         /** Worded for the user. */
         error: string;
         /** What the server or driver reported, for the log: its code(s) and message(s). */

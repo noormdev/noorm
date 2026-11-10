@@ -17,6 +17,8 @@ import { join } from 'node:path';
 import { Kysely, SqliteDialect } from 'kysely';
 
 import { BunSqliteDatabase } from '../../src/core/connection/dialects/sqlite-bun.js';
+import { attempt } from '@logosdx/utils';
+
 import { VaultNamespace } from '../../src/sdk/namespaces/vault.js';
 import { VaultAccessError } from '../../src/sdk/namespaces/vault.js';
 import { initializeVault, setVaultSecret, getVaultKey, getVaultSecret } from '../../src/core/vault/index.js';
@@ -198,6 +200,20 @@ describe('sdk: VaultNamespace tuple-to-throw contract', () => {
 
             expect(key).toBeInstanceOf(Buffer);
             expect(await getVaultKey(db, alice.identityHash, alice.privateKey, 'sqlite')).toEqual(key);
+
+        });
+
+        it('should initialize the vault on a database that has no tracking tables yet', async () => {
+
+            const fresh = new Kysely<NoormDatabase>({
+                dialect: new SqliteDialect({ database: new BunSqliteDatabase(':memory:') as never }),
+            });
+            const vault = new VaultNamespace(makeState(fresh));
+
+            const [key] = await attempt(() => vault.init());
+            await fresh.destroy();
+
+            expect(key).toBeInstanceOf(Buffer);
 
         });
 

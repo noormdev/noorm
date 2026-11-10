@@ -11,8 +11,10 @@ import { getLockManager } from '../../core/lock/index.js';
 import { formatIdentity } from '../../core/identity/index.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection } from '../state.js';
-import { checkProtectedConfig } from '../guards.js';
+import { ensureTracking, requireConnection } from '../state.js';
+import { checkConfigPolicy, isVisibleToChannel } from '../../core/policy/index.js';
+import { readerRemedy, requireCurrentSchema } from '../../core/version/index.js';
+import { checkProtectedConfig, ProtectedConfigError } from '../guards.js';
 
 // ─────────────────────────────────────────────────────────────
 // LockNamespace
@@ -31,6 +33,9 @@ export class LockNamespace {
     /**
      * Acquire a database lock.
      *
+     * `acquire`, `withLock` and `release` are gated by the config's `lock:acquire` access: they write
+     * to the database, and the check runs first so a refused caller creates no tracking tables.
+     *
      * @example
      * ```typescript
      * const lock = await ctx.noorm.lock.acquire({ timeout: 60000 })
@@ -38,8 +43,12 @@ export class LockNamespace {
      */
     async acquire(options?: LockOptions): Promise<Lock> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'lock:acquire', 'lock.acquire');
+
         const lockManager = getLockManager();
         const identityStr = formatIdentity(this.#state.identity);
+
+        await ensureTracking(this.#state);
 
         return lockManager.acquire(
             this.#kysely as unknown as Kysely<NoormDatabase>,
@@ -60,6 +69,8 @@ export class LockNamespace {
      */
     async release(): Promise<void> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'lock:acquire', 'lock.release');
+
         const lockManager = getLockManager();
         const identityStr = formatIdentity(this.#state.identity);
 
@@ -75,6 +86,9 @@ export class LockNamespace {
     /**
      * Get current lock status.
      *
+     * A read: it clears an expired lock only for a caller that may acquire one, and
+     * refuses a config hidden from the channel.
+     *
      * @example
      * ```typescript
      * const status = await ctx.noorm.lock.status()
@@ -82,13 +96,22 @@ export class LockNamespace {
      */
     async status(): Promise<LockStatus> {
 
-        const lockManager = getLockManager();
+        const { config, options } = this.#state;
+        const channel = options.channel ?? 'user';
+        const mayAcquire = checkConfigPolicy(channel, config, 'lock:acquire');
 
-        return lockManager.status(
-            this.#kysely as unknown as Kysely<NoormDatabase>,
-            this.#state.config.name,
-            this.#state.config.connection.dialect,
-        );
+        if (!isVisibleToChannel(config.access, channel)) {
+
+            throw new ProtectedConfigError(config.name, 'lock.status', mayAcquire.blockedReason);
+
+        }
+
+        const db = this.#kysely as unknown as Kysely<NoormDatabase>;
+        const { dialect } = config.connection;
+
+        await requireCurrentSchema(db, dialect, readerRemedy('lock status'));
+
+        return getLockManager().status(db, config.name, dialect, { removeExpired: mayAcquire.allowed });
 
     }
 
@@ -104,8 +127,12 @@ export class LockNamespace {
      */
     async withLock<T>(fn: () => Promise<T>, options?: LockOptions): Promise<T> {
 
+        checkProtectedConfig(this.#state.config, this.#state.options, 'lock:acquire', 'lock.withLock');
+
         const lockManager = getLockManager();
         const identityStr = formatIdentity(this.#state.identity);
+
+        await ensureTracking(this.#state);
 
         return lockManager.withLock(
             this.#kysely as unknown as Kysely<NoormDatabase>,

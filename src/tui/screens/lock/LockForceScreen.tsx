@@ -26,7 +26,7 @@ import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.j
 import { useAbortableTask, useAsyncEffect } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
 import { getLockManager } from '../../../core/lock/index.js';
-import { confirmationPhraseFor } from '../../../core/policy/index.js';
+import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { isConfigGuarded, STOPPED_WAITING_MESSAGE } from '../../utils/index.js';
 
 /**
@@ -45,8 +45,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
     const { isFocused } = useFocusScope('LockForce');
     const { activeConfig, activeConfigName } = useAppContext();
     const { showToast } = useToast();
-    // Locks have no matrix permission — guarded() drives confirm UX only,
-    // never enforcement (docs/spec/config-access-roles.md#permissions-and-matrix).
+    const check = activeConfig ? checkConfigPolicy('user', activeConfig, 'lock:force') : null;
+    const denied = check?.allowed === false;
     const isGuarded = activeConfig ? isConfigGuarded(activeConfig) : false;
 
     const [phase, setPhase] = useState<Phase>('loading');
@@ -66,6 +66,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             return;
 
         }
+
+        if (denied) return;
 
         // The first pass runs before the app context has resolved a config and
         // latches the error above. Clearing it here matters most exactly when
@@ -136,7 +138,7 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         setPhase('confirm');
 
-    }, [activeConfig, activeConfigName]);
+    }, [activeConfig, activeConfigName, denied]);
 
     // Execute force release
     const handleConfirm = useCallback(async () => {
@@ -210,6 +212,14 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
 
         if (!isFocused) return;
 
+        if (check && !check.allowed) {
+
+            if (key.return || key.escape) back();
+
+            return;
+
+        }
+
         if ((phase === 'loading' || phase === 'running') && key.escape) {
 
             handleCancelBusy();
@@ -252,6 +262,22 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
             <Panel title="Force Release Lock" borderColor="red" paddingX={1} paddingY={1}>
                 <Text color="red">No active configuration selected.</Text>
             </Panel>
+        );
+
+    }
+
+    if (check && !check.allowed) {
+
+        return (
+            <Box flexDirection="column" gap={1}>
+                <Panel title="Force Release Lock" borderColor="red" paddingX={1} paddingY={1}>
+                    <Text color="red">{check.blockedReason}</Text>
+                </Panel>
+
+                <Box flexWrap="wrap" columnGap={2}>
+                    <Text dimColor>[Enter/Esc] Back</Text>
+                </Box>
+            </Box>
         );
 
     }
@@ -324,8 +350,8 @@ export function LockForceScreen({ params: _params }: ScreenProps): ReactElement 
                 </Panel>
 
                 <SmartConfirm
-                    requiresConfirmation={isGuarded}
-                    confirmationPhrase={isGuarded ? confirmationPhraseFor(activeConfigName ?? 'unknown') : undefined}
+                    requiresConfirmation={isGuarded || check?.requiresConfirmation === true}
+                    confirmationPhrase={check?.confirmationPhrase}
                     configName={activeConfigName ?? 'unknown'}
                     action="force-release lock for"
                     message="Force-release this lock?"

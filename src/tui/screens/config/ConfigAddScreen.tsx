@@ -33,6 +33,7 @@ import { validateAccessRoles } from '../../../core/config/resolver.js';
 import {
     getErrorMessage,
     STOPPED_WAITING_MESSAGE,
+    SAVE_UNVERIFIED,
     validateConfigName,
     validatePort,
     buildConnectionConfig,
@@ -56,6 +57,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
     const [busy, setBusy] = useState(false);
     const [busyLabel, setBusyLabel] = useState('Testing connection...');
     const [connectionError, setConnectionError] = useState<string | null>(null);
+    const [testFailed, setTestFailed] = useState(false);
 
     // Only the connection test can be cancelled. The save that follows is a
     // local write, and offering a hatch over it would let the screen report
@@ -153,9 +155,8 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
         },
     ];
 
-    // Handle form submission
-    const handleSubmit = useCallback(
-        async (values: FormValues) => {
+    const save = useCallback(
+        async (values: FormValues, verify: boolean) => {
 
             if (!stateManager) {
 
@@ -170,29 +171,36 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             // Build connection config
             const connectionConfig = buildConnectionConfig(values, dialect);
 
-            // Test connection first (server only - database may not exist yet)
             const controller = task.start();
 
             setBusy(true);
-            setBusyLabel('Testing connection...');
             setConnectionError(null);
-            setCancellable(true);
+            setTestFailed(false);
 
-            const result = await testConnection(connectionConfig, {
-                testServerOnly: true,
-                signal: controller.signal,
-            });
+            if (verify) {
 
-            // Cancelled or superseded: whoever did that already owns the
-            // screen, and a driver that answered anyway must not undo it.
-            if (!task.isCurrent(controller)) return;
+                setBusyLabel('Testing connection...');
+                setCancellable(true);
 
-            if (!result.ok) {
+                // Server only - the database may not exist yet.
+                const result = await testConnection(connectionConfig, {
+                    testServerOnly: true,
+                    signal: controller.signal,
+                });
 
-                setConnectionError(result.error ?? 'Connection failed');
-                setBusy(false);
+                // Cancelled or superseded: whoever did that already owns the
+                // screen, and a driver that answered anyway must not undo it.
+                if (!task.isCurrent(controller)) return;
 
-                return;
+                if (!result.ok) {
+
+                    setConnectionError(result.error ?? 'Connection failed');
+                    setTestFailed(true);
+                    setBusy(false);
+
+                    return;
+
+                }
 
             }
 
@@ -295,7 +303,8 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
         <Panel title="Add Configuration" paddingX={2} paddingY={1}>
             <Form
                 fields={fields}
-                onSubmit={handleSubmit}
+                onSubmit={(values) => save(values, true)}
+                altSubmit={{ ...SAVE_UNVERIFIED, suggest: testFailed, onSubmit: (values) => save(values, false) }}
                 onCancel={handleCancel}
                 submitLabel="Create Config"
                 focusLabel="ConfigAddForm"

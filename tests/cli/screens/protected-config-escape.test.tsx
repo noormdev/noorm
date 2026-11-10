@@ -1,4 +1,3 @@
-/** Runs in its own CI process: init screen tests' state/manager.js mock persists for the rest of the process. */
 import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

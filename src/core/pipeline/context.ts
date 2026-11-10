@@ -8,7 +8,7 @@ import { buildRunContext } from '../runner/context.js';
 import type { NoormDatabase } from '../shared/tables.js';
 import type { StateManager } from '../state/index.js';
 import { getPackageVersion } from '../state/version.js';
-import { ensureSchemaVersion } from '../version/index.js';
+import { prepareTrackingSchema } from '../version/index.js';
 import type { PipelineContext } from './types.js';
 
 /** What a caller already holds when it needs a {@link PipelineContext}; the pipeline-only fields are derived from it. */
@@ -25,14 +25,15 @@ export interface PipelineContextInput {
     yes?: boolean;
     signal?: AbortSignal;
     disposeMemoryConnection?: () => Promise<void>;
+    dryRun?: boolean;
 }
 
-/** Migrates the tracking tables, then builds the run context and pipeline-only fields; an abort during migration rejects before secrets are read. */
+/** Prepares the tracking tables as the role and `dryRun` allow; an abort during migration rejects before secrets are read. */
 export async function buildPipelineContext(input: PipelineContextInput): Promise<PipelineContext> {
 
     const { db, dialect, config } = input;
 
-    await ensureSchemaVersion(db, dialect);
+    await prepareTrackingSchema(db, dialect, { channel: input.channel, config, dryRun: input.dryRun });
     input.signal?.throwIfAborted();
 
     const base = await buildRunContext({

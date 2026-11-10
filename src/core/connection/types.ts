@@ -12,6 +12,41 @@ import type { PeerCertificate } from 'node:tls';
  */
 export type Dialect = 'postgres' | 'mysql' | 'sqlite' | 'mssql';
 
+/** Pool options every pooled dialect honors. */
+export interface PoolOpts {
+    min?: number;
+    max?: number;
+    /**
+     * Milliseconds a connection may sit idle before the pool closes it. Zero
+     * disables the timeout on PostgreSQL; MySQL and MSSQL require a positive value.
+     */
+    idleTimeoutMs?: number;
+    /** @deprecated Alias of `idleTimeoutMs`. Setting both to different values is an error. */
+    idleTimeoutMillis?: number;
+}
+
+export interface PgPoolOpts extends PoolOpts {
+    /** Milliseconds a connection may live before the pool replaces it. */
+    maxLifetimeMs?: number;
+    /** Checkouts after which the pool replaces a connection. */
+    maxUses?: number;
+    /** Let the process exit while only idle connections remain. */
+    allowExitOnIdle?: boolean;
+}
+
+/** Options of the Tarn pool behind MySQL and MSSQL. */
+export interface TarnPoolOpts extends PoolOpts {
+    /** Milliseconds a checkout may wait for a free connection. */
+    acquireTimeoutMs?: number;
+    /** Milliseconds opening one physical connection may take. */
+    createTimeoutMs?: number;
+    /** Milliseconds between sweeps that close idle connections. */
+    reapIntervalMs?: number;
+}
+
+export type MssqlPoolOpts = TarnPoolOpts;
+export type MysqlPoolOpts = TarnPoolOpts;
+
 /**
  * Database connection configuration.
  *
@@ -49,13 +84,8 @@ export interface ConnectionConfig {
     // SQLite specific - can use instead of database
     filename?: string;
 
-    // Pool settings
-    pool?: {
-        min?: number;
-        max?: number;
-        /** PostgreSQL idle pool timeout in milliseconds; zero disables it. */
-        idleTimeoutMillis?: number;
-    };
+    /** Each dialect rejects the options it cannot honor; `DialectConnectionConfig` types this per dialect. */
+    pool?: PgPoolOpts & TarnPoolOpts;
 
     /**
      * Milliseconds a single connection attempt may spend before the driver
@@ -73,8 +103,17 @@ export interface ConnectionConfig {
     queryTimeoutMs?: number;
     /** PostgreSQL session application_name. */
     applicationName?: string;
-    /** Enable TCP keepalive on PostgreSQL sockets. */
+    /** TCP keepalive on PostgreSQL and MySQL sockets; `false` turns it off, including MySQL's default. */
     keepAlive?: boolean;
+    /**
+     * Milliseconds a PostgreSQL or MySQL socket stays idle before the first
+     * TCP keepalive probe. Implies `keepAlive` unless that is `false`.
+     *
+     * Without it the first probe waits for the operating system default,
+     * about two hours, so a socket left half-open by a failover is found
+     * hours late.
+     */
+    keepAliveInitialDelayMs?: number;
 
     // SSL
     ssl?:
@@ -97,10 +136,61 @@ export interface ConnectionConfig {
     tlsServerName?: string;
 }
 
-/** Runtime-only credentials and TLS hooks; never part of persisted configuration. */
+/**
+ * A `ConnectionConfig` whose `pool` is typed for its dialect, so an option the
+ * dialect cannot honor is a compile error instead of a validation error.
+ *
+ * @example
+ * ```typescript
+ * const config: DialectConnectionConfig = {
+ *     dialect: 'postgres',
+ *     host: 'localhost',
+ *     database: 'myapp',
+ *     pool: { max: 20, maxUses: 5_000 },
+ * }
+ * ```
+ */
+export type DialectConnectionConfig =
+    | PostgresConnectionConfig
+    | MysqlConnectionConfig
+    | MssqlConnectionConfig
+    | SqliteConnectionConfig;
+
+type ForDialect<D extends Dialect, Pool> = Omit<ConnectionConfig, 'dialect' | 'pool'> & { dialect: D; pool?: Pool };
+
+export type PostgresConnectionConfig = ForDialect<'postgres', PgPoolOpts>;
+export type MysqlConnectionConfig = ForDialect<'mysql', MysqlPoolOpts>;
+export type MssqlConnectionConfig = ForDialect<'mssql', MssqlPoolOpts>;
+/** SQLite has no pool; the size is accepted because resolved configs carry it for every dialect. */
+export type SqliteConnectionConfig = ForDialect<'sqlite', Pick<PoolOpts, 'min' | 'max'>>;
+
+/** Runtime-only credentials, TLS hooks, and driver options; never part of persisted configuration. */
 export interface RuntimeConnectionOptions {
     password?: () => string | Promise<string>;
     checkServerIdentity?: (hostname: string, cert: PeerCertificate) => Error | undefined;
+    /**
+     * Options merged into what noorm hands the driver: the `pg` Pool config,
+     * the mysql2 connection options, or the tedious `options` block. They
+     * override flat config fields and `pool`. Keys that select the target,
+     * credentials, or TLS are rejected; SQLite accepts none.
+     */
+    driver?: Record<string, unknown>;
+}
+
+/**
+ * The one connection a `withConnection` callback is pinned to.
+ *
+ * @example
+ * ```typescript
+ * await ctx.withConnection(async (db, connection) => {
+ *     const [, err] = await attempt(() => doWork(db));
+ *     if (err) connection.discard();
+ * })
+ * ```
+ */
+export interface PinnedConnection {
+    /** Close this connection when the callback ends instead of returning it to the pool. Does nothing on SQLite. */
+    discard(): void;
 }
 
 /**
@@ -110,4 +200,6 @@ export interface ConnectionResult {
     db: Kysely<unknown>;
     dialect: Dialect;
     destroy: () => Promise<void>;
+    /** Run `fn` on one pinned connection it may discard. Absent on SQLite, which has no pool. */
+    withConnection?: <T>(fn: (db: Kysely<unknown>, connection: PinnedConnection) => Promise<T>) => Promise<T>;
 }

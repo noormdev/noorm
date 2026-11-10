@@ -277,7 +277,13 @@ interface Config {
         pool?: {
             min?: number;
             max?: number;
-            idleTimeoutMillis?: number; // PostgreSQL idle-client lifetime
+            idleTimeoutMs?: number;     // PostgreSQL (0 disables), MySQL and MSSQL (must be > 0)
+            maxLifetimeMs?: number;     // PostgreSQL only
+            maxUses?: number;           // PostgreSQL only
+            allowExitOnIdle?: boolean;  // PostgreSQL only
+            acquireTimeoutMs?: number;  // MySQL and MSSQL only
+            createTimeoutMs?: number;   // MySQL and MSSQL only
+            reapIntervalMs?: number;    // MySQL and MSSQL only
         };
         connectTimeoutMs?: number;
         tlsServerName?: string;
@@ -285,16 +291,17 @@ interface Config {
         queryTimeoutMs?: number;
         applicationName?: string;
         keepAlive?: boolean;
+        keepAliveInitialDelayMs?: number; // PostgreSQL and MySQL only
     };
     identity?: string;              // Optional identity override
 }
 ```
 
-The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. Runtime password and TLS callbacks belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
+The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. A pool or keepalive option the dialect does not support fails validation, as does an unknown pool key or a `pool.min` above `pool.max`. `pool.idleTimeoutMillis` is a deprecated alias of `pool.idleTimeoutMs`. Runtime password and TLS callbacks and `driver` options belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
 
 ## Stage Constraints
 
-Stage defaults fill fields below stored, environment, and inline values. A stage-completeness check reports a false `isTest` override when the stage requires `true`; `requireTest` checks the final resolved flag. At policy-check time, `defaults.protected: true` caps each effective permission against the original operator matrix for users or viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the ceiling and assigned role names do not change. See [stage behavior](https://noorm.dev/guide/environments/stages) for TUI seeding and [config commands](https://noorm.dev/headless#config-create) for explicit creation and sync.
+Stage defaults fill fields below stored, environment, and inline values. A stage-completeness check reports a false `isTest` override when the stage requires `true`; `requireTest` checks the final resolved flag. At policy-check time, `defaults.protected: true` caps each effective permission against the original operator matrix for users or viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the ceiling and assigned role names do not change. The one exception is an `isTest` config, which lifts the ceiling; see the test-database paragraph in [SKILL.md](../SKILL.md#configuration-resolution). See [stage behavior](https://noorm.dev/guide/environments/stages) for TUI seeding and [config commands](https://noorm.dev/headless#config-create) for explicit creation and sync.
 
 Create stored configs with `noorm config create --stage staging --name review` or `noorm config create --all`; overwrites require literal `--force --yes` and authorization. Creation does not implicitly persist stage or environment passwords. Use `noorm config sync --stage staging --name review --json` to preview current defaults, then `--yes` to apply without a prompt. These aliases require an unprotected stage; a protected stage requires the config name to match the stage name because no stage association is stored. Sync preserves passwords and absent fields, refuses a different dialect, and requires `config:write`. Stage access assignments may name project roles and remain subject to validation and protected-stage permission ceilings.
 

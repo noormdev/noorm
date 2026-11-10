@@ -9,8 +9,7 @@
  *
  * Creates:
  * - db/sql/, db/changes/, db/AGENTS.md, db/CLAUDE.md (default layout only)
- * - .noorm/settings.yml
- * - .noorm/state/state.enc
+ * - .noorm/settings.yml and .noorm/state/ (state.enc is written by the first config save)
  * - Keypair in ~/.noorm/
  */
 import { useState, useEffect, useCallback } from 'react';
@@ -33,9 +32,8 @@ import { IdentitySetup, type IdentitySetupValues } from './IdentitySetup.js';
 import { ProjectSetup } from './ProjectSetup.js';
 
 import {
-    createCryptoIdentity,
-    createIdentityForExistingKeys,
-    hasKeyFiles,
+    ensureIdentity,
+    hasPrivateKeyFile,
     loadIdentityMetadata,
 } from '../../../core/identity/index.js';
 import { SettingsManager } from '../../../core/settings/manager.js';
@@ -90,7 +88,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
     // Identity values (from identity setup step)
     const [identityValues, setIdentityValues] = useState<IdentitySetupValues | null>(null);
 
-    // Whether identity key files already exist
+    // Whether a private key already exists; it is kept, with or without its .pub
     const [hasExistingKeys, setHasExistingKeys] = useState(false);
 
     // Whether identity metadata already exists (for reusing identity across projects)
@@ -98,6 +96,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
     // Progress items for creation step
     const [progressItems, setProgressItems] = useState<StatusItem[]>([]);
+    const [createdFiles, setCreatedFiles] = useState<string[]>([]);
 
     // Whether to add config after init
     const [shouldAddConfig, setShouldAddConfig] = useState(false);
@@ -120,8 +119,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
             setInitPaths(existing?.paths ?? DEFAULT_PATH_CONFIG);
 
-            // Check if identity key files exist
-            const keysExist = await hasKeyFiles();
+            const keysExist = await hasPrivateKeyFile();
             setHasExistingKeys(keysExist);
 
             // Check if identity metadata exists (allows reusing identity across projects)
@@ -234,7 +232,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             const noormPath = join(projectRoot, '.noorm');
             const statePath = join(noormPath, 'state');
 
-            scaffoldDbLayout(projectRoot, initPaths);
+            const created = scaffoldDbLayout(projectRoot, initPaths);
 
             mkdirSync(noormPath, { recursive: true });
             mkdirSync(statePath, { recursive: true });
@@ -246,38 +244,37 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             if (!existsSync(noormGitignorePath)) {
 
                 writeFileSync(noormGitignorePath, 'state/\n');
+                created.push('.noorm/.gitignore');
 
             }
 
             updateItem(0, { status: 'success' });
 
-            // Step 2: Generate keypair (if needed)
-            const keypairIndex = 1;
+            // Step 2: Identity. The row is only listed when a keypair is generated.
+            const markKeypair = (update: Partial<StatusItem>) => {
+
+                if (!hasExistingKeys) updateItem(1, update);
+
+            };
             let privateKey: string | undefined;
 
-            if (!hasExistingKeys && identityValues) {
+            if (identityValues) {
 
-                // No keys exist - generate new keypair
-                updateItem(keypairIndex, { status: 'running' });
+                markKeypair({ status: 'running' });
 
-                const [result, err] = await attempt(() =>
-                    createCryptoIdentity({
-                        name: identityValues.name,
-                        email: identityValues.email,
-                        machine: identityValues.machine,
-                    }),
-                );
+                const [ensured, err] = await attempt(() => ensureIdentity(identityValues));
 
                 if (err) {
 
-                    updateItem(keypairIndex, { status: 'error', detail: err.message });
+                    markKeypair({ status: 'error', detail: err.message });
                     throw err;
 
                 }
 
-                privateKey = result!.keypair.privateKey;
+                privateKey = ensured.privateKey;
+                if (ensured.createdKeys) created.push('~/.noorm/identity.key', '~/.noorm/identity.pub');
 
-                updateItem(keypairIndex, { status: 'success' });
+                markKeypair({ status: 'success' });
 
             }
 
@@ -287,6 +284,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
             const settingsManager = new SettingsManager(projectRoot);
             await settingsManager.init(force);
+            created.push('.noorm/settings.yml');
 
             updateItem(settingsIndex, { status: 'success' });
 
@@ -298,26 +296,6 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                 privateKey,
             });
             await stateManager.load();
-
-            // Identity is saved to global ~/.noorm/ by createCryptoIdentity() and
-            // createIdentityForExistingKeys(). We just need to refresh the app context
-            // to pick it up. No per-project state.identity needed.
-            //
-            // Scenarios:
-            // 1. No keys existed, user filled form: createCryptoIdentity() saved identity globally
-            // 2. Keys existed but no metadata, user filled form: createIdentityForExistingKeys() saved metadata
-            // 3. Keys + metadata existed: Nothing to do, identity already exists globally
-            if (hasExistingKeys && identityValues && !hasExistingMetadata) {
-
-                // Case 2: Keys exist but user filled form (metadata was missing)
-                // Create identity using existing public key - saves metadata globally
-                await createIdentityForExistingKeys({
-                    name: identityValues.name,
-                    email: identityValues.email,
-                    machine: identityValues.machine,
-                });
-
-            }
 
             updateItem(stateIndex, { status: 'success' });
 
@@ -346,6 +324,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
             }
 
             updateItem(gitignoreIndex, { status: 'success' });
+            setCreatedFiles(created);
 
             // Emit init complete event
             observer.emit('init:complete', {
@@ -374,7 +353,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
 
         setStep('complete');
 
-    }, [projectRoot, identityValues, hasExistingKeys, hasExistingMetadata, force, refresh, initPaths]);
+    }, [projectRoot, identityValues, hasExistingKeys, force, refresh, initPaths]);
 
     // Handle project setup - add config
     const handleAddConfig = useCallback(async () => {
@@ -497,17 +476,7 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                         <Box marginTop={1} flexDirection="column">
                             <Text dimColor>Created:</Text>
                             <Box flexDirection="column" marginLeft={2}>
-                                <Text>• sql/.gitkeep</Text>
-                                <Text>• changes/.gitkeep</Text>
-                                <Text>• .noorm/settings.yml</Text>
-                                <Text>• .noorm/.gitignore</Text>
-                                <Text>• .noorm/state/state.enc</Text>
-                                {!hasExistingKeys && (
-                                    <>
-                                        <Text>• ~/.noorm/identity.key</Text>
-                                        <Text>• ~/.noorm/identity.pub</Text>
-                                    </>
-                                )}
+                                {createdFiles.map((file) => <Text key={file}>• {file}</Text>)}
                             </Box>
                         </Box>
                         {shouldAddConfig && (

@@ -55,13 +55,29 @@ const ctx = await createContext<DB, Procs, Funcs, Tvfs>(options);
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `config` | `string` | — | Stored name, then `NOORM_CONFIG`, then the active config only without `connection`. Inline input alone does not inherit the active config |
+| `config` | `string \| false` | — | Stored name, then `NOORM_CONFIG`, then the active config only without `connection`. Inline input alone does not inherit the active config. `false` uses no stored config and ignores `NOORM_CONFIG` and the active config |
+| `name` | `string` | `NOORM_NAME`, then `__inline__` / `__env__` | Names a context that uses no stored config; reported as `ctx.noorm.config.name` and `configName` on events. Also the key for change history, run checksums, locks and local secrets, so keep one name per database. Throws when a stored config is selected or has that name; a `NOORM_NAME` that a stored config has throws too. A stage with that name still applies its protected ceiling and `isTest: false`; its defaults need `stage` |
 | `connection` | `CreateContextOptions['connection']` | — | Highest-priority, non-persisted connection fields and runtime hooks |
 | `projectRoot` | `string` | `process.cwd()` | Project root directory |
 | `requireTest` | `boolean` | `false` | Refuse if `config.isTest` is not `true`. Throws `RequireTestError` |
 | `channel` | `Channel` | `'user'` | Which caller channel this context represents for access-policy checks (`'user'` or `'agent'`). Destructive ops throw `ProtectedConfigError` when the config's role for this channel denies or can't confirm the action |
 | `stage` | `string` | — | Stage name for stage defaults from `settings.yml` |
 | `yes` | `boolean` | `false` | Pre-confirm `confirm` permissions on the user channel only |
+
+`NOORM_CONFIG=<stored>` with an inline `connection` uses the stored config as the base with the inline fields on top.
+
+### Connection options
+
+| Field | Dialects | Notes |
+|---|---|---|
+| `connection.pool.min`, `.max` | all | Defaults 0 and 10. `min` above `max` fails validation. Unused on SQLite |
+| `connection.pool.idleTimeoutMs` | PostgreSQL, MySQL, MSSQL | Zero disables it on PostgreSQL. MySQL and MSSQL reject zero. `idleTimeoutMillis` is a deprecated alias |
+| `connection.pool.maxLifetimeMs`, `.maxUses`, `.allowExitOnIdle` | PostgreSQL | `maxLifetimeMs` is in milliseconds; any integer |
+| `connection.pool.acquireTimeoutMs`, `.createTimeoutMs`, `.reapIntervalMs` | MySQL, MSSQL | Positive integers. Both dialects pool through Tarn. Unset acquire and create timeouts default to 30000, or `connectTimeoutMs` plus 5000 when larger |
+| `connection.keepAliveInitialDelayMs` | PostgreSQL, MySQL | Idle ms before the first TCP keepalive probe. Rejected on MSSQL and SQLite. `keepAlive: false` turns keepalive off on both |
+| `connection.driver` | PostgreSQL, MySQL, MSSQL | Inline only. Object merged into the driver's own options (`pg` Pool config, mysql2 connection options, tedious `options` block). Not stored and not in noorm's events, but a driver's own validation error can quote a value. Keys that select the target, credentials, or TLS (`host`, `port`, `database`, `user`, `password`, `ssl`, `__proto__`, and dialect equivalents) throw from `createContext()`. Throws on SQLite |
+
+An option the dialect cannot honor fails validation, and so does an unknown pool key; neither is ignored. Pool options and `keepAliveInitialDelayMs` also work in stored configs and as `NOORM_CONNECTION_POOL_<option>` / `NOORM_CONNECTION_keepAliveInitialDelayMs` (keep the camelCase). Pool types are exported: `PoolOpts`, `PgPoolOpts`, `TarnPoolOpts`, `MysqlPoolOpts`, `MssqlPoolOpts`, plus `InlineConnection` and `ConnectionRetryOptions`.
 
 The [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options) owns synthetic names, stage merging, callback types and physical-connection lifecycle, PostgreSQL TLS/session controls, and failure handling. Read it before adding token-based authentication or tunnel TLS options.
 
@@ -90,7 +106,7 @@ await ctx.connect();      // Must call before any queries
 await ctx.disconnect();   // Must call when done — releases connection pool
 ```
 
-For callback-backed connections, use the [runtime credential error contract](https://noorm.dev/reference/sdk#runtime-credentials) rather than assuming static-password retries or translated errors.
+A failed `connect()` throws `DatabaseConnectionError` (exported; `serverCode`, `serverMessage`, original error as `cause`) when noorm can explain the failure. With a password callback, an error the callback itself throws comes back as the same object, and noorm does not retry the connect. See the [runtime credential error contract](https://noorm.dev/reference/sdk#runtime-credentials).
 
 ### Properties
 
@@ -144,6 +160,21 @@ const sessions = await ctx.transaction(async (trx) => {
 ```
 
 `trx.withSchema(...)` and other instances derived from `trx` have no `proc`/`func`/`tvf`.
+
+### Pinned Connections
+
+```typescript
+// One connection for the whole callback (session-level locks, session settings)
+await ctx.withConnection(async (db, connection) => {
+    await sql`select pg_advisory_lock(${key})`.execute(db);
+    const [, err] = await attempt(() => work(db));
+    if (err) { connection.discard(); throw err; }   // close it on release instead of reusing it
+});
+```
+
+- `discard()` closes the physical connection when the callback ends, which ends the server session and frees its session-level locks.
+- A thrown error alone does not discard. `discard()` is a no-op on SQLite.
+- `disconnect()` during a callback rejects it with `DisconnectedError`.
 
 ### Stored Procedures
 
@@ -362,7 +393,7 @@ const overview = await ctx.noorm.db.overview(); // Counts of all object types
 // Destructive (guarded by config.access[channel] via checkPolicy — throws ProtectedConfigError on deny/unconfirmable)
 await ctx.noorm.db.truncate();   // Wipe data, keep schema
 await ctx.noorm.db.teardown();   // Drop all objects
-await ctx.noorm.db.reset();      // teardown() + build() — full schema rebuild
+await ctx.noorm.db.reset();      // teardown() + build() — returns the build result, throws ResetBuildError if the rebuild fails
 
 // Preview
 const preview = await ctx.noorm.db.previewTeardown(); // What would be dropped
@@ -375,10 +406,11 @@ const preview = await ctx.noorm.db.previewTeardown(); // What would be dropped
 Tool-level locks managed by noorm (not database engine locks like `SELECT FOR UPDATE`). Any noorm user targeting the same database will be blocked by this lock. Used to prevent concurrent schema operations across noorm instances.
 
 ```typescript
+// acquire, withLock and release need the `lock:acquire` permission: viewer is denied, operator and admin allowed.
 // Manual lifecycle
 const lock = await ctx.noorm.lock.acquire({ timeout: 60_000 });
 await ctx.noorm.lock.release();
-const status = await ctx.noorm.lock.status(); // { isLocked, lock }
+const status = await ctx.noorm.lock.status(); // { isLocked, lock }; ungated, never creates or migrates tables
 
 // Auto-release callback (recommended)
 await ctx.noorm.lock.withLock(async () => {
@@ -560,7 +592,8 @@ beforeAll(async () => {
     ctx = await createContext<MyDB>({ config: 'test', requireTest: true });
     await ctx.connect();
 
-    // Full schema rebuild: drops everything, rebuilds from SQL files
+    // Full schema rebuild: drops everything, rebuilds from SQL files.
+    // Works on a brand-new database (no prior `noorm run build`) and throws if the rebuild fails.
     await ctx.noorm.db.reset();
 });
 

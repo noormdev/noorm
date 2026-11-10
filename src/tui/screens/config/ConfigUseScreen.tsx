@@ -83,13 +83,11 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 if (!settingsManager) throw new Error('Settings are not available');
-                withConfigPolicy(config, new SettingsProvider(settingsManager));
-
+                const bound = withConfigPolicy(config, new SettingsProvider(settingsManager));
 
                 await stateManager.setActiveConfig(configName);
 
-                // Sync identity with the database (non-blocking)
-                const syncResult = await syncIdentityWithConfig(config);
+                const syncResult = await syncIdentityWithConfig(bound, 'user');
 
                 if (syncResult.ok && syncResult.knownUsers?.length) {
 

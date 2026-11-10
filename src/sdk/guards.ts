@@ -11,6 +11,7 @@ import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { CreateContextOptions } from './types.js';
 import type { ContextState } from './state.js';
+import type { BatchResult } from '../core/runner/index.js';
 
 // ─────────────────────────────────────────────────────────────
 // Error Classes
@@ -34,6 +35,57 @@ export class RequireTestError extends Error {
     constructor(public readonly configName: string) {
 
         super(`Config "${configName}" does not have isTest: true`);
+
+    }
+
+}
+
+/**
+ * Error thrown when `db.reset()` tore the database down and the rebuild did not succeed.
+ *
+ * The database is left without its schema, so a caller must not continue as if reset worked.
+ *
+ * @example
+ * ```typescript
+ * const [, err] = await attempt(() => ctx.noorm.db.reset())
+ * if (err instanceof ResetBuildError) console.error(err.result.error)
+ * ```
+ */
+export class ResetBuildError extends Error {
+
+    override readonly name = 'ResetBuildError' as const;
+
+    constructor(public readonly result: BatchResult) {
+
+        const failed = result.files.find((file) => file.status === 'failed');
+        const reason = failed
+            ? `${failed.filepath}: ${failed.error ?? result.status}`
+            : result.error ?? `build status "${result.status}"`;
+
+        super(`Reset tore down the database but the rebuild failed: ${reason}`);
+
+    }
+
+}
+
+/**
+ * Error thrown when `disconnect()` ran while a `withConnection` callback was still running.
+ *
+ * The pinned connection is closed, so shutdown code can tell this apart from a query failure.
+ *
+ * @example
+ * ```typescript
+ * const [, err] = await attempt(() => ctx.withConnection(work))
+ * if (err instanceof DisconnectedError) return
+ * ```
+ */
+export class DisconnectedError extends Error {
+
+    override readonly name = 'DisconnectedError' as const;
+
+    constructor() {
+
+        super('disconnect() was called while a withConnection callback was running.');
 
     }
 

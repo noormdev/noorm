@@ -76,7 +76,7 @@ describe('cli: noorm config export — output file mode', () => {
         const config: Config = {
             name: CONFIG_NAME,
             type: 'local',
-            isTest: true,
+            isTest: false,
             access: { user: 'admin', agent: 'admin' },
             connection: { dialect: 'sqlite', database: join(tmpDir, 'target.db') },
         };
@@ -141,7 +141,7 @@ describe('cli: noorm config export — output file mode', () => {
             await manager.setConfig(CONFIG_NAME, {
                 name: CONFIG_NAME,
                 type: 'local',
-                isTest: true,
+                isTest: false,
                 access: { user: 'viewer', agent: false },
                 connection: {
                     dialect: 'sqlite',

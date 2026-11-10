@@ -21,7 +21,7 @@ Infra owns all of [`docs/`](..): user guides, contributor pages, and the ignatiu
 
 ### Package build order
 
-`build:packages` bundles the CLI before the SDK, then generates the SDK declarations independently of tsup: `dts-bundle-generator` writes `index.d.cts` and [`scripts/build.mjs`](../../scripts/build.mjs) writes `index.d.ts` itself.
+`build:packages` bundles the CLI before the SDK, then generates the SDK declarations independently of tsup: `dts-bundle-generator` writes `index.d.ts` and [`scripts/build.mjs`](../../scripts/build.mjs) writes `index.d.cts` itself.
 
 ```mermaid
 flowchart TD
@@ -32,8 +32,8 @@ flowchart TD
     K --> T["dts-bundle-generator"]
     S --> CO["packages/cli/dist/<br/>index.js"]
     K --> KO["packages/sdk/dist/<br/>index.js, index.cjs"]
-    T --> DC["packages/sdk/dist/<br/>index.d.cts"]
-    B --> W["writeFile<br/>packages/sdk/dist/<br/>index.d.ts"]
+    T --> DC["packages/sdk/dist/<br/>index.d.ts"]
+    B --> W["writeFile<br/>packages/sdk/dist/<br/>index.d.cts"]
 ```
 
 The CLI and prompts tsup configs share the `markdownText` esbuild plugin from [`tsup.markdown-plugin.ts`](../../tsup.markdown-plugin.ts), which reads each `.md` import with the `text` loader. The CLI bundle targets Node 22, uses ESM, injects the CLI package version, and bundles JavaScript dependencies. Native or runtime-specific modules (`better-sqlite3`, `bun:sqlite`, `pg-native`) and optional `react-devtools-core` remain external. `packages/cli/dist` is not published; the CI example jobs reach it through a Node wrapper.
@@ -48,7 +48,7 @@ flowchart TD
     P["@noormdev/sdk"] --> E{"exports"}
     E -->|import types| T["dist/index.d.ts"]
     E -->|require types| CT["dist/index.d.cts"]
-    T --> CT
+    CT --> T
     E -->|import| F["dist/index.js"]
     E -->|require or default| R["dist/index.cjs"]
     F --> R
@@ -61,7 +61,7 @@ flowchart TD
 
 The manifest requires Node `>=22.13`. CommonJS consumers load the `.cjs` runtime directly; ESM consumers load its generated named-export facade. Driver wrappers defer `require()` until their lazy dialect initializers run; imports of template file URLs that aren't string literals retain native ESM loading. The facade is generated from the bundle's exports on every SDK build, including direct tsup invocation.
 
-Declarations share the same boundary: `index.d.cts` holds the canonical types, and `index.d.ts` re-exports `./index.cjs`. Mixed CommonJS type imports and dynamic ESM imports therefore refer to the same private members in `Context` and its namespaces.
+Declarations invert the runtime boundary. The runtime is canonical CommonJS with an ESM facade, while `index.d.ts` is the canonical ESM-format declaration and `index.d.cts` re-exports `./index.js` ([`scripts/build.mjs`](../../scripts/build.mjs)). Mixed CommonJS type imports and dynamic ESM imports therefore refer to the same private members in `Context` and its namespaces. The canonical file is ESM-format because a consumer resolves a bare `kysely` import from it as ESM. Kysely's CommonJS and ESM classes clash on `#private` members, and node10 resolution reaches the same file through `types`.
 
 ### CI execution boundary
 
@@ -80,15 +80,14 @@ flowchart TD
 
 The `build` job provisions PostgreSQL 17, MySQL 8.0, and SQL Server 2022, installs dependencies with the frozen lockfile, and runs lint, type checking, and the TypeScript build. It invokes the serial test processes in the table below. This separation preserves the workflow's test isolation around Bun's process-global module mocks.
 
-The workflow records separate reasons for isolation: transfer tests exposed PostgreSQL connection-state corruption with runner image `ubuntu24/20260406.80`, while logger-settings tests encounter init-screen `SettingsManager` mocks that Bun does not restore. Re-registering a module in `afterAll` is not reliable isolation; platform-dependent load order can hide the leaked class locally. The protected-config-escape test needs the real `StateManager`, which init-screen tests replace via a `state/manager.js` mock, so it also runs alone.
+The workflow records separate reasons for isolation: transfer tests exposed PostgreSQL connection-state corruption with runner image `ubuntu24/20260406.80`, while logger-settings tests need the real `getSettingsManager`, which other CLI test files leave mocked, and Bun's file order decides whether the logger test loads after them. Bun's `mock.module` registry is process-global and never restored, so a separate process is the isolation.
 
 | CI test process | Invocation |
 |---|---|
 | Core, utils, and SDK excluding transfer | `bun test --serial $(find tests/utils tests/core tests/sdk -name '*.test.ts' \| grep -v tests/core/transfer \| sort \| tr '\n' ' ')` |
 | Transfer | `bun test --serial tests/core/transfer` |
-| CLI excluding the two isolated files | `bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' ! -name 'protected-config-escape.test.tsx' \| sort \| tr '\n' ' ')` |
+| CLI excluding the logger settings file | `bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) ! -name 'cli-logger-settings.test.ts' \| sort \| tr '\n' ' ')` |
 | CLI logger settings | `bun test --serial tests/cli/cli-logger-settings.test.ts` |
-| CLI protected config escape | `bun test --serial tests/cli/screens/protected-config-escape.test.tsx` |
 | Integration | `bun test --serial tests/integration` |
 
 Every `ci.yml` job uses `ubuntu-24.04`; `publish.yml`, `release-binary.yml`, and `docs.yml` use `ubuntu-latest`. CI, documentation, publishing, and manual binary workflows pin Bun `1.4.4`. Bun tests preload [`tests/preload.ts`](../../tests/preload.ts), use a `30,000 ms` timeout and [`tests`](../../tests) root, and set concurrency to `1` in [`bunfig.toml`](../../bunfig.toml).

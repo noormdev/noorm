@@ -33,7 +33,7 @@ import { registerIdentity } from '../../core/identity/sync.js';
 import type { CryptoIdentity } from '../../core/identity/types.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection } from '../state.js';
+import { ensureTracking, requireConnection } from '../state.js';
 import { bindSdkDestination, checkProtectedConfig } from '../guards.js';
 import { withPolicyConfirmation } from '../../core/policy/index.js';
 import type { Permission } from '../../core/policy/index.js';
@@ -158,6 +158,7 @@ export class VaultNamespace {
     async init(): Promise<Buffer | null> {
 
         this.#gate('vault:write', 'vault.init');
+        await ensureTracking(this.#state);
 
         const crypto = await this.#getCryptoIdentity();
         const db = this.#kysely as unknown as Kysely<NoormDatabase>;

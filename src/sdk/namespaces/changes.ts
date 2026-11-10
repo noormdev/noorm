@@ -36,10 +36,11 @@ import {
     isPendingChange,
 } from '../../core/change/index.js';
 import { resolveVaultKey, buildSecretsContext } from '../../core/vault/index.js';
+import { readerRemedy, requireCurrentSchema } from '../../core/version/index.js';
 import { checkProtectedConfig } from '../guards.js';
 
 import type { ContextState } from '../state.js';
-import { requireConnection, runGatedExplore } from '../state.js';
+import { ensureTracking, requireConnection, runGatedExplore } from '../state.js';
 import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../core/settings/defaults.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -239,6 +240,7 @@ export class ChangesNamespace {
     async apply(name: string, options?: ChangeOptions): Promise<ChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.apply');
+        await ensureTracking(this.#state, options);
 
         return (await this.#getManager()).run(name, options);
 
@@ -262,6 +264,7 @@ export class ChangesNamespace {
     async revert(name: string, options?: ChangeOptions): Promise<ChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.revert');
+        await ensureTracking(this.#state, options);
 
         return (await this.#getManager()).revert(name, options);
 
@@ -285,6 +288,7 @@ export class ChangesNamespace {
     async ff(options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:ff', 'changes.ff');
+        await ensureTracking(this.#state, options);
 
         return (await this.#getManager()).ff(options);
 
@@ -307,6 +311,7 @@ export class ChangesNamespace {
     async next(count: number = 1, options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:run', 'changes.next');
+        await ensureTracking(this.#state, options);
 
         return (await this.#getManager()).next(count, options);
 
@@ -356,7 +361,7 @@ export class ChangesNamespace {
      */
     async history(limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return runGatedExplore(this.#state, 'change history', async () => (await this.#getManager()).getHistory(undefined, limit));
+        return this.#readHistory(undefined, limit);
 
     }
 
@@ -372,7 +377,7 @@ export class ChangesNamespace {
      */
     async historyForChange(name: string, limit?: number): Promise<ChangeHistoryRecord[]> {
 
-        return runGatedExplore(this.#state, 'change history', async () => (await this.#getManager()).getHistory(name, limit));
+        return this.#readHistory(name, limit);
 
     }
 
@@ -395,6 +400,7 @@ export class ChangesNamespace {
     async rewind(target: number | string, options?: BatchChangeOptions): Promise<BatchChangeResult> {
 
         checkProtectedConfig(this.#state.config, this.#state.options, 'change:revert', 'changes.rewind');
+        await ensureTracking(this.#state, options);
 
         return (await this.#getManager()).rewind(target, options);
 
@@ -467,6 +473,22 @@ export class ChangesNamespace {
             secrets: await buildSecretsContext(state, this.#state.config.name, db, vaultKey, conn.dialect),
             globalSecrets: state.getAllGlobalSecrets(),
         };
+
+    }
+
+    /** Nothing recorded on a database without tracking tables; older tables are refused, not read in their old layout. */
+    #readHistory(name: string | undefined, limit?: number): Promise<ChangeHistoryRecord[]> {
+
+        return runGatedExplore(this.#state, 'change history', async () => {
+
+            const { dialect } = requireConnection(this.#state);
+            const db = this.#kysely as unknown as Kysely<NoormDatabase>;
+
+            if (!(await requireCurrentSchema(db, dialect, readerRemedy('change history')))) return [];
+
+            return (await this.#getManager()).getHistory(name, limit);
+
+        });
 
     }
 

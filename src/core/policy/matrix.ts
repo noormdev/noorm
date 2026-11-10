@@ -57,6 +57,8 @@ export const MATRIX: Record<Permission, Record<BuiltinRole, PolicyCell>> = {
     // Dry-run planning still reads destination schema and row estimates.
     'transfer:plan': { viewer: 'deny', operator: 'allow', admin: 'allow' },
 
+    // Takes and frees the caller's own lock; acquiring creates the tracking tables on a fresh database.
+    'lock:acquire': { viewer: 'deny', operator: 'allow', admin: 'allow' },
     'lock:force': { viewer: 'deny', operator: 'confirm', admin: 'confirm' },
 
     'debug:read': { viewer: 'allow', operator: 'allow', admin: 'allow' },
@@ -64,7 +66,51 @@ export const MATRIX: Record<Permission, Record<BuiltinRole, PolicyCell>> = {
     'debug:write': { viewer: 'deny', operator: 'deny', admin: 'confirm' },
 };
 
-/** Cells an `isTest` config allows for every role, so a test harness can rebuild its own database: `docs/spec/config-access-roles.md`. */
+/** Whether a permission's operations record to the tracking tables. Keyed by `Permission` so a new one cannot go unclassified. */
+export const RECORDS_TO_TRACKING: Record<Permission, boolean> = {
+    'explore': false,
+
+    'sql:read': false,
+    'sql:write': false,
+    'sql:ddl': false,
+
+    'change:run': true,
+    'change:ff': true,
+    'change:revert': true,
+    'change:rm': true,
+
+    'run:build': true,
+    'run:file': true,
+    'run:dir': true,
+    'pipeline:run': true,
+
+    'db:create': true,
+    'db:reset': true,
+    'db:destroy': false,
+    'db:truncate': false,
+    'db:teardown': true,
+
+    'config:rm': false,
+    'config:write': false,
+
+    // A vault reader is enrolled in the identities table so that propagation can reach it.
+    'vault:read': true,
+    'vault:write': true,
+    'vault:propagate': true,
+
+    'secret:read': false,
+    'secret:write': false,
+
+    'transfer:plan': false,
+
+    'lock:acquire': true,
+    'lock:force': true,
+
+    'debug:read': false,
+    'debug:write': true,
+};
+
+/** Permissions an `isTest` config allows outright, even where admin's cell is `confirm`: `docs/spec/config-access-roles.md`. */
 export const TEST_DB_LIFECYCLE: readonly Permission[] = ['db:create', 'db:reset', 'db:truncate', 'db:teardown', 'db:destroy'];
 
 /** Reads the user channel always holds: the keyboard owner can loosen any role, so gating them adds friction only. */

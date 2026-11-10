@@ -10,7 +10,7 @@ import { getStateManager, resetStateManager } from '../../src/core/state/index.j
 import { resetSettingsManager } from '../../src/core/settings/index.js';
 import type { NoormDatabase } from '../../src/core/shared/tables.js';
 import { bootstrapSchema, tablesExist } from '../../src/core/version/schema/index.js';
-import { VersionMismatchError } from '../../src/core/version/types.js';
+import { CURRENT_VERSIONS, VersionMismatchError } from '../../src/core/version/types.js';
 import { createContext } from '../../src/sdk/index.js';
 import type { Context } from '../../src/sdk/context.js';
 import type { Config } from '../../src/core/config/types.js';
@@ -70,7 +70,7 @@ else {
             await state.load();
             const connection = { dialect: 'sqlite' as const, database: join(root, 'database.sqlite') };
             const config = (name: string, access: Config['access']): Config => ({
-                name, type: 'local', isTest: true, access, connection,
+                name, type: 'local', isTest: false, access, connection,
             });
             await state.setConfig('alpha', config('alpha', { user: 'admin', agent: 'admin' }));
             await state.setConfig('beta', config('beta', { user: 'admin', agent: 'admin' }));
@@ -190,6 +190,21 @@ else {
 
         });
 
+        it('should leave a database with no tracking tables untouched on a dry run', async () => {
+
+            await getStateManager(root).setConfig('fresh', {
+                name: 'fresh', type: 'local', isTest: false, access: { user: 'admin', agent: 'admin' },
+                connection: { dialect: 'sqlite', database: join(root, 'fresh.sqlite') },
+            });
+            const fresh = await open('fresh');
+
+            const dry = await fresh.noorm.pipelines.run('refresh', { input: { name: 'preview' }, dryRun: true });
+
+            expect(dry.dryRun).toBe(true);
+            expect((await sql`SELECT name FROM sqlite_master WHERE type = 'table'`.execute(fresh.kysely)).rows).toEqual([]);
+
+        });
+
         it('honors an already-aborted signal without executing workflow SQL', async () => {
 
             const controller = new AbortController();
@@ -256,22 +271,6 @@ else {
 
         });
 
-        it('should migrate a database without tracking tables before reading history', async () => {
-
-            const fresh = await openFreshDatabase('history-unmigrated');
-
-            expect(await fresh.noorm.pipelines.history('plain', {})).toEqual([]);
-
-        });
-
-        it('should migrate a database without tracking tables before reading a run', async () => {
-
-            const fresh = await openFreshDatabase('get-run-unmigrated');
-
-            expect(await fresh.noorm.pipelines.getRun(1)).toBeNull();
-
-        });
-
         it('should reject a bad run ID or history limit without touching the schema', async () => {
 
             const fresh = await openFreshDatabase('invalid-arguments');
@@ -291,6 +290,22 @@ else {
             await expect(newer.noorm.pipelines.run('plain')).rejects.toThrow(VersionMismatchError);
             await expect(newer.noorm.pipelines.history('plain', {})).rejects.toThrow(VersionMismatchError);
             await expect(newer.noorm.pipelines.getRun(1)).rejects.toThrow(VersionMismatchError);
+
+        });
+
+        it('should refuse to read history from older tracking tables instead of migrating them', async () => {
+
+            const older = await openFreshDatabase('older');
+            await bootstrapSchema(older.kysely, 'sqlite');
+            const stored = CURRENT_VERSIONS.schema - 1;
+            await sql`UPDATE __noorm_version__ SET noorm_version = ${stored}`.execute(older.kysely);
+            const needsMigration = `tracking tables are at schema version ${stored} and this version needs ${CURRENT_VERSIONS.schema}`;
+
+            await expect(older.noorm.pipelines.history('plain', {})).rejects.toThrow(needsMigration);
+            await expect(older.noorm.pipelines.getRun(1)).rejects.toThrow(needsMigration);
+
+            const versions = await sql<{ noorm_version: number }>`SELECT noorm_version FROM __noorm_version__`.execute(older.kysely);
+            expect(versions.rows).toEqual([{ noorm_version: stored }]);
 
         });
 

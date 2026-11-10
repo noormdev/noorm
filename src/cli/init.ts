@@ -11,7 +11,7 @@ import * as p from '@clack/prompts';
 import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 
-import { hasKeyFiles, loadIdentityMetadata } from '../core/identity/index.js';
+import { hasKeyFiles, hasPrivateKeyFile, loadIdentityMetadata } from '../core/identity/index.js';
 import { getOriginalCwd } from '../core/project.js';
 import { performProjectInit, type ProjectInitIdentityInfo } from '../core/project-init.js';
 import { isYesMode, sharedArgs } from './_utils.js';
@@ -104,9 +104,14 @@ const initCommand = defineCommand({
 
         if (yesMode && !hasFullIdentity) {
 
+            // identity init refuses to touch an existing private key, so it cannot complete one.
+            const nextStep = await hasPrivateKeyFile()
+                ? 'A private key exists without the rest of the identity. Run "noorm init" or "noorm ui" once to complete it.\n'
+                : 'Run: noorm identity init --name "Your Name" --email "you@example.com"\n';
+
             process.stderr.write(
                 'Error: noorm init --yes requires an existing identity at ~/.noorm/identity.{key,pub,json}.\n' +
-                'Run: noorm identity init --name "Your Name" --email "you@example.com"\n' +
+                nextStep +
                 'Then re-run: noorm init --yes\n',
             );
             process.exit(EXIT.USAGE);

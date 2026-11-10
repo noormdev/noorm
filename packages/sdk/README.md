@@ -20,7 +20,7 @@ Install your dialect's driver alongside `@noormdev/sdk` and `kysely`:
 | SQL Server | `npm install @noormdev/sdk kysely tedious` |
 | SQLite | `npm install @noormdev/sdk kysely better-sqlite3` |
 
-Kysely is a required peer. Dialect drivers are optional peers, so install only the one you use. Tarn is bundled inside the SDK for MySQL's asynchronous credential pool and MSSQL pooling; consumers do not install `tarn`.
+Kysely is a required peer. Dialect drivers are optional peers, so install only the one you use. Tarn is bundled inside the SDK for MySQL and MSSQL pooling; consumers do not install `tarn`.
 
 Requires Node 22.13 or newer. In CommonJS, load the SDK with `const { createContext } = require('@noormdev/sdk')`. The CommonJS entry and ESM facade share one runtime, including constructors and `noormObserver`. The type declarations reference Kysely's ESM types: in CommonJS files compiled with `module: node16` or later (`node18`, `node20`, `nodenext`), Kysely types you import there do not match `ctx.kysely`.
 
@@ -51,6 +51,8 @@ await ctx.disconnect();
 `createContext` resolves connection settings the same way the CLI does — defaults, then stage, then stored config, then `NOORM_CONNECTION_*` env vars, then explicit options — so the same code runs locally and in CI.
 
 For an unsaved connection, pass `connection` instead of selecting a stored config. It accepts runtime password callbacks for PostgreSQL, MySQL, and MSSQL. See [inline resolution and runtime credentials](https://noorm.dev/reference/sdk#createcontext-options) for the type, physical-connection lifecycle, and error-handling contract.
+
+`name` names such a context in events and errors and keys its change history, checksums and locks, so keep one name per database. `config: false` ignores `NOORM_CONFIG` and the active config. `connection.pool` takes per-dialect [pool options](https://noorm.dev/reference/sdk#pool-options), and `connection.driver` passes [driver options](https://noorm.dev/reference/sdk#driver-options) through to `pg`, `mysql2`, or `tedious`.
 
 ## SQL pipelines
 
