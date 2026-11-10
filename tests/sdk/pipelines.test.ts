@@ -70,7 +70,7 @@ else {
             await state.load();
             const connection = { dialect: 'sqlite' as const, database: join(root, 'database.sqlite') };
             const config = (name: string, access: Config['access']): Config => ({
-                name, type: 'local', isTest: true, access, connection,
+                name, type: 'local', isTest: false, access, connection,
             });
             await state.setConfig('alpha', config('alpha', { user: 'admin', agent: 'admin' }));
             await state.setConfig('beta', config('beta', { user: 'admin', agent: 'admin' }));

@@ -66,34 +66,35 @@ describe('sdk: isTest db lifecycle on the agent channel', () => {
 
     });
 
-    it('should refuse reset before dropping anything when the role cannot run:build', async () => {
+    it('should reset without confirmation for an agent viewer when the config is isTest', async () => {
 
         process.env['NOORM_isTest'] = 'true';
         const { noorm, kysely } = await open();
 
-        await expect(noorm.db.reset()).rejects.toThrow(ProtectedConfigError);
+        await noorm.db.reset();
 
         const left = await sql<{ name: string }>`SELECT name FROM sqlite_master WHERE name = 'widget'`.execute(kysely);
-        expect(left.rows).toHaveLength(1);
+        expect(left.rows).toHaveLength(0);
 
     });
 
-    it('should refuse reset before dropping anything when run:build still needs a confirmation the caller did not give', async () => {
+    it('should refuse reset before dropping anything when the role may reset but not build', async () => {
 
+        const settings = { access: { roles: { resetter: { permissions: { 'db:reset': 'allow' as const } } } } };
         const config = bindSdkPolicy(
             {
                 name: 'test',
                 type: 'local',
-                isTest: true,
-                access: { user: 'operator', agent: 'viewer' },
+                isTest: false,
+                access: { user: 'resetter', agent: 'viewer' },
                 connection: { dialect: 'sqlite', database: join(root, 'test.db') },
             } satisfies Config,
-            {},
+            settings,
             root,
             undefined,
-            true,
+            false,
         );
-        ctx = new Context(config, {}, { name: 'tester', source: 'system' }, { channel: 'user' }, root);
+        ctx = new Context(config, settings, { name: 'tester', source: 'system' }, { channel: 'user' }, root);
         await ctx.connect();
         await sql`CREATE TABLE widget (id INTEGER PRIMARY KEY)`.execute(ctx.kysely);
 

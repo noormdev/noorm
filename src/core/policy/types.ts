@@ -23,7 +23,7 @@ export interface RoleDefinition {
 export interface PolicyContext {
     roles?: Record<string, RoleDefinition>;
     protectedStage?: boolean;
-    /** Trusted `isTest` (see `docs/spec/config-access-roles.md`); relaxes `db:*` lifecycle cells. */
+    /** Trusted `isTest` (see `docs/spec/config-access-roles.md`): every resolvable role reads at least the admin cell, past the ceiling. */
     isTest?: boolean;
     /** Credential-free project and connection target the bound `isTest` was granted for. */
     testTargetIdentity?: string;

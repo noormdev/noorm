@@ -525,7 +525,7 @@ describe('config: resolver', () => {
 
         it('should keep the ceiling of a protected config when the caller selects an unprotected stage', () => {
 
-            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
             const settings = createMockSettings({
                 prod: { defaults: { protected: true } },
                 dev: { defaults: {} },
@@ -539,7 +539,7 @@ describe('config: resolver', () => {
 
         it('should cap an unprotected config when the caller selects a protected stage', () => {
 
-            const state = createMockState({ configs: { dev: createConfig({ name: 'dev' }) } });
+            const state = createMockState({ configs: { dev: createConfig({ name: 'dev', isTest: false }) } });
             const settings = createMockSettings({
                 prod: { defaults: { protected: true } },
                 dev: { defaults: {} },
@@ -581,7 +581,7 @@ describe('config: resolver', () => {
         it('should keep the ceiling when an env name renames a stored protected-stage config', () => {
 
             process.env['NOORM_NAME'] = 'dev';
-            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
             const settings = createMockSettings({ prod: { defaults: { protected: true } } });
             const config = resolveConfig(state, { name: 'prod', settings })!;
 
@@ -591,7 +591,7 @@ describe('config: resolver', () => {
 
         it('should keep the ceiling when a flag renames a stored protected-stage config', () => {
 
-            const state = createMockState({ configs: { prod: createConfig({ name: 'prod' }) } });
+            const state = createMockState({ configs: { prod: createConfig({ name: 'prod', isTest: false }) } });
             const settings = createMockSettings({ prod: { defaults: { protected: true } } });
             const config = resolveConfig(state, { name: 'prod', flags: { name: 'dev' }, settings })!;
 
@@ -862,7 +862,7 @@ describe('config: resolver', () => {
 
         const settings = createMockSettings();
         settings.getRoles = () => ({ auditor: { extends: 'viewer', permissions: { 'debug:read': 'deny', 'sql:write': 'allow' } } });
-        const stored = createConfig({ access: { user: 'auditor', agent: false } });
+        const stored = createConfig({ isTest: false, access: { user: 'auditor', agent: false } });
         const resolved = withConfigPolicy(stored, settings);
 
         expect(resolved.access).toEqual({ user: 'auditor', agent: false });
@@ -974,7 +974,7 @@ describe('config: resolver', () => {
 
         it('should detect missing required secrets', () => {
 
-            const config = createConfig({ name: 'prod' });
+            const config = createConfig({ name: 'prod', isTest: false });
             const state = createMockState({
                 secrets: { prod: ['EXISTING_KEY'] },
             });
@@ -1000,7 +1000,7 @@ describe('config: resolver', () => {
 
         it('should ignore optional secrets', () => {
 
-            const config = createConfig({ name: 'prod' });
+            const config = createConfig({ name: 'prod', isTest: false });
             const state = createMockState({
                 secrets: { prod: [] },
             });

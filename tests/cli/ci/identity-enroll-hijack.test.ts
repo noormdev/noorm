@@ -129,7 +129,7 @@ async function setupEnrollFixture(
     const config: Config = {
         name: CONFIG_NAME,
         type: 'local',
-        isTest: true,
+        isTest: false,
         access,
         connection: { dialect: 'sqlite', database: dbPath },
     };

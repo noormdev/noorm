@@ -80,7 +80,7 @@ flowchart TD
 ### What does `protected: true` cap?
 
 
-The cap applies to each effective permission at policy-check time, without changing the assigned role name. It uses the original built-in `operator` matrix for users and `viewer` matrix for agents, not their project overrides. For each cell, the stricter result wins: `deny` is stricter than `confirm`, which is stricter than `allow`. Custom roles and built-in overrides cannot relax this ceiling; stricter project policy remains in effect. The one exception is a config with `isTest: true`, which runs the database lifecycle cells regardless ([access roles](/guide/environments/configs#access-roles)). `agent: false` still hides the config.
+The cap applies to each effective permission at policy-check time, without changing the assigned role name. It uses the original built-in `operator` matrix for users and `viewer` matrix for agents, not their project overrides. For each cell, the stricter result wins: `deny` is stricter than `confirm`, which is stricter than `allow`. Custom roles and built-in overrides cannot relax this ceiling; stricter project policy remains in effect. The one exception is a config with `isTest: true`: every role reads at least admin's cells past the ceiling, and the lifecycle cells read `allow` ([access roles](/guide/environments/configs#access-roles)). `agent: false` still hides the config.
 
 For example, even if a project grants an agent `run:build: allow`, a protected stage caps it at the original viewer cell, `deny`. A user's `run:build: allow` is capped at the original operator cell, `confirm`.
 

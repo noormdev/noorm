@@ -223,7 +223,7 @@ Through the CLI, an `agent` channel `confirm` cell is a deny, so `--yes` never u
 
 `explore` and `sql:read` are gated on the agent channel only; a person at the keyboard always passes. Commands not listed have no role gate.
 
-On a config with `isTest: true`, the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` rows read `allow` for every role on both channels, even on a protected stage. `db reset` still needs `--yes` and `run:build`. The same cells gate `db transfer` destinations. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
+On a config with `isTest: true`, every role on both channels reads the admin column, even on a protected stage, and the `db:create`, `db:reset`, `db:truncate`, `db:teardown`, and `db:destroy` rows read `allow`. An agent can run `run build`, `change run` and `db reset` on it; admin's other `confirm` rows still need a human. The same cells gate `db transfer` destinations. Where the flag counts is in [access roles](/guide/environments/configs#access-roles).
 
 Vault set, propagation, copy, and identity enrollment also require `vault:read` when they unseal an existing vault key. Fresh vault initialization can use write-only access; secret writes do not require `secret:read`.
 

@@ -118,6 +118,8 @@ The following table shows unmodified built-in roles. Project role overrides and 
 | DDL | `sql:ddl` | deny | deny | allow |
 | `run_build`, `run_file`, `change_run`, `change_ff`, `change_revert` | corresponding `run:*` or `change:*` permission | deny | confirm | allow |
 
+On a config with `isTest: true`, every role reads at least the Admin column; see [access roles](/guide/environments/configs#access-roles).
+
 DML defaults are unchanged: operator and admin do not prompt. To let an operator request approval for DDL, override its permission in `.noorm/settings.yml`:
 
 ```yaml

@@ -96,7 +96,7 @@ describe('cli: noorm change rm — role gate + isYesMode confirm', () => {
         const config: Config = {
             name: CONFIG_NAME,
             type: 'local',
-            isTest: true,
+            isTest: false,
             access,
             connection: { dialect: 'sqlite', database: dbPath },
         };

@@ -39,7 +39,7 @@ describe('MCP request-local state', () => {
             const writer = new StateManager(root);
             await writer.load();
             const config = {
-                name: 'dev', type: 'local' as const, isTest: true,
+                name: 'dev', type: 'local' as const, isTest: false,
                 access: { user: 'admin', agent: 'admin' },
                 connection: { dialect: 'sqlite' as const, database: join(root, 'dev.db') },
             };

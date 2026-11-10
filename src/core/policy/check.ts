@@ -47,7 +47,7 @@ function effectiveCell(role: string, permission: Permission, context: PolicyCont
 
 }
 
-/** Effective cell with the protected-stage ceiling; `USER_ALWAYS_ALLOWED` reads `allow` on the user channel, `TEST_DB_LIFECYCLE` on isTest. */
+/** Effective cell with the protected-stage ceiling. On an isTest config a role reads at least admin's cell, past the ceiling. */
 export function getConfigPermission(channel: Channel, config: ConfigTarget, permission: Permission): PolicyCell {
 
     if (channel === 'user' && USER_ALWAYS_ALLOWED.includes(permission)) return 'allow';
@@ -58,8 +58,15 @@ export function getConfigPermission(channel: Channel, config: ConfigTarget, perm
     const context = access[POLICY_CONTEXT];
     if (!context) return 'deny';
     const roleResolves = isBuiltinRole(role) || (context.roles !== undefined && Object.hasOwn(context.roles, role));
-    if (context.isTest === true && roleResolves && TEST_DB_LIFECYCLE.includes(permission)) return 'allow';
     const cell = effectiveCell(role, permission, context);
+    if (context.isTest === true && roleResolves) {
+
+        if (TEST_DB_LIFECYCLE.includes(permission)) return 'allow';
+        const admin = effectiveCell('admin', permission, context);
+
+        return compareCells(cell, admin) >= 0 ? cell : admin;
+
+    }
     if (!context.protectedStage) return cell;
     const ceiling = MATRIX[permission][channel === 'user' ? 'operator' : 'viewer'];
 
