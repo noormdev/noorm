@@ -565,7 +565,9 @@ await scope.revert();
 |---|---|
 | Scope members | `kysely`, `proc`, `func`, `tvf`, `transaction`, `revert`. No `noorm` and no lifecycle methods; management operations stay on `ctx.noorm`, running as the context's own principal |
 | Explicit mode holds a pooled connection | Until `revert()` or `ctx.disconnect()`. `disconnect()` releases an unreverted scope without running the revert SQL, because it destroys the pool |
-| `revert()` | Idempotent after it succeeds. After a failure the scope stays revertible, so a retry re-runs the revert |
+| `revert()` | Idempotent after it succeeds. After a failure it rejects with the error and the scope is over: a later call does nothing |
+| A failed switch or revert statement | The connection is closed instead of returned to the pool, in both modes, because its identity is then unknown. The error is thrown, and the next query opens a new connection. In callback mode a revert failure replaces an error `fn` threw |
+| `disconnect()` during callback mode | The call rejects with `DisconnectedError`, as [`withConnection`](#pinned-connections) does |
 
 
 ### Schema scoping

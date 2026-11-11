@@ -330,6 +330,8 @@ const data = await scope.kysely.selectFrom('restricted_data').selectAll().execut
 await scope.revert(); // Must call — releases the dedicated connection
 ```
 
+If the switch or the revert statement fails, the error is thrown and the connection is closed instead of returned to the pool, so no later query inherits the identity.
+
 The `ImpersonatedScope` provides: `kysely`, `proc()`, `func()`, `tvf()`, `transaction()`, `revert()`. All with the same tuple-based type inference as the Context methods.
 
 ## NoormOps Namespaces

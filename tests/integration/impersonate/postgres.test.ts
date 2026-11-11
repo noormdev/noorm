@@ -7,7 +7,7 @@
  *
  * Requires docker-compose.test.yml containers to be running.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from 'bun:test';
 import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
@@ -171,6 +171,71 @@ describe('integration: impersonate postgres', () => {
         expect(leaky.connected).toBe(false);
 
     }, 15_000);
+
+    // Postgres refuses every statement but ROLLBACK in an aborted transaction,
+    // so RESET ROLE fails on a session that is alive and still under SET ROLE.
+    describe('when the revert statement fails', () => {
+
+        let single: Context;
+
+        const session = async (db: Context['kysely']) =>
+            (await sql<{ pid: number; username: string }>`SELECT pg_backend_pid() AS pid, current_user AS username`.execute(db)).rows[0]!;
+
+        const abortTransaction = async (db: Context['kysely']) => {
+
+            await sql`BEGIN`.execute(db);
+            await attempt(() => sql`SELECT 1 / 0`.execute(db));
+
+        };
+
+        const nextSession = () => Promise.race([
+            session(single.kysely),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the pool slot was never freed')), 5000).unref()),
+        ]);
+
+        beforeEach(async () => {
+
+            single = new Context(
+                makeTestConfig('pg_impersonate_discard', { ...TEST_CONNECTIONS.postgres, pool: { max: 1 } }),
+                {}, { name: 'tester', source: 'system' }, {}, '/tmp/test',
+            );
+            await single.connect();
+
+        });
+
+        afterEach(() => single.disconnect());
+
+        it('should close the session in callback mode, so the next query runs as the login', async () => {
+
+            const [, err] = await attempt(() => single.impersonate(TEST_ROLE, (scope) => abortTransaction(scope.kysely)));
+
+            expect(err?.message).toMatch(/current transaction is aborted/);
+
+            const next = await nextSession();
+
+            expect(next.username).toBe('noorm_test');
+
+        }, 15_000);
+
+        it('should free the pool slot in explicit mode, so the next query runs as the login on a new session', async () => {
+
+            const scope = await single.impersonate(TEST_ROLE);
+            const { pid } = await session(scope.kysely);
+
+            await abortTransaction(scope.kysely);
+
+            const [, err] = await attempt(() => scope.revert());
+
+            expect(err?.message).toMatch(/current transaction is aborted/);
+
+            const next = await nextSession();
+
+            expect(next.pid).not.toBe(pid);
+            expect(next.username).toBe('noorm_test');
+
+        }, 15_000);
+
+    });
 
     it('rejects a username carrying SQL metacharacters before it reaches the server', async () => {
 
