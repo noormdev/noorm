@@ -215,12 +215,30 @@ noorm run build --json | jq '.status'
 
 ## Live TLS Tests
 
-noorm's own CI proves certificate files with real handshakes against its MySQL and SQL Server test containers. `tests/integration/connection/mssql-tls.test.ts` needs only the container from `docker-compose.test.yml`. `tests/integration/connection/mysql-tls.test.ts` needs the MySQL container's public CA in a file and is skipped without it:
+noorm's own CI proves certificate files with real handshakes against its test containers: the MySQL and SQL Server containers as they ship, and three more that enforce TLS for PostgreSQL, MySQL and SQL Server. `tests/integration/connection/mssql-tls.test.ts` needs only the container from `docker-compose.test.yml`. `tests/integration/connection/mysql-tls.test.ts` needs the MySQL container's public CA in a file and is skipped without it:
 
 ```bash
 docker exec noorm-test-mysql cat /var/lib/mysql/ca.pem > /tmp/mysql-ca.pem
 TEST_MYSQL_CA_FILE=/tmp/mysql-ca.pem bun test --serial tests/integration/connection/mysql-tls.test.ts tests/integration/connection/mssql-tls.test.ts
 ```
+
+Those two containers accept plaintext and a client with no certificate. Three more services in `docker-compose.test.yml` refuse both, and the `*-tls-enforced.test.ts` files in the same directory run against them. They are skipped unless `TEST_TLS_DIR` names the directory of generated certificates:
+
+```bash
+sh scripts/gen-test-tls.sh
+docker compose -f docker-compose.test.yml up -d --wait postgres-tls mysql-tls mssql-tls
+TEST_TLS_DIR=tests/fixtures/tls/generated bun test --serial tests/integration/connection/*-tls-enforced.test.ts
+```
+
+`scripts/gen-test-tls.sh` needs `openssl`. It writes a CA, a server certificate per dialect, a client certificate and an unrelated CA into `tests/fixtures/tls/generated/`, which git ignores, and does nothing when they are already there. The services belong to the `tls` profile, so a plain `docker compose up` leaves them out and `docker compose -f docker-compose.test.yml --profile tls down -v` removes them.
+
+| Service | Port | Port variable | Enforces |
+|---------|------|---------------|----------|
+| `postgres-tls` | 15433 | `TEST_POSTGRES_TLS_PORT` | TLS and a client certificate on every login |
+| `mysql-tls` | 13307 | `TEST_MYSQL_TLS_PORT` | TLS on every connection, a client certificate for `noorm_tls` |
+| `mssql-tls` | 11435 | `TEST_MSSQL_TLS_PORT` | Encryption with a certificate that can be validated |
+
+Set a port variable for both the `docker compose` command and the test command when the default port is taken. The server certificates are issued for `db.noorm.test` only, so every validated case dials `localhost` and sets `tlsServerName`.
 
 
 ## See Also
