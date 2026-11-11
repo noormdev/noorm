@@ -7,6 +7,13 @@
 import type { Kysely } from 'kysely';
 import type { PeerCertificate } from 'node:tls';
 
+/** Each `ssl` certificate field as its inline form and its file form: `[inline, file]`. */
+export const SSL_FIELD_PAIRS = [
+    ['ca', 'caFile'],
+    ['cert', 'certFile'],
+    ['key', 'keyFile'],
+] as const;
+
 /**
  * Supported database dialects.
  */
@@ -123,15 +130,22 @@ export interface ConnectionConfig {
               ca?: string;
               cert?: string;
               key?: string;
+              /** Path to the CA PEM, read each time a pool opens, on every connect attempt. Exclusive with `ca`. */
+              caFile?: string;
+              /** Path to the client certificate PEM. Exclusive with `cert`. */
+              certFile?: string;
+              /** Path to the client key PEM. Exclusive with `key`. */
+              keyFile?: string;
           };
 
     /**
      * Hostname the server's TLS certificate is issued for (its CN or a DNS
      * entry in the Subject Alternative Name).
      *
-     * PostgreSQL verifies this identity even if the dial host differs.
-     * For an IP dial host it also becomes SNI. pg uses the dial host as SNI
-     * for DNS dial hosts. MSSQL uses it as the certificate hostname.
+     * PostgreSQL, MySQL and MSSQL verify this identity even if the dial host
+     * differs. For an IP dial host on PostgreSQL it also becomes SNI. pg uses
+     * the dial host as SNI for DNS dial hosts. MSSQL uses it as the
+     * certificate hostname.
      */
     tlsServerName?: string;
 }

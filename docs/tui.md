@@ -191,6 +191,21 @@ On Run Build and Run Exec, press `Esc` once for a warning and again within 2 sec
 
 A config shows `●` when active and `○` when not, with `[user:<role> agent:<role|off>]` when its access differs from the default (`admin` for you, `viewer` for the agent) and `[test]` on a test config.
 
+A server config also shows its TLS state, read from the connection the TUI opens for it:
+
+| Tag | Meaning |
+|-----|---------|
+| `[tls]` | SSL is on and the server certificate is validated |
+| `[tls unverified]` | SSL is on and `ssl.rejectUnauthorized` is `false`: the connection is encrypted and the certificate is not validated |
+| none | SSL is off, the config is SQLite, the config names an access role the project does not define, or the stored config and its stage do not combine into a valid config |
+
+The TUI connects with the stored config over the `defaults` of the [stage](/guide/environments/stages#where-do-defaults-apply) with its name, so a config with no `ssl` of its own on a stage that sets `ssl` shows `[tls]`. The TUI applies no config variable (`NOORM_CONNECTION_*`, `NOORM_ACCESS_*`) and no flag to a config. Settings variables still apply: `NOORM_STAGES_<stage>_DEFAULTS_*` changes the stage defaults the TUI merges, as `NOORM_PATHS_*` changes its paths.
+
+| When | The TUI shows |
+|------|---------------|
+| The stored config and its stage do not combine into a valid config, for example a `pool.min` above the default `pool.max` | Home with the validation message and no active config. The config stays in this list, where `e` edits it |
+| A certificate file cannot be read | The connection error with its message, such as `Cannot read ssl.caFile './certs/corp-ca.pem': ENOENT`. Home and the database list do not report the database as missing, whatever the path contains |
+
 | Key | Action |
 |-----|--------|
 | `Enter` | Make the highlighted config active. On the config that is already active, open its edit form |
@@ -204,6 +219,40 @@ A config shows `●` when active and `○` when not, with `[user:<role> agent:<r
 Adding a config is interactive only. `noorm config add` points here, and `noorm config import <file.json>` is the headless route.
 
 ![The add-config form](/image/tui/config-add.png)
+
+Both forms also carry these SSL fields. The edit form of a SQLite config shows none of them.
+
+| Field | Sets | Notes |
+|-------|------|-------|
+| Use SSL | `ssl` | Checked turns SSL on. Unchecking it stores `ssl: false`, which also turns off an `ssl` the stage supplies |
+| Verify Certificate | `ssl.rejectUnauthorized` | Unchecked with Use SSL checked, it stores `ssl.rejectUnauthorized: false`: the connection stays encrypted and the server certificate is not validated. Checking it again removes the `false` |
+| CA File | `ssl.caFile` | Path to the CA certificate. A path replaces inline PEM of the same field. Emptied, it removes the stored path |
+| Client Cert File | `ssl.certFile` | Path to the client certificate |
+| Client Key File | `ssl.keyFile` | Path to the client key |
+| TLS Server Name | `tlsServerName` | Hostname the server certificate is issued for |
+
+The edit form opens on the state in effect, which is the stored config over its stage. The add form shows no stage state, whatever name you type: Use SSL starts unchecked, Verify Certificate starts checked, and no field shows a stage placeholder.
+
+| On the edit form | Shows |
+|------------------|-------|
+| The stored config or the stage turns SSL on | Use SSL checked |
+| The `ssl` in effect has `rejectUnauthorized: false` | Verify Certificate unchecked |
+| Only the stage supplies a certificate file | An empty field with the placeholder `(stage: <path>)` |
+| The stored value is inline PEM | An empty field with the placeholder `(inline certificate stored)`. The PEM stays while the field is empty |
+| The stored config has `ssl: false` | Use SSL unchecked and no stage placeholder. Checking it stores `ssl: true`, and the stage's certificate files apply again |
+
+A save that changes none of Use SSL, Verify Certificate and the three file fields leaves the stored `ssl` as it was, and an absent `ssl` stays absent. The stage keeps supplying its value, and the saved config holds no copy of it. An unchanged TLS Server Name is left as stored in the same way. Typed paths and the server name are trimmed. The edit form keeps every connection field it does not show, such as `pool` and timeouts, except a SQLite `filename`, which the Database field replaces.
+
+Submit judges the connection the save would produce over the stage's `defaults`, on both forms. The message shows on the form and nothing is saved.
+
+| Submit refuses | When |
+|----------------|------|
+| A certificate path you enter or change | SSL would be off in the result |
+| A TLS Server Name on PostgreSQL or MySQL | SSL would be off in the result, or Verify Certificate is unchecked |
+
+A stage applies by config name, so renaming a config on the edit form can move it to another stage, or to none. The save then stores the TLS state the form shows (`ssl: true`, `ssl: false`, or `rejectUnauthorized: false`) when the new name would give a different one. The old stage's certificate paths stay with the stage: enter them on the config if the renamed config needs them.
+
+A TLS Server Name passes when the stage supplies `ssl` and you leave Use SSL untouched. MSSQL allows the name in every case. Unchecking Use SSL over stored paths saves `ssl: false` and drops the paths. The connection test also runs over the stage's `defaults`, and a path that cannot be read shows its error there. [Configs](/guide/environments/configs#how-do-i-connect-to-a-server-with-a-private-ca) covers the path rules.
 
 | Key | Action on the add and edit forms |
 |-----|--------|
@@ -221,6 +270,17 @@ Saving a config needs an identity. Set it up once to continue.
 Name and email are filled in from `git config user.name` and `git config user.email`; the name falls back to the OS username. Machine is filled in from the hostname. Submitting creates the identity and continues to the form you opened. `Esc` goes back and creates nothing.
 
 Setup never replaces an existing `~/.noorm/identity.key`. With a key and no `identity.pub`, it derives the public key from the private one; with a key and `identity.json` already there, it asks nothing. When the key file exists but cannot be loaded, the screen shows the reason instead of the form, for example `Insecure permissions on private key file (...). Fix with: chmod 600 ...`.
+
+Export (`x` under More) writes `<name>.noorm.enc`, encrypted for one recipient, and import (`i`) reads it. [Config sharing](/dev/config-sharing) has the file format.
+
+| | What happens |
+|---|---|
+| Export carries | Every stored connection field that is not a credential, including `dialect`, `host`, `port`, `database`, `tlsServerName`, `pool`, the timeouts, and in `ssl` the inline `ca`, `rejectUnauthorized` and the three file paths. Stage values are not added |
+| Export withholds | `user`, `password`, and the inline `ssl.key` and `ssl.cert`. The recipient supplies their own |
+| Import preview | Dialect, database and host, then SSL on or off, certificate verification, each certificate file path and the TLS server name |
+| Import saves | The connection fields the config schema accepts, with the user and password typed on the import form |
+
+A certificate file path travels as text. The preview says `A certificate file path must exist on this machine.`, and import does not check for the file.
 
 `User Role` covers a human on the CLI, TUI, or SDK. `Agent Role` covers an AI agent over MCP and the CLI. They are independent. [Configs](/guide/environments/configs#access-roles) lists what each role permits.
 

@@ -6,6 +6,7 @@
  * from the environment, or passed inline.
  */
 import { connectTimeoutFor } from './defaults.js';
+import { SSL_FIELD_PAIRS } from './types.js';
 import type { ConnectionConfig, Dialect, PgPoolOpts, RuntimeConnectionOptions, TarnPoolOpts } from './types.js';
 
 type PooledDialect = Exclude<Dialect, 'sqlite'>;
@@ -88,6 +89,32 @@ function idleTimeoutMs(pool: PgPoolOpts & TarnPoolOpts): number | undefined {
 }
 
 /**
+ * Word the refusal of an IP address as a TLS server name.
+ *
+ * @example
+ * ipTlsServerNameMessage('10.0.0.5') // => "Invalid tlsServerName '10.0.0.5': a TLS ServerName must be a hostname, ..."
+ */
+export function ipTlsServerNameMessage(name: string): string {
+
+    return `Invalid tlsServerName '${name}': a TLS ServerName must be a hostname, not an IP address. `
+        + 'Set it to the hostname the server\'s certificate is issued for.';
+
+}
+
+const KNOWN_SSL_KEYS: readonly string[] = ['rejectUnauthorized', ...SSL_FIELD_PAIRS.flat()];
+
+function wrongCaseKeyMessage(section: 'pool' | 'ssl', key: string, known: readonly string[]): string | undefined {
+
+    const intended = known.find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+
+    if (!intended || intended === key) return undefined;
+
+    return `${section}.${key} is not ${section === 'pool' ? 'a pool' : 'an ssl'} option; write it as ${section}.${intended}. `
+        + `An all-caps environment variable segment is lowercased, so name it NOORM_CONNECTION_${section.toUpperCase()}_${intended}`;
+
+}
+
+/**
  * Word the rejection of a pool key noorm does not know.
  *
  * Names the camelCase spelling when only the case differs, which is what an
@@ -98,12 +125,19 @@ function idleTimeoutMs(pool: PgPoolOpts & TarnPoolOpts): number | undefined {
  */
 export function unknownPoolKeyMessage(key: string): string {
 
-    const intended = KNOWN_POOL_KEYS.find((known) => known.toLowerCase() === key.toLowerCase());
+    return wrongCaseKeyMessage('pool', key, KNOWN_POOL_KEYS) ?? `pool.${key} is not a pool option`;
 
-    if (!intended) return `pool.${key} is not a pool option`;
+}
 
-    return `pool.${key} is not a pool option; write it as pool.${intended}. `
-        + `An all-caps environment variable segment is lowercased, so name it NOORM_CONNECTION_POOL_${intended}`;
+/**
+ * Word the rejection of an `ssl` key spelled in the wrong case, or undefined for any other key.
+ *
+ * @example
+ * wrongCaseSslKeyMessage('CAFILE') // => 'ssl.CAFILE is not an ssl option; write it as ssl.caFile. ...'
+ */
+export function wrongCaseSslKeyMessage(key: string): string | undefined {
+
+    return wrongCaseKeyMessage('ssl', key, KNOWN_SSL_KEYS);
 
 }
 

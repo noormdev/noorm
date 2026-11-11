@@ -205,7 +205,7 @@ sequenceDiagram
     Ops-->>Screen: PipelineDryRunResult or PipelineRunResult
 ```
 
-Each run registers two lifecycle resources: a `stopping`-phase cleanup that aborts the controller, and a `completing`-phase cleanup that waits for the operation promise. App shutdown therefore aborts the run, then waits for SQL and transaction cleanup to settle before connections are released. `capture` refuses to start when the lifecycle is shutting down, stopped, or failed. History reads (`history`, `getRun`) use the same lease and register a `completing` resource. They reject when the target changed while they ran. They never migrate the tracking tables: the core pipeline history readers call `requireCurrentSchema` and treat missing tables as no history.
+Each run registers lifecycle resources: a `stopping`-phase cleanup that aborts the controller, and a `completing`-phase cleanup that waits for the operation promise. App shutdown therefore aborts the run, then waits for SQL and transaction cleanup to settle before connections are released. `capture` refuses to start when the lifecycle is shutting down, stopped, or failed. History reads (`history`, `getRun`) use the same lease and register a `completing` resource. They reject when the target changed while they ran. They never migrate the tracking tables: the core pipeline history readers call `requireCurrentSchema` and treat missing tables as no history.
 
 While `busy`, the run screen shows elapsed seconds and a single Escape binding: `operations.stop()` aborts the signal and the screen displays "Stop requested. Waiting for running SQL and transaction cleanup to finish." Escape does not navigate back until the run settles, and the stop request does not make the running SQL stop by itself. If `lease.release()` fails, the hook sets the lifecycle exit code to 1 (when it was 0) and `cleanupFailed`; the result screen shows a cleanup warning and downgrades the status color.
 
@@ -233,6 +233,24 @@ stateDiagram-v2
 ### Saving a config without verifying
 
 `ConfigAddScreen` and `ConfigEditScreen` submit through `save(values, verify)`. Enter calls it with `verify: true`, which runs `testConnection` (server only, through `testServerOnly: true`, on both screens, since the database may not exist yet) and stops on failure. Both pass `altSubmit={{ ...SAVE_UNVERIFIED, suggest: testFailed, ... }}` to `Form`, so Ctrl+S calls `save(values, false)` and skips the test. `SAVE_UNVERIFIED` lives in [`src/tui/utils/connection.ts`](../../src/tui/utils/connection.ts); `suggest` turns the hint on after a failed test.
+
+### SSL fields on config forms
+
+`ConfigAddScreen` and `ConfigEditScreen` append the fields from `buildSslFields` after the password field: the `Use SSL` checkbox (`useSsl`), the text fields `sslCaFile`, `sslCertFile`, and `sslKeyFile` for certificate file paths, and `tlsServerName`. On edit, `buildSslFields(config.connection)` defaults them from the stored connection, and the edit screen omits them for SQLite; the add screen lists them for every dialect, and `buildConnectionConfig` ignores them for SQLite. A stored inline PEM (`ca`, `cert`, `key`) shows an empty field with the placeholder `(inline certificate stored)`, because the form edits paths, not certificate bodies.
+
+`buildConnectionConfig(values, dialect, existing)` starts from the stored `ConnectionConfig`, so fields the form does not show (pool, inline PEM, timeouts, keepalive) survive an edit. `buildSsl` maps the form to the `ssl` shape:
+
+| Form state | Stored `ssl` after submit |
+|---|---|
+| `useSsl` unchecked, no stored `ssl` | left absent, so a stage default still applies |
+| `useSsl` unchecked, stored `ssl` of any shape | `false`; stored certificate fields are discarded |
+| `useSsl` checked, a path entered | the matching `caFile`, `certFile`, or `keyFile` set to the trimmed path, and the matching inline `ca`, `cert`, or `key` deleted |
+| `useSsl` checked, a path blank | that file key deleted; the other stored keys, including inline PEM for untouched fields, are kept |
+| `useSsl` checked, resulting object empty (every path blank and no other stored key, or no stored object) | `true` |
+
+`tlsServerName` is set when non-blank and deleted otherwise. SQLite also drops a stored `filename`, since the Database field names the file.
+
+Both screens call `validateSslForm` before the connection test and show the message through `setConnectionError`. Only `ConfigEditScreen` passes the stored connection (`validateSslForm(values, dialect, config.connection)`); `ConfigAddScreen` calls `validateSslForm(values, dialect)` and `buildConnectionConfig(values, dialect)` with none. It rejects an unchecked `Use SSL` with a path that differs from the stored one, and an unchecked `Use SSL` with a `tlsServerName` on PostgreSQL or MySQL. A path equal to the stored value does not count as entered. Core-state owns the config schema, `combineSsl`, and `anchorSslFiles` ([`docs/wiki/core-state.md`](core-state.md)); `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) and imported directly by [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts), while `resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) reads the files at connect time ([`docs/wiki/core-db.md`](core-db.md)).
 
 ### Identity setup gate and regeneration
 
@@ -325,7 +343,7 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 | [`src/tui/hooks/`](../../src/tui/hooks) | `useConnection` (with `enabled`), `useVaultConnection`, `useVaultSecretKeys` (vault-read policy gate and confirmation), `useLockStatus` from `hooks/useLockStatus.ts`, `useLoadGuard`, `useTransferProgress`, `useSettingsOperation`, `useSecretSource`, and `useAsyncEffect`; exported through `hooks/index.ts`. |
 | [`src/tui/hooks/useAbortableTask.ts`](../../src/tui/hooks/useAbortableTask.ts) | Cancellable per-screen database tasks and suppression of stale results after cancellation. |
 | [`src/tui/hooks/useViewportRows.ts`](../../src/tui/hooks/useViewportRows.ts) | Terminal-size-derived capacity for windowed lists. |
-| [`src/tui/utils/`](../../src/tui/utils) | `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts` (including `getRoleOptions`), `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `progress.ts`, `run-context.ts`, `settings-validation.ts`, and `string.ts`; `utils/index.ts` exports these helpers except `date.ts`. |
+| [`src/tui/utils/`](../../src/tui/utils) | `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts` (including `getRoleOptions`, `buildSslFields`, `validateSslForm`), `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `progress.ts`, `run-context.ts`, `settings-validation.ts`, and `string.ts`; `utils/index.ts` exports these helpers except `date.ts`. |
 | [`src/tui/utils/progress.ts`](../../src/tui/utils/progress.ts) | `progressPercentage(completed, total)` returns the 0–100 value expected by Ink's `ProgressBar`, clamping over-counted event streams. |
 | [`src/tui/hooks/useUpdateChecker.ts`](../../src/tui/hooks/useUpdateChecker.ts), [`src/tui/hooks/useUpdateProgress.ts`](../../src/tui/hooks/useUpdateProgress.ts), [`src/tui/screens/UpdateScreen.tsx`](../../src/tui/screens/UpdateScreen.tsx) | Update commands and event-driven download display. |
 | [`src/tui/screens/secret/SecretReadGate.tsx`](../../src/tui/screens/secret/SecretReadGate.tsx) | Policy gate for local secret reads. |
@@ -354,6 +372,7 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 - Gated screens must pass `enabled` to `useConnection`/`useVaultSecretKeys` until policy allows and confirmation is approved; requesting the connection first reads the vault before the user confirms.
 - A screen that can create the first saved state must be wrapped in `requireIdentity` (today `config/add` and `config/import` in `SCREENS`); without it the form can complete and then fail to store because no private key is loaded.
 - `useConnection` passes `channel: 'user'` and the active config to `prepareTrackingSchema` itself; callers pass only `ensureSchema`. `mayWriteTracking` decides from that channel and config, so a hook change that passes a different config lets the wrong role create or migrate tracking tables.
+- `buildConnectionConfig` on edit must receive the stored `connection` as `existing`. Without it, pool, timeouts, keepalive, and inline PEM fields the form does not show are dropped on save. When a stored `ssl` exists, unchecking `Use SSL` on edit stores `ssl: false`, and the stored `caFile`, `certFile`, and `keyFile` are discarded with no confirmation.
 - Config add, edit, and import call `validateAccessRoles` against `settings.access.roles` before saving; skipping it persists a role name that policy checks later reject.
 - Progress consumers must clear reports at operation boundaries; retaining them shows server activity for a file that has already finished.
 - Cancellation warning duration and confirmation timing share `DOUBLE_PRESS_WINDOW_MS`; diverging them makes the visible warning disagree with the accepted confirmation window.

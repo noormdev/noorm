@@ -7,7 +7,8 @@
 import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
-import { AccessSchema } from '../config/schema.js';
+import { SSL_FIELD_PAIRS } from '../connection/types.js';
+import { AccessSchema, sslFilePath } from '../config/schema.js';
 import { isBuiltinRole, MATRIX } from '../policy/matrix.js';
 import { DEFAULT_UI_MOUSE } from './defaults.js';
 
@@ -58,6 +59,41 @@ const StageSecretSchema = z.object({
     required: z.boolean().default(true),
 });
 
+/** Strict, so inline `ca`, `cert` and `key` fail instead of being stripped. */
+const StageSslSchema = z.strictObject({
+    rejectUnauthorized: z.boolean().optional(),
+    caFile: sslFilePath('defaults.ssl', 'caFile'),
+    certFile: sslFilePath('defaults.ssl', 'certFile'),
+    keyFile: sslFilePath('defaults.ssl', 'keyFile'),
+});
+
+/** The union collapses the strict object's issues into "Invalid input". */
+function stageSslError(issue: z.core.$ZodRawIssue): string | undefined {
+
+    if (issue.code !== 'invalid_union') return undefined;
+
+    const keys = issue.errors.flat().flatMap((inner) => inner.code === 'unrecognized_keys' ? inner.keys : []);
+
+    if (keys.length === 0) {
+
+        return 'defaults.ssl must be a boolean or an object of caFile, certFile, keyFile, rejectUnauthorized';
+
+    }
+
+    return keys
+        .map((key) => {
+
+            const fileForm = SSL_FIELD_PAIRS.find(([inline]) => inline === key)?.[1];
+
+            return fileForm
+                ? `defaults.ssl.${key} is not allowed in stage defaults; use ${fileForm}`
+                : `defaults.ssl.${key} is not a recognized ssl option`;
+
+        })
+        .join('; ');
+
+}
+
 /**
  * Stage defaults - values applied when creating a config from this stage.
  */
@@ -68,7 +104,7 @@ const StageDefaultsSchema = z.object({
     database: z.string().optional(),
     user: z.string().optional(),
     password: z.string().optional(),
-    ssl: z.boolean().optional(),
+    ssl: z.union([z.boolean(), StageSslSchema], { error: stageSslError }).optional(),
     type: ConnectionTypeSchema.optional(),
     access: AccessSchema.optional(),
     isTest: z.boolean().optional(),

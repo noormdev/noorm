@@ -36,7 +36,7 @@ import type { SharedConfigPayload } from '../../../core/identity/types.js';
 import { resolveLegacyAccess } from '../../../core/policy/index.js';
 import { parseConfig } from '../../../core/config/schema.js';
 import { validateAccessRoles } from '../../../core/config/resolver.js';
-import { getErrorMessage } from '../../utils/index.js';
+import { getErrorMessage, skipsVerification } from '../../utils/index.js';
 
 /**
  * Import steps.
@@ -57,7 +57,7 @@ type ImportStep =
  */
 interface ImportedData {
     config: Partial<Config> & { protected?: boolean };
-    secrets: Record<string, string>;
+    secrets?: Record<string, string>;
 }
 
 /**
@@ -212,32 +212,28 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                 const configName = String(values['name'] || importedData.config.name);
                 const access = resolveLegacyAccess(importedData.config.access, importedData.config.protected);
 
-                // Build full config with credentials
-                const config: Config = {
+                if (!settings) throw new Error('Settings are not available');
+
+                // The parsed config is what gets saved, so a key the schema does not know never reaches state.
+                const config: Config = parseConfig({
                     name: configName,
-                    type: importedData.config.type ?? 'local',
-                    isTest: importedData.config.isTest ?? false,
+                    type: importedData.config.type,
+                    isTest: importedData.config.isTest,
                     access,
                     connection: {
-                        dialect: importedData.config.connection?.dialect ?? 'postgres',
-                        host: importedData.config.connection?.host,
-                        port: importedData.config.connection?.port,
-                        database: importedData.config.connection?.database ?? '',
+                        ...importedData.config.connection,
                         user: values['user'] ? String(values['user']) : undefined,
                         password: values['password'] ? String(values['password']) : undefined,
-                        ssl: importedData.config.connection?.ssl,
                     },
-                };
+                });
 
-                if (!settings) throw new Error('Settings are not available');
-                parseConfig(config);
                 validateAccessRoles(config.access, settings.access?.roles);
 
                 // Save config
                 await stateManager.setConfig(configName, config);
 
                 // Import secrets
-                for (const [key, value] of Object.entries(importedData.secrets)) {
+                for (const [key, value] of Object.entries(importedData.secrets ?? {})) {
 
                     await stateManager.setSecret(configName, key, value);
 
@@ -404,7 +400,16 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
             },
         ];
 
-        const secretCount = Object.keys(importedData.secrets).length;
+        const secretCount = Object.keys(importedData.secrets ?? {}).length;
+        const incoming = importedData.config.connection;
+        const ssl = incoming?.ssl;
+        const certificateFiles = ssl && typeof ssl === 'object'
+            ? [
+                { label: 'CA file', path: ssl.caFile },
+                { label: 'Client cert file', path: ssl.certFile },
+                { label: 'Client key file', path: ssl.keyFile },
+            ].filter((file) => file.path)
+            : [];
 
         return (
             <Panel title="Import Configuration" paddingX={2} paddingY={1}>
@@ -428,6 +433,28 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                                 {importedData.config.connection?.port}
                             </Text>
                         </Text>
+                        <Text>
+                            SSL: <Text color="cyan">{ssl ? 'on' : 'off'}</Text>
+                        </Text>
+                        {ssl && (
+                            <Text>
+                                Verify certificate:{' '}
+                                <Text color="cyan">{skipsVerification(ssl) ? 'off' : 'on'}</Text>
+                            </Text>
+                        )}
+                        {certificateFiles.map(({ label, path }) => (
+                            <Text key={label}>
+                                {label}: <Text color="cyan">{path}</Text>
+                            </Text>
+                        ))}
+                        {incoming?.tlsServerName && (
+                            <Text>
+                                TLS server name: <Text color="cyan">{incoming.tlsServerName}</Text>
+                            </Text>
+                        )}
+                        {certificateFiles.length > 0 && (
+                            <Text dimColor>A certificate file path must exist on this machine.</Text>
+                        )}
                         <Text>
                             Secrets: <Text color="cyan">{secretCount} included</Text>
                         </Text>

@@ -103,21 +103,21 @@ describe('cli: noorm config import — legacy protected mapping', () => {
     }
 
     /**
-     * Reads the `access` a config was persisted with immediately after
-     * import, decrypting state.enc directly rather than going through a
-     * fresh `StateManager.load()` — a subsequent load's boundary backfill
-     * would itself resolve a missing `access`, masking a regression in
-     * `import.ts`'s own parse path.
+     * Reads the config as persisted immediately after import (its `access`
+     * and `connection`), decrypting state.enc directly rather than going
+     * through a fresh `StateManager.load()` — a subsequent load's boundary
+     * backfill would itself resolve a missing `access`, masking a regression
+     * in `import.ts`'s own parse path.
      */
-    function readPersistedAccess(name: string): unknown {
+    function readPersistedConfig(name: string): { access?: unknown; connection?: unknown } | undefined {
 
         const statePath = new StateManager(tmpDir, { privateKey }).getStatePath();
         const raw = readFileSync(statePath, 'utf8');
         const decrypted = JSON.parse(
             decrypt(JSON.parse(raw) as EncryptedPayload, privateKey),
-        ) as { configs: Record<string, { access?: unknown }> };
+        ) as { configs: Record<string, { access?: unknown; connection?: unknown }> };
 
-        return decrypted.configs[name]?.access;
+        return decrypted.configs[name];
 
     }
 
@@ -133,8 +133,23 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
         expect(result.status).toBe(0);
 
-        const access = readPersistedAccess('legacy-guarded');
+        const access = readPersistedConfig('legacy-guarded')?.access;
         expect(access).toEqual({ user: 'operator', agent: 'viewer' });
+
+    });
+
+    it('imports a config whose caFile does not exist, storing the path as written', () => {
+
+        const path = writeConfigFile('tls.json', {
+            name: 'tls',
+            access: { user: 'admin', agent: 'admin' },
+            connection: { dialect: 'postgres', host: 'db.example.com', database: 'app', ssl: { caFile: 'certs/missing-ca.pem' } },
+        });
+
+        const result = runImport(path);
+
+        expect(result.status).toBe(0);
+        expect(readPersistedConfig('tls')?.connection).toMatchObject({ ssl: { caFile: 'certs/missing-ca.pem' } });
 
     });
 
@@ -150,7 +165,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
         expect(result.status).toBe(0);
 
-        const access = readPersistedAccess('modern-viewer');
+        const access = readPersistedConfig('modern-viewer')?.access;
         expect(access).toEqual({ user: 'viewer', agent: false });
 
     });
@@ -165,7 +180,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
             connection: { dialect: 'sqlite', database: ':memory:' },
         });
         expect(runImport(valid).status).toBe(0);
-        expect(readPersistedAccess('custom')).toEqual({ user: 'auditor', agent: false });
+        expect(readPersistedConfig('custom')?.access).toEqual({ user: 'auditor', agent: false });
 
         const invalid = writeConfigFile('unknown.json', {
             name: 'unknown',
@@ -280,7 +295,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
             expect(result.status).toBe(1);
             expect(result.stdout + result.stderr).toContain('config:write');
-            expect(readPersistedAccess('locked')).toEqual({ user: 'viewer', agent: false });
+            expect(readPersistedConfig('locked')?.access).toEqual({ user: 'viewer', agent: false });
 
         });
 
@@ -290,7 +305,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
 
             expect(result.status).toBe(1);
             expect(result.stdout + result.stderr).toContain('confirmation');
-            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', agent: 'viewer' });
+            expect(readPersistedConfig('locked')?.access).toEqual({ user: 'admin', agent: 'viewer' });
 
         });
 
@@ -299,7 +314,7 @@ describe('cli: noorm config import — legacy protected mapping', () => {
             const result = importThenEscalate({ user: 'admin', agent: 'viewer' }, ['--force', '--yes']);
 
             expect(result.status).toBe(0);
-            expect(readPersistedAccess('locked')).toEqual({ user: 'admin', agent: 'admin' });
+            expect(readPersistedConfig('locked')?.access).toEqual({ user: 'admin', agent: 'admin' });
 
         });
 

@@ -7,7 +7,8 @@ import { describe, it, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { LockStatus, ConnectionStatus } from '../../../src/tui/components/status/index.js';
+import { SslFileError } from '../../../src/core/connection/ssl-files.js';
+import { LockStatus, ConnectionStatus, isDatabaseNotFoundError } from '../../../src/tui/components/status/index.js';
 
 describe('cli: components/status', () => {
 
@@ -183,6 +184,29 @@ describe('cli: components/status', () => {
 
             expect(lastFrame()).toContain('CONNECTED');
             expect(lastFrame()).toContain('(dev)');
+
+        });
+
+    });
+
+    describe('isDatabaseNotFoundError', () => {
+
+        it.each(['does not exist', 'unknown database'])('should be false for an SslFileError message whose path holds "%s"', (directory) => {
+
+            const { message } = new SslFileError('ssl.caFile', `/srv/${directory}/ca.pem`, 'ENOENT');
+
+            expect(isDatabaseNotFoundError(message)).toBe(false);
+            expect(isDatabaseNotFoundError(`Connection failed: ${message}`)).toBe(false);
+
+        });
+
+        it.each([
+            ['PostgreSQL', 'database "app" does not exist'],
+            ['MySQL', "Unknown database 'app'"],
+            ['MSSQL', "Database 'app' does not exist. Make sure that the name is entered correctly."],
+        ])('should stay true for the %s missing-database message', (_dialect, message) => {
+
+            expect(isDatabaseNotFoundError(`Connection failed: ${message}`)).toBe(true);
 
         });
 

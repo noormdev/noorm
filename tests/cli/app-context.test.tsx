@@ -30,7 +30,9 @@ import { resetLifecycleManager } from '../../src/core/lifecycle/manager.js';
 import { ShutdownProvider } from '../../src/tui/shutdown.js';
 import { ConnectionProvider } from '../../src/tui/providers/ConnectionProvider.js';
 import { HomeScreen } from '../../src/tui/screens/home.js';
-import { observer, getStateManager } from '../../src/core/index.js';
+import { observer, getStateManager, type Config } from '../../src/core/index.js';
+import { effectiveConfig, SettingsProvider } from '../../src/core/config/resolver.js';
+import { getPolicyContext, getPolicyFingerprint } from '../../src/core/policy/index.js';
 import { StateManager } from '../../src/core/state/index.js';
 import { encrypt, decrypt } from '../../src/core/state/encryption/index.js';
 import { generateKeyPair } from '../../src/core/identity/crypto.js';
@@ -314,6 +316,165 @@ describe('cli: app-context', () => {
                 rmSync(root, { recursive: true, force: true });
 
             }
+
+        });
+
+    });
+
+    describe('activeConfig is the effective config', () => {
+
+        const connection: Config['connection'] = { dialect: 'postgres', database: 'app', host: 'db' };
+        const access: Config['access'] = { user: 'viewer', agent: 'viewer' };
+        const roots: string[] = [];
+
+        let context: ReturnType<typeof useAppContext> | null = null;
+
+        function ContextProbe(): null {
+
+            context = useAppContext();
+
+            return null;
+
+        }
+
+        function loaded() {
+
+            if (!context?.activeConfig || !context.settingsManager) throw new Error('the app context has no active config');
+
+            return { activeConfig: context.activeConfig, settingsManager: context.settingsManager };
+
+        }
+
+        function writeStage(root: string, defaults: string): void {
+
+            mkdirSync(join(root, '.noorm'), { recursive: true });
+            writeFileSync(join(root, '.noorm', 'settings.yml'), `stages:\n    ci:\n        defaults:\n            ${defaults}\n`);
+
+        }
+
+        async function mountActive(defaults: string, stored: Partial<Config>, settled = () => context?.activeConfig !== null) {
+
+            const root = mkdtempSync(join(tmpdir(), 'noorm-effective-'));
+            const sm = createMockStateManager();
+
+            roots.push(root);
+            writeStage(root, defaults);
+            sm.getActiveConfigName.mockReturnValue('ci');
+            sm.getConfig.mockReturnValue(stored);
+            (getStateManager as Mock<typeof getStateManager>).mockReturnValueOnce(sm);
+
+            const screen = render(
+                <AppContextProvider projectRoot={root}>
+                    <ContextProbe />
+                </AppContextProvider>,
+            );
+
+            await waitFor(() => context?.loadingStatus === 'ready' && settled());
+
+            return { root, sm, screen };
+
+        }
+
+        afterEach(() => {
+
+            context = null;
+
+            for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+
+        });
+
+        it('should hold a stage caFile the stored config lacks', async () => {
+
+            const { screen } = await mountActive('ssl:\n                caFile: ./certs/ca.pem', { name: 'ci', type: 'local', isTest: false, access, connection });
+
+            expect(context?.activeConfig?.connection.ssl).toEqual({ caFile: './certs/ca.pem' });
+            screen.unmount();
+
+        });
+
+        it('should keep its identity across re-renders and change with the stored config or the settings', async () => {
+
+            const stored = { name: 'ci', type: 'local', isTest: false, access, connection } satisfies Config;
+            const { root, sm, screen } = await mountActive('ssl:\n                caFile: ./certs/ca.pem', stored);
+            const first = context?.activeConfig;
+
+            observer.emit('connection:open', { configName: 'ci', dialect: 'postgres' });
+            await waitFor(() => context?.connectionStatus === 'connected');
+
+            expect(context?.connectionStatus).toBe('connected');
+            expect(context?.activeConfig).toBe(first);
+
+            sm.getConfig.mockReturnValue({ ...stored, connection: { ...connection, host: 'moved' } });
+            await context?.refresh();
+            await waitFor(() => context?.activeConfig?.connection.host === 'moved');
+
+            const second = context?.activeConfig;
+
+            expect(second?.connection.host).toBe('moved');
+
+            writeStage(root, 'ssl:\n                caFile: ./certs/other.pem');
+            await context?.settingsManager?.load();
+            await context?.refresh();
+            await waitFor(() => context?.activeConfig !== second);
+
+            expect(context?.activeConfig?.connection.ssl).toEqual({ caFile: './certs/other.pem' });
+            screen.unmount();
+
+        });
+
+        it('should have the policy fingerprint of the effective config bound outside the provider', async () => {
+
+            const stored = { name: 'ci', type: 'local', isTest: false, access, connection } satisfies Config;
+            const { screen } = await mountActive('user: stage-user', stored);
+            const { activeConfig, settingsManager } = loaded();
+            const outside = effectiveConfig(stored, new SettingsProvider(settingsManager), false);
+
+            expect(activeConfig.connection.user).toBe('stage-user');
+            expect(getPolicyFingerprint(activeConfig)).toBe(getPolicyFingerprint(outside));
+            screen.unmount();
+
+        });
+
+        it('should not trust a stage isTest for a stored config that does not set it', async () => {
+
+            const { screen } = await mountActive('isTest: true', { name: 'ci', type: 'local', access, connection });
+
+            const { activeConfig } = loaded();
+
+            expect(activeConfig.isTest).toBe(true);
+            expect(getPolicyContext(activeConfig.access)?.isTest).toBe(false);
+            screen.unmount();
+
+        });
+
+        it('should still expose a stored config with an unknown role', async () => {
+
+            const stored = { name: 'ci', type: 'local', isTest: false, access: { user: 'ghost', agent: 'viewer' }, connection } satisfies Config;
+            const { screen } = await mountActive('user: stage-user', stored);
+
+            expect(context?.activeConfig?.access.user).toBe('ghost');
+            expect(context?.activeConfig?.connection.user).toBe('stage-user');
+            screen.unmount();
+
+        });
+
+        // Both shapes pass the stored-config read and fail only once the defaults are merged in and the result is parsed.
+        it.each([
+            ['a pool.min above the default pool.max', { ...connection, pool: { min: 11 } }],
+            ['a database name the schema refuses', { ...connection, database: 'app;drop' }],
+        ])('should stay ready with no active config for %s', async (_shape, refused) => {
+
+            const { screen } = await mountActive(
+                'user: stage-user',
+                { name: 'ci', type: 'local', isTest: false, access, connection: refused },
+                () => context?.activeConfigAccessError != null,
+            );
+
+            expect(context?.loadingStatus).toBe('ready');
+            expect(context?.activeConfig).toBeNull();
+            expect(context?.activeConfigName).toBe('ci');
+            expect(context?.activeConfigAccessError).toMatch(/\S/);
+            screen.unmount();
 
         });
 

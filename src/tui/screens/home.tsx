@@ -36,6 +36,7 @@ import { failureListItem, scanChanges } from '../../core/change/parser.js';
 import { isPendingChange } from '../../core/change/types.js';
 import { getLockManager } from '../../core/lock/manager.js';
 import { checkConfigPolicy } from '../../core/policy/index.js';
+import { isSslFileErrorMessage } from '../../core/connection/ssl-files.js';
 import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
 import { relativeTimeAgo } from '../utils/date.js';
@@ -62,6 +63,8 @@ interface ConfigSetupStatus {
  * Check if an error indicates the database doesn't exist.
  */
 function isDatabaseMissingError(error: string): boolean {
+
+    if (isSslFileErrorMessage(error)) return false;
 
     const lower = error.toLowerCase();
 

@@ -7,6 +7,8 @@
  * `ConfigValidateScreen.tsx`.
  */
 import { describe, it, expect } from 'bun:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { validateConfigChecks } from '../../../src/core/config/validate.js';
 import type { Config } from '../../../src/core/config/types.js';
@@ -66,6 +68,23 @@ describe('config: validateConfigChecks', () => {
         const hostCheck = checks.find((c) => c.key === 'host');
         expect(hostCheck?.status).toBe('error');
         expect(hostCheck?.detail).toBe('Not set');
+
+    });
+
+    it('reports the SslFileError message for an unreadable ssl file path', async () => {
+
+        const caFile = join(tmpdir(), 'noorm-validate-missing', 'ca.pem');
+        const config = createConfig({
+            connection: { dialect: 'postgres', host: '127.0.0.1', port: 1, database: 'testdb', ssl: { caFile } },
+        });
+
+        const { checks, valid } = await validateConfigChecks(config);
+        const connection = checks.find((c) => c.key === 'connection');
+
+        expect(valid).toBe(false);
+        expect(connection?.status).toBe('error');
+        expect(connection?.detail).toContain('ssl.caFile');
+        expect(connection?.detail).toContain(caFile);
 
     });
 

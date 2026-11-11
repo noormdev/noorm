@@ -126,6 +126,33 @@ describe('cli: noorm config export — output file mode', () => {
 
     });
 
+    it('prints ssl file paths and no PEM for a file-form config', async () => {
+
+        const ssl = { caFile: join(tmpDir, 'ca.pem'), certFile: join(tmpDir, 'cert.pem'), keyFile: join(tmpDir, 'key.pem') };
+
+        for (const path of Object.values(ssl)) writeFileSync(path, '-----BEGIN CERTIFICATE-----\nthrowaway\n-----END CERTIFICATE-----\n');
+
+        const manager = new StateManager(tmpDir, { privateKey });
+        await manager.load();
+        await manager.setConfig(CONFIG_NAME, {
+            name: CONFIG_NAME,
+            type: 'local',
+            isTest: false,
+            access: { user: 'admin', agent: 'admin' },
+            connection: { dialect: 'postgres', host: 'db.example.com', database: 'app', ssl },
+        });
+
+        const result = runExport();
+
+        expect(result.status).toBe(0);
+
+        const exported = JSON.parse(readFileSync(outputPath, 'utf8'));
+
+        expect(exported.connection.ssl).toEqual(ssl);
+        expect(readFileSync(outputPath, 'utf8')).not.toContain('BEGIN');
+
+    });
+
     /**
      * Export hands over the connection password in plaintext, so it is a
      * secret read — but it was the one config operation with no gate at all.

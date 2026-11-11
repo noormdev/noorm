@@ -11,6 +11,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { Dialect } from '../core/connection/index.js';
 import type { Config } from '../core/config/types.js';
+import { anchorSslFiles } from '../core/config/anchor.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
@@ -140,6 +141,8 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             config = bindSdkPolicy(config, settings, projectRoot, options.stage ? [options.stage] : undefined);
 
         }
+
+        config = { ...config, connection: anchorSslFiles(config.connection, projectRoot) };
 
         this.#state = {
             connection: null,

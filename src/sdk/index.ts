@@ -258,6 +258,7 @@ export type { TvpValue } from './tvp.js';
 export { RequireTestError, ProtectedConfigError, NotConnectedError, ResetBuildError, DisconnectedError } from './guards.js';
 export { VaultAccessError } from './namespaces/vault.js';
 export { DatabaseConnectionError } from '../core/connection/errors.js';
+export { SslFileError } from '../core/connection/ssl-files.js';
 export { VersionMismatchError, MigrationError } from '../core/version/types.js';
 
 // Impersonation

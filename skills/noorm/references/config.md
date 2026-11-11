@@ -202,7 +202,7 @@ All conditions within a rule are AND'd — every specified field must match.
 | `defaults.database` | `string?` | Database name |
 | `defaults.user` | `string?` | Username |
 | `defaults.password` | `string?` | Password |
-| `defaults.ssl` | `boolean?` | Enable SSL |
+| `defaults.ssl` | `boolean \| { caFile?, certFile?, keyFile?, rejectUnauthorized? }?` | SSL on or off, or file-form certificates. Inline `ca`, `cert` and `key` are refused. A relative path must exist under every machine's project root. A stage `rejectUnauthorized` applies only to a config with no `ssl` of its own |
 | `defaults.type` | `'local' \| 'remote'?` | Connection type default |
 | `defaults.access` | `ConfigAccess?` | Per-channel role defaults |
 | `defaults.isTest` | `boolean?` | Test default; a false override is a stage-completeness violation |
@@ -270,9 +270,12 @@ interface Config {
         password?: string;
         ssl?: boolean | {
             rejectUnauthorized?: boolean;
-            ca?: string;
-            cert?: string;
-            key?: string;
+            ca?: string;            // PEM text; not with caFile in one layer
+            cert?: string;          // PEM text; not with certFile
+            key?: string;           // PEM text; not with keyFile
+            caFile?: string;        // Path, read each time a pool opens, on every connect attempt
+            certFile?: string;
+            keyFile?: string;
         };
         pool?: {
             min?: number;
@@ -286,7 +289,7 @@ interface Config {
             reapIntervalMs?: number;    // MySQL and MSSQL only
         };
         connectTimeoutMs?: number;
-        tlsServerName?: string;
+        tlsServerName?: string;     // PostgreSQL, MySQL, MSSQL; MySQL and MSSQL take a hostname only
         statementTimeoutMs?: number;
         queryTimeoutMs?: number;
         applicationName?: string;
@@ -297,11 +300,32 @@ interface Config {
 }
 ```
 
+**SSL files:** a path is stored as written and the file is read each time a pool opens, on every connect attempt, so a rotated file needs no config change. A relative path resolves from the working directory (the project root in the CLI and TUI) or the SDK's `projectRoot`; `~/` is the home directory. An empty path or both forms of one field in one layer fails validation naming the field. An unreadable, empty, non-regular, over-1-MiB or non-PEM file fails the connection with `SslFileError` (`field`, `path`, `code`, no content). A file-form setting is stored as its path, never content; `config export` copies `ssl` as stored, so inline PEM exports as PEM. `config import` does not check that the file exists.
+
+**Environment:** `NOORM_CONNECTION_SSL_caFile`, `_certFile`, `_keyFile` (camelCase segment), beside `NOORM_CONNECTION_SSL_rejectUnauthorized`. `NOORM_CONNECTION_SSL_CA`, `_CERT`, `_KEY` set inline PEM. A scalar `NOORM_CONNECTION_SSL` beside a nested `NOORM_CONNECTION_SSL_*` variable fails with an error that names both: set one form, not both. An `ssl` segment in another letter case (`NOORM_CONNECTION_SSL_CAFILE`) is refused with the right spelling.
+
+**Layers combine `ssl` field by field:** a higher `false` turns SSL off; a higher `true` keeps a lower object's `ca`, `cert` and `key` fields; an object over an object replaces each of them with the higher layer's form, inline or file. `rejectUnauthorized` is never inherited: it comes from the highest layer that sets `ssl`, so a layer that sets `ssl` without it validates, and a stage `rejectUnauthorized: false` reaches only a config with no `ssl`. `config sync` applies the same rule with the stage as the higher layer.
+
+**Dialects:** PostgreSQL, MySQL and MSSQL honor the certificates and `rejectUnauthorized`. `tlsServerName` needs `ssl` on and validation on PostgreSQL and MySQL; MySQL and MSSQL refuse an IP address. On MSSQL, `ssl: { rejectUnauthorized: false }` encrypts without validating the certificate and lifts the IP-host name requirement. A rejected certificate's error names `ssl.caFile` and `ssl.rejectUnauthorized: false`; a hostname mismatch names `tlsServerName`.
+
+**TUI:** connects with the stored config over its stage's defaults (defaults, then stage, then stored). No config variable (`NOORM_CONNECTION_*`, `NOORM_ACCESS_*`) and no flag is applied to a config, so access roles never come from the environment. Settings variables still apply: `NOORM_STAGES_<stage>_DEFAULTS_*` changes the stage defaults the TUI merges, as `NOORM_PATHS_*` changes its paths. A stage `isTest: true` does not grant the test-database exemption; only the stored config's own does. A stored config that does not combine with its stage into a valid config leaves no config active, shows the message on Home, and stays editable.
+
+| TUI surface | Behavior |
+|---|---|
+| Add and edit forms | Use SSL, Verify Certificate (unchecked stores `ssl.rejectUnauthorized: false`), CA File, Client Cert File, Client Key File, TLS Server Name |
+| Edit form | Shows the state in effect. A file the stage supplies shows the placeholder `(stage: <path>)`. A save that touches no SSL field leaves the stored `ssl` as it was |
+| Add form | Shows no stage state; the stage still applies beneath the connection test and the submit check |
+| Config list | `[tls]`, `[tls unverified]`, or no tag when SSL is off |
+| Export (`+`, `x`) | Carries every stored connection field except `user`, `password`, and inline `ssl.key` and `ssl.cert`; `tlsServerName`, `pool`, timeouts and certificate file paths travel |
+| Import (`+`, `i`) | Saves the fields the schema accepts with `user` and `password` from its form; the preview shows the incoming TLS settings; a certificate file path must exist on the importing machine |
+
+A certificate file error is never shown as a missing database.
+
 The [connection field reference](https://noorm.dev/dev/config#config-structure) owns stored field semantics. A pool or keepalive option the dialect does not support fails validation, as does an unknown pool key or a `pool.min` above `pool.max`. `pool.idleTimeoutMillis` is a deprecated alias of `pool.idleTimeoutMs`. Runtime password and TLS callbacks and `driver` options belong to SDK options, not this stored shape. See the [SDK connection reference](https://noorm.dev/reference/sdk#createcontext-options).
 
 ## Stage Constraints
 
-Stage defaults fill fields below stored, environment, and inline values. A stage-completeness check reports a false `isTest` override when the stage requires `true`; `requireTest` checks the final resolved flag. At policy-check time, `defaults.protected: true` caps each effective permission against the original operator matrix for users or viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the ceiling and assigned role names do not change. The one exception is an `isTest` config, which lifts the ceiling; see the test-database paragraph in [SKILL.md](../SKILL.md#configuration-resolution). See [stage behavior](https://noorm.dev/guide/environments/stages) for TUI seeding and [config commands](https://noorm.dev/headless#config-create) for explicit creation and sync.
+Stage defaults fill fields below stored, environment, and inline values, in the CLI, SDK and TUI. A stage-completeness check reports a false `isTest` override when the stage requires `true`; `requireTest` checks the final resolved flag. At policy-check time, `defaults.protected: true` caps each effective permission against the original operator matrix for users or viewer matrix for agents. The stricter cell wins (`deny` < `confirm` < `allow`); overrides cannot raise the ceiling and assigned role names do not change. The one exception is an `isTest` config, which lifts the ceiling; see the test-database paragraph in [SKILL.md](../SKILL.md#configuration-resolution). See [stage behavior](https://noorm.dev/guide/environments/stages) for TUI seeding and [config commands](https://noorm.dev/headless#config-create) for explicit creation and sync.
 
 Create stored configs with `noorm config create --stage staging --name review` or `noorm config create --all`; overwrites require literal `--force --yes` and authorization. Creation does not implicitly persist stage or environment passwords. Use `noorm config sync --stage staging --name review --json` to preview current defaults, then `--yes` to apply without a prompt. These aliases require an unprotected stage; a protected stage requires the config name to match the stage name because no stage association is stored. Sync preserves passwords and absent fields, refuses a different dialect, and requires `config:write`. Stage access assignments may name project roles and remain subject to validation and protected-stage permission ceilings.
 

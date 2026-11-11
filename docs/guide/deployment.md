@@ -66,7 +66,6 @@ Pass `password` as a function. The pool calls it each time it opens a physical c
 
 ```typescript
 // src/db.ts
-import { readFileSync } from 'node:fs';
 import { Signer } from '@aws-sdk/rds-signer';
 import { createContext } from '@noormdev/sdk';
 import type { DB } from './schema';
@@ -74,9 +73,6 @@ import type { DB } from './schema';
 const host = 'orders.cluster-example.us-east-1.rds.amazonaws.com';
 const port = 5432;
 const user = 'app';
-
-// The certificate bundle AWS publishes for RDS, at the path you downloaded it to.
-const ca = readFileSync('/etc/ssl/rds/global-bundle.pem', 'utf8');
 
 const signer = new Signer({ hostname: host, port, username: user, region: 'us-east-1' });
 
@@ -89,7 +85,8 @@ export const ctx = await createContext<DB>({
         port,
         database: 'order_to_cash',
         user,
-        ssl: { ca },
+        // The certificate bundle AWS publishes for RDS, at the path you downloaded it to.
+        ssl: { caFile: '/etc/ssl/rds/global-bundle.pem' },
         password: () => signer.getAuthToken(),
         pool: { max: 4, maxLifetimeMs: 900_000 },
         keepAliveInitialDelayMs: 10_000,
@@ -104,10 +101,10 @@ await ctx.connect();
 | `password: () => signer.getAuthToken()` | The database checks the token only at physical authentication. An open session keeps working after its token expires, and the next new connection signs a fresh one |
 | `pool.maxLifetimeMs` | The pool replaces each connection after this long, so a connection opened before a failover is closed and reopened within that time |
 | `keepAliveInitialDelayMs` | A failover can leave a socket half-open. The first TCP keepalive probe goes out after this many idle milliseconds, where the operating system default is about two hours |
-| `ssl: { ca }` | TLS that verifies the server against the RDS certificate bundle, which AWS documents downloading for that purpose |
+| `ssl: { caFile }` | TLS that verifies the server against the RDS certificate bundle, which AWS documents downloading for that purpose. noorm reads the file each time a pool opens, on every connect attempt, so a refreshed bundle takes effect on the next connect |
 | `config: false` | The context ignores `NOORM_CONFIG` and any active stored config |
 
-noorm does not include an IAM helper; the signer is your dependency, and any function that returns a string or a promise of one works. `Signer` reads AWS credentials from the default provider chain unless you pass `credentials`. IAM authentication needs TLS, and the example reads the certificate authority from a file whose path you supply.
+noorm does not include an IAM helper; the signer is your dependency, and any function that returns a string or a promise of one works. `Signer` reads AWS credentials from the default provider chain unless you pass `credentials`. IAM authentication needs TLS, and the example names the certificate authority file by a path you supply.
 
 `maxLifetimeMs` is a PostgreSQL pool option. MySQL and MSSQL take a different set: [Pool options](/reference/sdk#pool-options). A connection with a password function is not retried on a failed `connect()`, and an error the function throws reaches you unchanged: [Runtime credentials](/reference/sdk#runtime-credentials).
 
