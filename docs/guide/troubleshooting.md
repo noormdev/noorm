@@ -31,6 +31,11 @@ Each server sends one error for a wrong password and an unknown account. noorm r
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| `The server's TLS certificate was rejected (…)` | The server's certificate is signed by an authority noorm does not trust | Set `ssl.caFile` to the CA certificate, or `NODE_EXTRA_CA_CERTS` for the whole process. To keep encryption without validation, set `ssl.rejectUnauthorized: false` ([details](/guide/environments/configs#how-do-i-connect-to-a-server-with-a-private-ca)) |
+| `The server's TLS certificate was issued for a different hostname (…)` | The host you dial is not a name on the certificate | Set `tlsServerName` to a name the certificate carries, or dial that name |
+| `Cannot read ssl.caFile '…': ENOENT` | The path does not exist, or it resolves from another directory | Use an absolute or `~/` path, or a path relative to the project root. The CLI and TUI resolve it from the project root, the SDK from `projectRoot` |
+| `ssl.caFile '…' is not a PEM file` (also `certFile`, `keyFile`) | The file holds no `-----BEGIN` block, as with a DER-encoded certificate | Convert it to PEM: `openssl x509 -inform der -in ca.der -out ca.pem` for a certificate, `openssl pkey -inform der -in key.der -out key.pem` for a key |
+| `ssl.caFile '…' is larger than 1 MiB` (also `certFile`, `keyFile`) | The path points at a file that is not a certificate or key, such as a data file or an archive. A CA bundle under 1 MiB is fine | Point it at the certificate, CA bundle or key |
 | A right password fails from `NOORM_CONNECTION_PASSWORD` | The compiled binary does not read `.env` files | Export the variable, or set it in CI |
 | An MSSQL procedure's `DEFAULT` is not applied | The SDK sends `undefined` as `NULL`, and MSSQL applies a `DEFAULT` only to an omitted parameter | `.default(value)` in the Zod schema, or omit the key ([details](/reference/sdk#parameter-handling-and-null-semantics)) |
 

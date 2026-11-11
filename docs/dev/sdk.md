@@ -158,6 +158,23 @@ A name restricts and never selects defaults. A stage with the same name still ap
 
 Pool options and `keepAliveInitialDelayMs` are also valid in a stored config and as `NOORM_CONNECTION_*` variables. An option the dialect cannot honor fails validation in all three places, and so does a pool key noorm does not know, so a pool setting is never ignored without an error. MySQL pools through Tarn for a string password and a password callback alike.
 
+**Certificates:** `connection.ssl` takes `ca`, `cert` and `key` as PEM text, or `caFile`, `certFile` and `keyFile` as paths, plus `rejectUnauthorized`. One field takes one form. noorm reads the files each time a pool opens, on every connect attempt, so a rotated certificate needs no new context. A relative path resolves from `projectRoot`, which defaults to the working directory, and a leading `~/` from the home directory. A file that is not a readable regular file, or is empty, over 1 MiB, or holds no PEM block, rejects `connect()` with `SslFileError` (`field`, `path`, `code`), exported from `@noormdev/sdk`. The error carries no file content, and `connect()` does not retry it. See [TLS certificates](/reference/sdk#tls-certificates).
+
+```typescript
+const ctx = await createContext({
+    config: false,
+    name: 'orders',
+    projectRoot: '/srv/app',
+    connection: {
+        dialect: 'postgres',
+        host: 'db.internal.corp',
+        database: 'orders',
+        user: 'app',
+        ssl: { caFile: 'certs/corp-ca.pem' },
+    },
+})
+```
+
 `driver` cannot select the target, the credentials, or TLS. Keys such as `host`, `database`, `user`, `password`, and `ssl` are rejected by `createContext()`, because a trusted `isTest` config's access is bound to the connection target noorm resolved. SQLite accepts no driver options.
 
 The [SDK connection reference](/reference/sdk#createcontext-options) has the per-dialect tables: [pool options](/reference/sdk#pool-options), [driver options](/reference/sdk#driver-options), [runtime credentials](/reference/sdk#runtime-credentials), TLS identity hooks, session controls, and [pool failure events](/reference/sdk#pool-connection-failures).

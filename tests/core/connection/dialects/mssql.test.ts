@@ -118,6 +118,23 @@ describe('connection/dialects/mssql: resolveTlsServerName', () => {
 
     });
 
+    it('should not demand a hostname for an IP host when certificate validation is switched off', () => {
+
+        expect(resolveTlsServerName(mssqlConfig({ host: '46.101.71.200', ssl: { rejectUnauthorized: false } })))
+            .toBe(UNVERIFIED_TLS_SERVER_NAME);
+
+    });
+
+    it('should still demand a hostname for an IP host with ssl: { ca }', () => {
+
+        const [, err] = attemptSync(() =>
+            resolveTlsServerName(mssqlConfig({ host: '46.101.71.200', ssl: { ca: 'PEM' } })),
+        );
+
+        expect(err).toBeInstanceOf(MssqlTlsServerNameError);
+
+    });
+
     it('should reject an IP address supplied as the certificate hostname', () => {
 
         const [, err] = attemptSync(() =>
@@ -162,6 +179,54 @@ describe('connection/dialects/mssql: buildTediousOptions', () => {
         expect(options.options?.encrypt).toBe(true);
         expect(options.options?.trustServerCertificate).toBe(false);
         expect(options.options?.serverName).toBe('sql.example.com');
+
+    });
+
+    it('should trust the server certificate when ssl sets rejectUnauthorized: false', () => {
+
+        const options = buildTediousOptions(mssqlConfig({ ssl: { rejectUnauthorized: false } }));
+
+        expect(options.options?.trustServerCertificate).toBe(true);
+        expect(options.options?.encrypt).toBe(true);
+
+    });
+
+    it('should keep validating unless rejectUnauthorized is false', () => {
+
+        expect(buildTediousOptions(mssqlConfig({ ssl: true })).options?.trustServerCertificate).toBe(false);
+        expect(buildTediousOptions(mssqlConfig({ ssl: { ca: 'PEM' } })).options?.trustServerCertificate).toBe(false);
+        expect(buildTediousOptions(mssqlConfig({ ssl: { rejectUnauthorized: true } })).options?.trustServerCertificate).toBe(false);
+
+    });
+
+    it('should pass ca, cert and key to tedious as cryptoCredentialsDetails', () => {
+
+        const options = buildTediousOptions(mssqlConfig({ ssl: { ca: 'CA-PEM', cert: 'CERT-PEM', key: 'KEY-PEM' } }));
+
+        expect(options.options?.cryptoCredentialsDetails).toEqual({ ca: 'CA-PEM', cert: 'CERT-PEM', key: 'KEY-PEM' });
+
+    });
+
+    it('should pass only the PEM fields that are set', () => {
+
+        const options = buildTediousOptions(mssqlConfig({ ssl: { ca: 'CA-PEM' } }));
+
+        expect(options.options?.cryptoCredentialsDetails).toEqual({ ca: 'CA-PEM' });
+
+    });
+
+    it('should leave cryptoCredentialsDetails empty with no PEM', () => {
+
+        expect(buildTediousOptions(mssqlConfig({ ssl: true })).options?.cryptoCredentialsDetails).toEqual({});
+        expect(buildTediousOptions(mssqlConfig()).options?.cryptoCredentialsDetails).toEqual({});
+
+    });
+
+    it('should never hand file fields to tedious', () => {
+
+        const options = buildTediousOptions(mssqlConfig({ ssl: { ca: 'CA-PEM', caFile: '/certs/ca.pem', keyFile: '/certs/key.pem' } }));
+
+        expect(JSON.stringify(options)).not.toContain('/certs/');
 
     });
 

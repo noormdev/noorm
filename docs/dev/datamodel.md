@@ -132,9 +132,9 @@ Database connection parameters.
 | filename | string | SQLite | File path for SQLite databases |
 | user | string | No | Database username |
 | password | string | No | Database password |
-| ssl | boolean or object | No | SSL/TLS configuration (`rejectUnauthorized`, `ca`, `cert`, `key`) |
+| ssl | boolean or object | No | SSL/TLS configuration: `rejectUnauthorized`, and each of the CA, client certificate and client key as inline PEM (`ca`, `cert`, `key`) or a file path (`caFile`, `certFile`, `keyFile`). One field takes one form. Paths are stored; the file is read each time a pool opens, on every connect attempt |
 | pool | object | No | Connection pool settings (`min`, `max`) |
-| tlsServerName | string | No | Hostname the server's TLS certificate is issued for. Needed only when `host` is an IP address, since SNI cannot carry an IP literal. MSSQL is the only dialect that reads it |
+| tlsServerName | string | No | Hostname the server's TLS certificate is issued for. Needed when `host` is an IP address and the certificate is validated, since SNI cannot carry an IP literal. PostgreSQL, MySQL and MSSQL read it; MySQL and MSSQL refuse an IP address |
 
 **Default ports by dialect:**
 
@@ -170,6 +170,8 @@ CLI flags > Environment > Stored config > Stage defaults > Defaults
 ```
 
 Higher priority sources override lower ones, enabling flexible overrides for CI/CD.
+
+The TUI uses the last three only: stored config over stage defaults over defaults. It applies no config variable (`NOORM_CONNECTION_*`, `NOORM_ACCESS_*`) and no flag to a config. Settings variables still apply: `NOORM_STAGES_<stage>_DEFAULTS_*` changes the stage defaults the TUI merges, as `NOORM_PATHS_*` changes its paths.
 
 
 ---
@@ -282,7 +284,7 @@ Initial values when creating a config from a stage.
 | database | string? | Default database name |
 | user | string? | Default username |
 | password | string? | Default password |
-| ssl | boolean? | Default SSL setting |
+| ssl | boolean or object? | Default SSL setting: a boolean, or `caFile`, `certFile`, `keyFile` and `rejectUnauthorized`. Inline `ca`, `cert` and `key` are refused |
 | isTest | boolean? | Default test flag |
 | protected | boolean? | `true` caps each effective user permission at the original operator cell and each agent permission at the original viewer cell; assigned roles remain unchanged |
 
@@ -477,10 +479,10 @@ The decrypted `ciphertext` is JSON of the shape `{ config, secrets }`. There is 
 | config.isTest | boolean | Test database flag |
 | config.access | ConfigAccess | Per-channel access roles |
 | config.protected | boolean | Compatibility echo of `guarded(config)`, so an older importer still makes a safe (if coarser) access decision |
-| config.connection | object | `dialect`, `host`, `port`, `database`, `ssl` only |
+| config.connection | object | Every stored connection field except `user`, `password`, `ssl.key` and `ssl.cert`. File-form `ssl` settings travel as paths (the files are not read), an inline `ssl.ca` as PEM. An `ssl` object left with no field becomes `true` |
 | secrets | Map | Config-scoped secrets |
 
-**Note:** `user` and `password` are intentionally omitted. Recipients provide their own credentials on import. `pool` and file system paths are not exported either.
+**Note:** `user`, `password` and the inline client key and certificate are intentionally omitted. Recipients provide their own credentials on import. The project's `paths` are not exported either.
 
 
 ---

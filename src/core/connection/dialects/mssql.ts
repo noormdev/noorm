@@ -16,7 +16,7 @@ import type { ConnectionConfiguration } from 'tedious';
 import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } from '../types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 import { guardPasswordCallback, trackPoolLogins } from '../login.js';
-import { assertConnectionOptions, driverOptionsFor, tarnPoolOptions } from '../options.js';
+import { assertConnectionOptions, driverOptionsFor, ipTlsServerNameMessage, tarnPoolOptions } from '../options.js';
 import { trackPinnedConnections } from '../pinned.js';
 import { explainMssqlLoginFailure } from '../errors.js';
 import type { MssqlServerError } from '../errors.js';
@@ -67,6 +67,31 @@ export class MssqlTlsServerNameError extends Error {
 
 }
 
+function validatesCertificate(config: ConnectionConfig): boolean {
+
+    const { ssl } = config;
+
+    if (!ssl) return false;
+
+    return typeof ssl === 'boolean' || ssl.rejectUnauthorized !== false;
+
+}
+
+/** Tedious passes this object to `tls.createSecureContext`. */
+function cryptoCredentialsFor({ ssl }: ConnectionConfig) {
+
+    if (!ssl || typeof ssl === 'boolean') return {};
+
+    const { ca, cert, key } = ssl;
+
+    return {
+        ...(ca === undefined ? {} : { ca }),
+        ...(cert === undefined ? {} : { cert }),
+        ...(key === undefined ? {} : { key }),
+    };
+
+}
+
 /**
  * Resolve the TLS ServerName (SNI) tedious should present, if any.
  *
@@ -81,15 +106,11 @@ export function resolveTlsServerName(config: ConnectionConfig): string | undefin
 
     const host = config.host ?? 'localhost';
     const supplied = config.tlsServerName;
-    const validatingCertificate = !!config.ssl;
+    const validatingCertificate = validatesCertificate(config);
 
     if (supplied && isIP(supplied) !== 0) {
 
-        throw new MssqlTlsServerNameError(
-            host,
-            `Invalid tlsServerName '${supplied}': a TLS ServerName must be a hostname, not an IP address. ` +
-            'Set it to the hostname the server\'s certificate is issued for.',
-        );
+        throw new MssqlTlsServerNameError(host, ipTlsServerNameMessage(supplied));
 
     }
 
@@ -148,7 +169,8 @@ export function buildTediousOptions(config: ConnectionConfig, runtime?: RuntimeC
             ...driverOptionsFor('mssql', runtime),
             port: config.port ?? DEFAULT_PORTS.mssql,
             database: config.database,
-            trustServerCertificate: !config.ssl,
+            trustServerCertificate: !validatesCertificate(config),
+            cryptoCredentialsDetails: cryptoCredentialsFor(config),
             encrypt: true,
             serverName: resolveTlsServerName(config),
             // Matches tedious's own default, so mssql keeps the behaviour it

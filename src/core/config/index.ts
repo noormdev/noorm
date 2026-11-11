@@ -1,5 +1,6 @@
 import { makeNestedConfig } from '@logosdx/utils';
 import type { ConfigInput } from './types.js';
+import { ConfigValidationError } from './schema.js';
 
 
 /**
@@ -62,6 +63,19 @@ export const { allConfigs, getConfig } = makeNestedConfig<ConfigInput>(process.e
  * ```
  */
 export function getEnvConfig(): ConfigInput {
+
+    const nested = Object.keys(process.env).find((key) => key.startsWith('NOORM_CONNECTION_SSL_'));
+
+    if (nested && process.env['NOORM_CONNECTION_SSL'] !== undefined) {
+
+        throw new ConfigValidationError(
+            'A scalar NOORM_CONNECTION_SSL cannot be combined with a nested NOORM_CONNECTION_SSL_* variable '
+            + `(${nested} is set): set one form, not both.`,
+            'connection.ssl',
+            [],
+        );
+
+    }
 
     return allConfigs();
 

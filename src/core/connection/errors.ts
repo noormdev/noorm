@@ -23,6 +23,7 @@ import { attemptSync } from '@logosdx/utils';
 
 import type { ConnectionConfig } from './types.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from './defaults.js';
+import { SslFileError } from './ssl-files.js';
 
 /**
  * A connection failure worded for the user.
@@ -108,6 +109,31 @@ const TLS_CERTIFICATE_CODES = new Set([
     'CERT_NOT_YET_VALID',
     'ERR_TLS_CERT_ALTNAME_INVALID',
 ]);
+
+/** mysql2 overwrites the TLS error code with HANDSHAKE_SSL_ERROR; only the message tells a certificate rejection apart. */
+const MYSQL_CERTIFICATE_REASONS: [reason: RegExp, code: string][] = [
+    [/self.signed certificate in certificate chain/i, 'SELF_SIGNED_CERT_IN_CHAIN'],
+    [/self.signed certificate/i, 'DEPTH_ZERO_SELF_SIGNED_CERT'],
+    [/unable to verify the first certificate/i, 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'],
+    [/unable to get local issuer certificate/i, 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'],
+    [/certificate has expired/i, 'CERT_HAS_EXPIRED'],
+    [/certificate is not yet valid/i, 'CERT_NOT_YET_VALID'],
+    [/does not match certificate's altnames/i, 'ERR_TLS_CERT_ALTNAME_INVALID'],
+];
+
+const ALTNAME_PREFIX = 'Hostname/IP does not match certificate\'s altnames: ';
+
+const ALTNAME_REASON_MAX = 300;
+
+function certificateCodeOf(codes: string[], failure: Failure): string | undefined {
+
+    const code = codes.find((each) => TLS_CERTIFICATE_CODES.has(each));
+
+    if (code || !codes.includes('HANDSHAKE_SSL_ERROR')) return code;
+
+    return MYSQL_CERTIFICATE_REASONS.find(([reason]) => reason.test(failure.message))?.[1];
+
+}
 
 /**
  * SQL Server login errors by number, most specific first: 4060 arrives
@@ -207,12 +233,13 @@ const MYSQL_REASONS: Record<string, Explain> = {
  */
 export function explainConnectionError(err: Error, config: ConnectionConfig): Error {
 
-    if (err instanceof DatabaseConnectionError) return err;
+    if (err instanceof DatabaseConnectionError || err instanceof SslFileError) return err;
 
     const codes = errorCodes(err);
     const failure = describeFailure(err, config);
-    const reason = explainTransport(codes, failure) ?? explainServer(codes, failure);
-    const serverMessage = serverMessages(err).join(' | ');
+    const messages = serverMessages(err);
+    const reason = explainTransport(codes, failure, messages) ?? explainServer(codes, failure);
+    const serverMessage = messages.join(' | ');
 
     if (!reason && codes.length === 0) return err;
 
@@ -322,24 +349,38 @@ function serverMessages(err: unknown): string[] {
 
 }
 
-function explainTransport(codes: string[], failure: Failure): string | undefined {
+function explainTransport(codes: string[], failure: Failure, messages: string[]): string | undefined {
 
     const transport = TRANSPORT_REASONS.find(([matches]) => matches.some((code) => codes.includes(code)));
 
     if (transport) return transport[1](failure);
 
-    const certificateCode = codes.find((code) => TLS_CERTIFICATE_CODES.has(code));
+    const certificateCode = certificateCodeOf(codes, failure);
 
     if (!certificateCode) return undefined;
 
-    // MSSQL encrypts either way; `ssl` only decides whether the certificate
-    // is validated. For the others it turns TLS on or off.
-    const withoutValidation = failure.config.dialect === 'mssql'
-        ? 'turn ssl off to keep encryption without validating the certificate'
-        : 'turn ssl off, which also turns off encryption';
+    if (certificateCode === 'ERR_TLS_CERT_ALTNAME_INVALID') {
+
+        const listed = messages
+            .find((message) => message.startsWith(ALTNAME_PREFIX))
+            ?.slice(ALTNAME_PREFIX.length)
+            .trim();
+        const names = listed?.endsWith(':') ? listed.slice(0, -1).trimEnd() : listed;
+        const points = names ? Array.from(names) : [];
+        const reason = points.length > ALTNAME_REASON_MAX ? `${points.slice(0, ALTNAME_REASON_MAX - 3).join('')}...` : names;
+        const detail = reason ? `${certificateCode}: ${reason}` : certificateCode;
+
+        return `The server's TLS certificate was issued for a different hostname (${detail}). `
+            + 'Set tlsServerName to the hostname the certificate is issued for, or connect using that hostname.';
+
+    }
+
+    const { dialect, tlsServerName } = failure.config;
+    const dropName = tlsServerName && dialect !== 'mssql' ? ' and remove tlsServerName, which requires validation,' : '';
 
     return `The server's TLS certificate was rejected (${certificateCode}). `
-        + `Trust the authority that issued it on this machine, or ${withoutValidation}.`;
+        + 'Trust the authority that issued it with ssl.caFile (or process-wide with NODE_EXTRA_CA_CERTS). '
+        + `Otherwise, set ssl.rejectUnauthorized: false${dropName} to keep encryption without validating the certificate.`;
 
 }
 

@@ -53,7 +53,7 @@ import type { SettingsManager } from '../core/settings/manager.js';
 import type { CryptoIdentity } from '../core/identity/types.js';
 import { loadExistingIdentity } from '../core/identity/index.js';
 import { materializeStage } from '../core/config/stage.js';
-import { SettingsProvider, withConfigPolicy } from '../core/config/resolver.js';
+import { SettingsProvider, effectiveConfig } from '../core/config/resolver.js';
 
 // ─────────────────────────────────────────────────────────────
 // Project Name Detection
@@ -223,7 +223,7 @@ export interface AppContextValue {
     activeConfig: Config | null;
     activeConfigName: string | null;
 
-    /** Set when the stored active config has malformed access; the config is then treated as not active. */
+    /** Set when the stored active config has malformed access or no effective config can be built; the config is then treated as not active. */
     activeConfigAccessError: string | null;
     configs: ConfigSummary[];
 
@@ -689,13 +689,24 @@ export function AppContextProvider({
 
     // Keep stored assignments intact while supplying policy to every TUI gate.
     // Unknown roles remain visible for repair and fail closed in policy checks.
+    // ConnectionProvider compares this object by identity, so it is rebuilt only when its sources change.
     const settingsLoaded = settingsManager?.isLoaded === true;
-    const policyActiveConfig = useMemo(
-        () => activeConfig && settingsManager && settingsLoaded
-            ? withConfigPolicy(activeConfig, new SettingsProvider(settingsManager), false)
-            : activeConfig && { ...activeConfig, access: { ...activeConfig.access } },
-        [activeConfig, settingsManager, settingsLoaded, settings],
-    );
+    const effectiveActive = useMemo(() => {
+
+        if (!activeConfig || !settingsManager || !settingsLoaded) {
+
+            return { config: activeConfig && { ...activeConfig, access: { ...activeConfig.access } }, error: null };
+
+        }
+
+        // A throw here is a render error that ends the TUI at every start; the stored connection alone is never a fallback.
+        const [config, err] = attemptSync(() => effectiveConfig(activeConfig, new SettingsProvider(settingsManager), false));
+
+        return err ? { config: null, error: err.message } : { config, error: null };
+
+    }, [activeConfig, settingsManager, settingsLoaded, settings]);
+    const policyActiveConfig = effectiveActive.config;
+    const activeConfigError = activeConfigAccessError ?? effectiveActive.error;
 
     // Memoize context value
     const value = useMemo<AppContextValue>(
@@ -708,7 +719,7 @@ export function AppContextProvider({
             settingsManager,
             activeConfig: policyActiveConfig,
             activeConfigName,
-            activeConfigAccessError,
+            activeConfigAccessError: activeConfigError,
             configs,
             identity,
             hasIdentity: identity !== null,
@@ -734,7 +745,7 @@ export function AppContextProvider({
             settingsManager,
             policyActiveConfig,
             activeConfigName,
-            activeConfigAccessError,
+            activeConfigError,
             configs,
             identity,
             settings,

@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 import { PortSchema } from '../connection/defaults.js';
 import { connectionOptionProblems, unknownPoolKeyMessage } from '../connection/options.js';
-import type { ConnectionConfig } from '../connection/types.js';
+import { SSL_FIELD_PAIRS, type ConnectionConfig } from '../connection/types.js';
 import { resolveLegacyAccess } from '../policy/index.js';
 import type { ConfigAccess } from '../policy/index.js';
 
@@ -98,17 +98,56 @@ function rejectUnsupportedOptions(
 }
 
 /**
- * SSL configuration - can be boolean or detailed config.
+ * A certificate file path that may be absent but not blank.
+ *
+ * @example
+ * sslFilePath('ssl', 'caFile'); // rejects '  ' with 'ssl.caFile must not be empty'
  */
-const SSLSchema = z.union([
-    z.boolean(),
-    z.object({
-        rejectUnauthorized: z.boolean().optional(),
-        ca: z.string().optional(),
-        cert: z.string().optional(),
-        key: z.string().optional(),
-    }),
-]);
+export function sslFilePath(prefix: 'ssl' | 'defaults.ssl', field: (typeof SSL_FIELD_PAIRS)[number][1]) {
+
+    return z.string().refine((path) => path.trim().length > 0, `${prefix}.${field} must not be empty`).optional();
+
+}
+
+/**
+ * SSL configuration - can be boolean or detailed config.
+ *
+ * A field is given inline (`ca`) or by file (`caFile`), never both within
+ * one layer. The refinement sits on the union because an issue raised inside
+ * a union member surfaces as a generic "Invalid input".
+ */
+const SSLSchema = z
+    .union([
+        z.boolean(),
+        z.object({
+            rejectUnauthorized: z.boolean().optional(),
+            ca: z.string().optional(),
+            cert: z.string().optional(),
+            key: z.string().optional(),
+            caFile: sslFilePath('ssl', 'caFile'),
+            certFile: sslFilePath('ssl', 'certFile'),
+            keyFile: sslFilePath('ssl', 'keyFile'),
+        }),
+    ])
+    .superRefine((ssl, ctx) => {
+
+        if (typeof ssl === 'boolean') return;
+
+        for (const [inline, file] of SSL_FIELD_PAIRS) {
+
+            if (ssl[inline] !== undefined && ssl[file] !== undefined) {
+
+                ctx.addIssue({
+                    code: 'custom',
+                    path: [inline],
+                    message: `ssl.${inline} and ssl.${file} cannot both be set; use one`,
+                });
+
+            }
+
+        }
+
+    });
 
 /**
  * Characters rejected in a server-dialect database name.

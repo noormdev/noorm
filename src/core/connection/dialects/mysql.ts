@@ -4,6 +4,7 @@
  * Uses the 'mysql2' package for MySQL connections.
  * Install with: npm install mysql2
  */
+import net, { isIP } from 'node:net';
 import type { Duplex } from 'node:stream';
 
 import { attempt } from '@logosdx/utils';
@@ -14,14 +15,69 @@ import type { ConnectionConfig, ConnectionResult, RuntimeConnectionOptions } fro
 import { observer } from '../../observer.js';
 import { DEFAULT_PORTS, connectTimeoutFor } from '../defaults.js';
 import { guardPasswordCallback, trackPoolLogins } from '../login.js';
-import { assertConnectionOptions, driverOptionsFor, tarnPoolOptions } from '../options.js';
+import { assertConnectionOptions, driverOptionsFor, ipTlsServerNameMessage, tarnPoolOptions } from '../options.js';
 import { trackPinnedConnections } from '../pinned.js';
+
+function resolveMysqlSsl(config: ConnectionConfig) {
+
+    const name = config.tlsServerName;
+
+    if (name && isIP(name) !== 0) {
+
+        throw new Error(ipTlsServerNameMessage(name));
+
+    }
+    if (name && !config.ssl) {
+
+        throw new Error('MySQL TLS identity options require ssl to be enabled explicitly');
+
+    }
+    if (name && typeof config.ssl === 'object' && config.ssl.rejectUnauthorized === false) {
+
+        throw new Error('MySQL TLS identity options require certificate verification');
+
+    }
+
+    if (!config.ssl) return undefined;
+
+    const { ca, cert, key, rejectUnauthorized } = typeof config.ssl === 'object' ? config.ssl : {};
+
+    return {
+        ...(ca === undefined ? {} : { ca }),
+        ...(cert === undefined ? {} : { cert }),
+        ...(key === undefined ? {} : { key }),
+        ...(rejectUnauthorized === undefined ? {} : { rejectUnauthorized }),
+        ...(name ? { verifyIdentity: true } : {}),
+    };
+
+}
+
+type ResolvedKeepAlive = { enableKeepAlive?: boolean; keepAliveInitialDelay?: number };
+
+// mysql2 skips no-delay and keepalive on a caller-supplied socket.
+function dialMysqlStream(target: { host: string; port: number }, keepAlive: ResolvedKeepAlive): net.Socket {
+
+    const socket = net.connect({ host: target.host, port: target.port });
+
+    socket.setNoDelay(true);
+
+    if (keepAlive.enableKeepAlive !== false) {
+
+        socket.setKeepAlive(true, keepAlive.keepAliveInitialDelay);
+
+    }
+
+    return socket;
+
+}
 
 /**
  * Build the mysql2 connection options and the Tarn pool options.
  *
  * Later entries win: flat fields, `driver`, then the keys noorm owns. The
  * password is absent on purpose: each physical connection resolves its own.
+ * With `tlsServerName`, mysql2 gets that name as `host` (it derives the TLS
+ * name from `host` alone) and a `stream` that dials the real host.
  *
  * @example
  * const { connection, pool } = buildMysqlOptions(config, runtime);
@@ -29,19 +85,28 @@ import { trackPinnedConnections } from '../pinned.js';
 export function buildMysqlOptions(config: ConnectionConfig, runtime?: RuntimeConnectionOptions) {
 
     const keepAliveDelay = config.keepAliveInitialDelayMs;
+    const enableKeepAlive = config.keepAlive ?? (keepAliveDelay === undefined ? undefined : true);
+    const host = config.host ?? 'localhost';
+    const port = config.port ?? DEFAULT_PORTS.mysql;
 
     assertConnectionOptions(config);
 
+    const ssl = resolveMysqlSsl(config);
+    const name = config.tlsServerName;
+
     return {
         connection: {
-            enableKeepAlive: config.keepAlive ?? (keepAliveDelay === undefined ? undefined : true),
+            enableKeepAlive,
             keepAliveInitialDelay: keepAliveDelay,
             ...driverOptionsFor('mysql', runtime),
-            host: config.host ?? 'localhost',
-            port: config.port ?? DEFAULT_PORTS.mysql,
+            host: name || host,
+            port,
             user: config.user,
             database: config.database,
-            ssl: config.ssl ? {} : undefined,
+            ssl,
+            stream: name
+                ? ({ config: resolved }: { config: ResolvedKeepAlive }) => dialMysqlStream({ host, port }, resolved)
+                : undefined,
             connectTimeout: connectTimeoutFor(config),
         },
         pool: tarnPoolOptions(config),

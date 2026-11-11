@@ -4,13 +4,16 @@
  * Uses SQLite in-memory databases for testing (no external DB needed).
  */
 import { describe, it, expect, afterEach, beforeEach } from 'bun:test';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createServer } from 'node:net';
 import { sql } from 'kysely';
 import { createConnection, testConnection } from '../../../src/core/connection/index.js';
 import type { ConnectionConfig } from '../../../src/core/connection/index.js';
-import { observer } from '../../../src/core/observer.js';
+import { observer, type NoormEvents } from '../../../src/core/observer.js';
+import { attempt } from '@logosdx/utils';
+import { SslFileError } from '../../../src/core/connection/ssl-files.js';
 
 describe('connection: factory', () => {
 
@@ -284,6 +287,220 @@ describe('connection: factory', () => {
 
             expect(result.ok).toBe(true);
             expect(existsSync(dbPath)).toBe(true);
+
+        });
+
+    });
+
+    describe('ssl file fields', () => {
+
+        let certDir: string;
+
+        const missingPath = () => join(certDir, 'econnrefused-ca.pem');
+        const server = (ssl: ConnectionConfig['ssl']): ConnectionConfig =>
+            ({ dialect: 'postgres', host: '127.0.0.1', port: 1, user: 'probe', database: 'probe_test', ssl });
+
+        function recordErrors(configName: string) {
+
+            const events: NoormEvents['connection:error'][] = [];
+            const stop = observer.on('connection:error', (event) => {
+
+                if (event.configName === configName) events.push(event);
+
+            });
+
+            return { events, stop };
+
+        }
+
+        beforeEach(() => {
+
+            certDir = mkdtempSync(join(tmpdir(), 'noorm-factory-ssl-'));
+
+        });
+
+        afterEach(() => {
+
+            rmSync(certDir, { recursive: true, force: true });
+
+        });
+
+        it('should rethrow SslFileError as the same type, with no serverCode on the event', async () => {
+
+            const { events, stop } = recordErrors('__ssl_file__');
+            const [, err] = await attempt(() =>
+                createConnection(server({ caFile: missingPath() }), '__ssl_file__', { retries: 1, delay: 0 }),
+            );
+
+            stop();
+
+            expect(err).toBeInstanceOf(SslFileError);
+            expect(events).toHaveLength(1);
+            expect(events[0]!.error).toBe(err!.message);
+            expect(events[0]!.serverCode).toBeUndefined();
+
+        });
+
+        it('should not retry an SslFileError, even when the path holds a retry word', async () => {
+
+            // One burst per attempt.
+            let reads = 0;
+            const counting = (): ConnectionConfig['ssl'] => ({
+                get caFile() {
+
+                    reads++;
+
+                    return missingPath();
+
+                },
+            });
+
+            await attempt(() => createConnection(server(counting()), '__ssl_once__', { retries: 1, delay: 0 }));
+
+            const readsPerAttempt = reads;
+
+            reads = 0;
+
+            await attempt(() => createConnection(server(counting()), '__ssl_once__', { retries: 3, delay: 0 }));
+
+            expect(readsPerAttempt).toBeGreaterThan(0);
+            expect(reads).toBe(readsPerAttempt);
+
+        });
+
+        it('should emit the SslFileError message unmasked under a runtime.password callback', async () => {
+
+            const { events, stop } = recordErrors('__ssl_runtime__');
+            const [, err] = await attempt(() =>
+                createConnection(
+                    server({ caFile: missingPath() }),
+                    '__ssl_runtime__',
+                    { retries: 1, delay: 0 },
+                    undefined,
+                    { password: () => 'secret' },
+                ),
+            );
+
+            stop();
+
+            expect(err).toBeInstanceOf(SslFileError);
+            expect(events).toHaveLength(1);
+            expect(events[0]!.error).toBe(err!.message);
+            expect(events[0]!.error).not.toBe('Runtime credential connection failed');
+
+        });
+
+        it('should leave a malformed PEM keyFile out of every error, cause and event once TLS parses it', async () => {
+
+            const marker = 'NOT-A-KEY-secret-marker';
+            const keyFile = join(certDir, 'key.pem');
+
+            writeFileSync(keyFile, `-----BEGIN PRIVATE KEY-----\n${marker}\n-----END PRIVATE KEY-----\n`);
+
+            // Answers pg's SSLRequest with 'S' so pg hands the key to tls.connect.
+            const tlsPeer = createServer((socket) => {
+
+                socket.once('data', () => socket.write('S'));
+                socket.on('error', () => {});
+
+            });
+
+            await new Promise<void>((resolve) => tlsPeer.listen(0, '127.0.0.1', resolve));
+
+            const address = tlsPeer.address();
+            const port = typeof address === 'object' && address ? address.port : 0;
+
+            const { events, stop } = recordErrors('__ssl_key__');
+            const [, err] = await attempt(() =>
+                createConnection(
+                    { ...server({ keyFile }), port },
+                    '__ssl_key__',
+                    { retries: 1, delay: 0 },
+                ),
+            );
+
+            stop();
+            await new Promise<void>((resolve) => tlsPeer.close(() => resolve()));
+
+            expect(err).toBeDefined();
+            expect(err).not.toBeInstanceOf(SslFileError);
+            expect(err?.message).toMatch(/PEM routines|DECODER routines/);
+
+            const seen: string[] = [];
+
+            for (let cause: unknown = err; cause instanceof Error; cause = cause.cause) {
+
+                seen.push(cause.message, cause.stack ?? '');
+
+            }
+
+            expect(seen.length).toBeGreaterThan(0);
+            expect(seen.join('\n')).not.toContain(marker);
+            expect(JSON.stringify(events)).not.toContain(marker);
+            expect(events).toHaveLength(1);
+
+        });
+
+        it('should refuse a keyFile with no PEM block with ENOTPEM before any dial and leak nothing', async () => {
+
+            const marker = 'NOT-A-KEY-secret-marker';
+            const keyFile = join(certDir, 'plain.pem');
+
+            writeFileSync(keyFile, marker);
+
+            const { events, stop } = recordErrors('__ssl_notpem__');
+            const [, err] = await attempt(() =>
+                createConnection(server({ keyFile }), '__ssl_notpem__', { retries: 1, delay: 0 }),
+            );
+
+            stop();
+
+            expect(err).toBeInstanceOf(SslFileError);
+            expect(err).toHaveProperty('code', 'ENOTPEM');
+            expect(err?.message).not.toContain(marker);
+            expect(JSON.stringify(events)).not.toContain(marker);
+            expect(events).toHaveLength(1);
+
+        });
+
+        it('should leave the config it received holding paths and no PEM after a connect', async () => {
+
+            const caFile = join(certDir, 'ca.pem');
+
+            writeFileSync(caFile, '-----BEGIN CERTIFICATE-----\nthrowaway-ca\n-----END CERTIFICATE-----\n');
+
+            const config = server({ caFile });
+
+            const [, err] = await attempt(() => createConnection(config, '__ssl_pure__', { retries: 1, delay: 0 }));
+
+            expect(err).not.toBeInstanceOf(SslFileError);
+            expect(config.ssl).toEqual({ caFile });
+
+        });
+
+        it('should report the SslFileError message from testConnection for an unreadable path', async () => {
+
+            const result = await testConnection(server({ caFile: missingPath() }));
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toContain('ssl.caFile');
+            expect(result.error).toContain(missingPath());
+
+        });
+
+        it('should not fall back to the system database when an SslFileError path holds "does not exist"', async () => {
+
+            const caFile = join(certDir, 'does not exist', 'ca.pem');
+            const { events, stop } = recordErrors('__test__');
+
+            const result = await testConnection(server({ caFile }), { testServerOnly: true });
+
+            stop();
+
+            expect(result.ok).toBe(false);
+            expect(result.error).toContain('ssl.caFile');
+            expect(result.error).toContain(caFile);
+            expect(events).toHaveLength(1);
 
         });
 

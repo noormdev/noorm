@@ -20,6 +20,17 @@ describe('stage materialization', () => {
 
     });
 
+    it('carries an object ssl from stage defaults into the connection', () => {
+
+        const config = materializeStage('staging', 'staging', {
+            dialect: 'postgres',
+            ssl: { caFile: './certs/ca.pem', rejectUnauthorized: true },
+        });
+
+        expect(config.connection.ssl).toEqual({ caFile: './certs/ca.pem', rejectUnauthorized: true });
+
+    });
+
     it('accepts only explicitly supplied stored credentials', () => {
 
         const config = materializeStage(

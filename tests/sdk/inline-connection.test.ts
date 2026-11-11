@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sql } from 'kysely';
 import { attempt } from '@logosdx/utils';
-import { createContext, type Context } from '../../src/sdk/index.js';
+import { createContext, SslFileError, type Context } from '../../src/sdk/index.js';
 import { RequireTestError } from '../../src/sdk/guards.js';
 import { createConnection } from '../../src/core/connection/factory.js';
 import { DatabaseConnectionError } from '../../src/core/connection/errors.js';
@@ -61,6 +61,25 @@ describe('inline connections', () => {
         expect(ctx.noorm.config.connection.password).toBeUndefined();
         expect(getPolicyContext(ctx.noorm.config.access)?.targetIdentity)
             .toBe(policyTargetIdentity(inlineRoot, ctx.noorm.config.connection));
+
+    });
+
+    it('rejects connect() with an SslFileError from the SDK entry point for an unreadable caFile', async () => {
+
+        inlineRoot = await mkdtemp(join(tmpdir(), 'noorm-inline-ssl-'));
+
+        const caFile = join(inlineRoot, 'missing-ca.pem');
+        const ctx = await createContext({
+            projectRoot: inlineRoot,
+            freshState: true,
+            connection: { dialect: 'postgres', database: 'app', host: '127.0.0.1', port: 1, ssl: { caFile } },
+        });
+        inlineContexts.push(ctx);
+
+        const [, err] = await attempt(() => ctx.connect({ retries: 1, delay: 0 }));
+
+        expect(err).toBeInstanceOf(SslFileError);
+        expect(err?.message).toContain('ssl.caFile');
 
     });
 
