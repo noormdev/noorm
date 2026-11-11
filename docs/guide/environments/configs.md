@@ -96,6 +96,7 @@ Environment variables override the stored config. [Stages](/guide/environments/s
 |---|---|
 | `NOORM_CONNECTION_DIALECT`, `_HOST`, `_PORT`, `_DATABASE`, `_USER`, `_PASSWORD`, `_SSL` | `connection.*` on the config |
 | `NOORM_PATHS_SQL`, `NOORM_PATHS_CHANGES` | `paths.sql`, `paths.changes`. Never written back to `settings.yml` |
+| `NOORM_ACCESS_USER`, `NOORM_ACCESS_AGENT` | `access` on a config built from the environment. Ignored on a stored config, which keeps its own roles |
 | `NOORM_CONFIG` | Which stored config to use |
 | `NOORM_YES` | Any value except empty, `0`, or `false` skips `confirm` prompts on the `user` channel |
 | `NOORM_CHANNEL` | `user` or `agent`. See [Which channel is a process on?](#which-channel-is-a-process-on) |

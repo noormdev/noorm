@@ -273,7 +273,7 @@ export const configNotFoundMessage = (name: string): string => `Config "${name}"
  * 1. Defaults
  * 2. Stage defaults (from settings.yml, if stage provided or config name matches)
  * 3. Stored config (if name provided or active config exists)
- * 4. Environment variables (NOORM_*)
+ * 4. Environment variables (NOORM_*); `NOORM_ACCESS_*` only when no stored config is used
  * 5. CLI flags
  *
  * @example
@@ -362,7 +362,8 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
 
     // 4. Merge: defaults <- stage <- stored <- env <- flags
     // Clone DEFAULTS to avoid mutation
-    const envConfig = getEnvConfig();
+    // Stored access roles are the config's guardrail, so NOORM_ACCESS_* shapes only a config with no stored record.
+    const { access: _envAccess, ...envConfig } = getEnvConfig();
     let merged: Partial<ConfigInput> = clone(DEFAULTS);
 
     if (stageDefaults) {
