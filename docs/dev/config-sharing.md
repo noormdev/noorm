@@ -124,11 +124,13 @@ When importing a config, the recipient:
 
 1. Selects or provides the `.noorm.enc` file
 2. File is decrypted using recipient's private key
-3. Preview shows config details: dialect, host, database, SSL on or off, certificate verification, each certificate file path, the TLS server name, and the secrets count
+3. Preview shows config details: sender, secrets count, dialect, host, database, SSL on or off, certificate verification, each certificate file path, the TLS server name, the user and agent roles, and the test flag
 4. Recipient enters their database credentials
 5. Config is saved with credentials, secrets are imported
 
 Import saves the connection fields the config schema accepts, with `user` and `password` from the form and never from the file. A key the schema does not know is not saved, with one exception: an unknown key under `pool` fails the whole import with `pool.<key> is not a pool option`. A file that holds only `dialect`, `host`, `port`, `database` and `ssl` imports to a config with those fields.
+
+The preview shows the privileges the file carries, because the import saves them. `Roles: user <role>, agent <role|off>` lists the roles the config is saved with; a file from an exporter that sends only `protected: true` shows `user operator, agent viewer`. When the file sets `isTest`, the preview adds `Test database: every role gets at least admin's permissions`, the relaxation [Configs](/guide/environments/configs#access-roles) describes. Cancel the import when either line is not what you expect from the sender.
 
 Import does not check that a certificate file exists. When the file names one, the preview says `A certificate file path must exist on this machine.` A missing file fails when the config first connects, and `config validate` or the TUI connection test reports it.
 

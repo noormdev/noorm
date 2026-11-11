@@ -35,7 +35,7 @@ Use `createContext()` for normal consumer startup rather than constructing `Cont
 
 The `Context` constructor revalidates `config.access` through `bindSdkPolicy`, which maps `settings.access.roles` and the protected-stage ceiling from `settings.stages[*].defaults.protected` into core-state's `bindPolicyContext`, with `options.stage` as the stage name. Metadata carried from another project or an older settings snapshot cannot supply authority.
 
-The `Context` constructor also rewrites relative `ssl.caFile`, `ssl.certFile`, and `ssl.keyFile` paths in `config.connection` to absolute paths under `projectRoot` with `anchorSslFiles`, for stored, environment, and inline configurations alike. It runs after policy binding, so the policy target identity hashes the path as written, not the anchored one. `~/` and absolute paths are left as written, and the connection runtime reads them at connect time. Core-state owns `anchorSslFiles`; core-db owns the file reads.
+The `Context` constructor also rewrites relative `ssl.caFile`, `ssl.certFile`, and `ssl.keyFile` paths in `config.connection` to absolute paths under `projectRoot` with `anchorSslFiles`, for stored, environment, and inline configurations alike. It runs after policy binding, so the policy target identity hashes the path as written, not the anchored one. `~/` and absolute paths are left as written, and the connection runtime reads them at connect time. Core-state owns `anchorSslFiles`; core-db owns the file reads. `bindSdkDestination` applies the same anchoring to a transfer or vault `copy` destination, so a relative path in that config resolves under the source context's `projectRoot`.
 
 Runtime password callbacks and PostgreSQL `ssl.checkServerIdentity` stay outside serializable configuration. The factory removes a shadowed stored or environment password from the resolved configuration when a callback wins. It does not write that removal back to state.
 
@@ -188,7 +188,25 @@ Outside transactions, PostgreSQL `proc` falls back to `callTvf` when the SQLSTAT
 
 ### Impersonation
 
-Callback impersonation borrows a dedicated connection and reverts in `finally`, including when the callback throws. Explicit impersonation returns a scope with `kysely`, `proc`, `func`, `tvf`, `transaction`, and `revert()`; the caller owns reversion, with `disconnect()` releasing scopes still held.
+Both impersonation modes run on a connection pinned through `withConnection`, so `disconnect()` interrupts them the way it interrupts any pinned call. Callback impersonation reverts in `finally`, including when the callback throws. Explicit impersonation returns a scope with `kysely`, `proc`, `func`, `tvf`, `transaction`, and `revert()`; the caller owns reversion, with `disconnect()` releasing scopes still held.
+
+Every identity statement, the switch and the revert, goes through `switchIdentity` in [`src/sdk/context.ts`](../../src/sdk/context.ts). A failed statement may still have taken effect on the server (a client-side timeout, for example), so `switchIdentity` calls `connection.discard()` and rethrows. The pool never receives a connection whose identity is unknown:
+
+```mermaid
+flowchart TD
+    %% source: src/sdk/context.ts
+    Start["impersonate(username)"] --> Pin["withConnection(fn)"]
+    Pin --> Sw["switchIdentity:<br/>impersonateSql"]
+    Sw --> Ok1{"statement failed?"}
+    Ok1 -->|no| Use["fn(scope) or<br/>scope to caller"]
+    Use --> Rv["switchIdentity:<br/>revertSql"]
+    Rv --> Ok2{"statement failed?"}
+    Ok2 -->|no| Back["connection returned<br/>to pool"]
+    Ok1 -->|yes| D["connection.discard()<br/>rethrow"]
+    Ok2 -->|yes| D
+```
+
+In explicit mode a second `revert()` call returns without touching the connection, because a failed revert has already given the connection up and `db` must not be queried again.
 
 | Dialect | Switch identity | Revert |
 |---|---|---|
@@ -229,14 +247,14 @@ The public entrypoint re-exports namespace classes, option/result types, `Extrac
 | `ImpersonationError` | Unsupported dialect or invalid principal name. |
 | `ResetBuildError` | `db.reset()` dropped the schema and the rebuild did not succeed. The schema was dropped and the rebuild stopped part way, so the database holds only the files listed as successful in `err.result.files`; `err.result` is the `BatchResult`. |
 | `SslFileError` | `connect()` rejected an `ssl.caFile`, `ssl.certFile`, or `ssl.keyFile` that is missing, unreadable, not a regular file, empty, over 1 MiB, or not PEM; codes in [`docs/wiki/core-db.md`](core-db.md). Carries `field`, `path`, and `code`, never file content; re-exported from core-db. |
-| `DisconnectedError` | `disconnect()` ran while a `withConnection` callback was in flight; the pinned connection is discarded. |
+| `DisconnectedError` | `disconnect()` ran while a `withConnection` callback or an impersonation scope was in flight; the pinned connection is discarded. |
 | `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` | Re-exported core change errors for validation, lookup, state, and manifest failures. |
 | `LockAcquireError`, `LockExpiredError` | Re-exported core lock failures. |
 | `PipelineBusyError` | `pipelines.run` on a `singleRun` pipeline that already has an active run. |
 
 ### Pipelines namespace
 
-`ctx.noorm.pipelines` is the connected entry to SQL pipelines. It sits beside `run` and `templates`: all three render author-written SQL through the template engine with the resolved `Config`, secrets, and global secrets, but only `pipelines` adds admission, run history, and the input contract. `run` and `templates` pass `processFile` the typed `Config` directly. `pipelines.run` hands it to `buildPipelineContext` in [`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts), which resolves the vault key and secrets and returns the executor context.
+`ctx.noorm.pipelines` is the connected entry to SQL pipelines. It sits beside `run` and `templates`. All of them render author-written SQL through the template engine with the resolved `Config`, secrets, and global secrets, but only `pipelines` adds admission, run history, and the input contract. `run` and `templates` pass `processFile` the typed `Config` directly. `pipelines.run` hands it to `buildPipelineContext` in [`src/core/pipeline/context.ts`](../../src/core/pipeline/context.ts), which resolves the vault key and secrets and returns the executor context.
 
 ```mermaid
 flowchart TD
@@ -327,29 +345,22 @@ Compute workers transform rows while `OrderBuffer` preserves export ordering.
 | [`src/core/dt/serialize.ts`](../../src/core/dt/serialize.ts), [`src/core/dt/deserialize.ts`](../../src/core/dt/deserialize.ts), [`src/core/dt/type-map.ts`](../../src/core/dt/type-map.ts), [`src/core/dt/dialects/`](../../src/core/dt/dialects) | Universal values and dialect type conversion. |
 | [`src/core/dt/streamer.ts`](../../src/core/dt/streamer.ts), [`src/core/dt/modify.ts`](../../src/core/dt/modify.ts), [`src/core/dt/paths.ts`](../../src/core/dt/paths.ts), [`src/core/dt/version.ts`](../../src/core/dt/version.ts), [`src/core/dt/constants.ts`](../../src/core/dt/constants.ts) | In-memory conversion, recipes, export paths, database versions, format limits. |
 | [`packages/sdk/package.json`](../../packages/sdk/package.json), [`tsup.sdk.config.ts`](../../tsup.sdk.config.ts) | Package exports, consumer peers, bundled runtime boundary. |
-| [`tests/sdk/`](../../tests/sdk), [`tests/integration/sdk/`](../../tests/integration/sdk) | SDK contracts, bundle/declaration surface, live dialect integration. |
-| [`docs/design/sdk-with-schema.md`](../design/sdk-with-schema.md), [`docs/design/sdk-transaction-routines.md`](../design/sdk-transaction-routines.md) | Schema-view and transaction-routine design rationale. |
-
-[`src/sdk/impersonate/scope.ts`](../../src/sdk/impersonate/scope.ts) supplies `buildScope()`; `dialect-strategy.ts` supplies `validateUsername()` and the switch/revert strategies; `types.ts` supplies `ImpersonatedScope` and its error. [`src/sdk/sql.ts`](../../src/sdk/sql.ts) contains `buildProcCall()`, `buildFuncCall()`, `buildTvfCall()`, and dialect-aware `quoteIdent()`, including MSSQL TVP DECLARE/INSERT/EXEC batches.
-
-DT navigation includes `buildDtSchema()`, `validateSchema()`, and `queryPrimaryKeyColumns()` in [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts); `resolveExportExtension()`, `resolveExportPath()`, `resolveExportTables()`, and `ensureExportDirectory()` in [`src/core/dt/paths.ts`](../../src/core/dt/paths.ts); and `encryptWithPassphrase()`/`decryptWithPassphrase()` in [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts).
-
-SDK unit tests cover namespace behavior by role, guard errors, policy attachment (`policy-attach.test.ts`), explore gating (`explore-policy.test.ts`), destructive operations, SQL builders, and impersonation. Live SDK integration tests cover TVF/TVP execution, vault, transfer, and DT namespaces, and reset round trips.
-
-| Reference | Use |
-|---|---|
-| [`docs/dev/sdk.md`](../dev/sdk.md), [`docs/reference/sdk.md`](../reference/sdk.md) | SDK internals and public API reference. |
-| [`docs/dev/transfer.md`](../dev/transfer.md) | DT and transfer internals. |
-| [`docs/getting-started/building-your-sdk.md`](../getting-started/building-your-sdk.md), [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md) | Consumer setup, typed routines, and test usage patterns. |
-| [`packages/sdk/CHANGELOG.md`](../../packages/sdk/CHANGELOG.md), `packages/sdk/dist` | Changesets release history and generated `index.cjs` runtime, `index.js` ESM facade, and `index.d.ts`/`index.d.cts` declarations. |
+| [`src/sdk/impersonate/scope.ts`](../../src/sdk/impersonate/scope.ts), [`src/sdk/impersonate/dialect-strategy.ts`](../../src/sdk/impersonate/dialect-strategy.ts), [`src/sdk/impersonate/types.ts`](../../src/sdk/impersonate/types.ts) | `buildScope()`; `validateUsername()` and the switch/revert strategies; `ImpersonatedScope` and its error. |
+| [`src/sdk/sql.ts`](../../src/sdk/sql.ts) | `buildProcCall()`, `buildFuncCall()`, `buildTvfCall()`, dialect-aware `quoteIdent()`, and MSSQL TVP DECLARE/INSERT/EXEC batches. |
+| [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts), [`src/core/dt/paths.ts`](../../src/core/dt/paths.ts), [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts) | `buildDtSchema()`, `validateSchema()`, `queryPrimaryKeyColumns()`; `resolveExportExtension()`, `resolveExportPath()`, `resolveExportTables()`, `ensureExportDirectory()`; `encryptWithPassphrase()`/`decryptWithPassphrase()`. |
 | [`src/sdk/stubs/ansis.ts`](../../src/sdk/stubs/ansis.ts) | Color-free SDK replacement selected by the tsup alias. |
+| [`packages/sdk/CHANGELOG.md`](../../packages/sdk/CHANGELOG.md), `packages/sdk/dist` | Changesets release history and generated `index.cjs` runtime, `index.js` ESM facade, and `index.d.ts`/`index.d.cts` declarations. |
+| [`tests/sdk/`](../../tests/sdk), [`tests/integration/sdk/`](../../tests/integration/sdk) | SDK contracts, bundle/declaration surface, live dialect integration. Unit tests cover SSL path anchoring (`context-ssl-anchor.test.ts`), namespace behavior by role, guard errors, policy attachment (`policy-attach.test.ts`), explore gating (`explore-policy.test.ts`), destructive operations, SQL builders, and impersonation. Live tests cover TVF/TVP execution, vault, transfer, DT namespaces, and reset round trips. |
 | [`tests/sdk/with-schema.test.ts`](../../tests/sdk/with-schema.test.ts), [`tests/integration/sdk/with-schema.test.ts`](../../tests/integration/sdk/with-schema.test.ts) | Schema validation, fresh wrappers, replace-not-stack behavior, routine qualification, shared held connections, interleaved schema writes, and transaction/impersonation composition. Live fixtures use schemas, MySQL databases, and SQLite attachments. |
+| [`docs/design/sdk-with-schema.md`](../design/sdk-with-schema.md), [`docs/design/sdk-transaction-routines.md`](../design/sdk-transaction-routines.md) | Schema-view and transaction-routine design rationale. |
+| [`docs/dev/sdk.md`](../dev/sdk.md), [`docs/reference/sdk.md`](../reference/sdk.md), [`docs/dev/transfer.md`](../dev/transfer.md) | SDK internals, public API reference, and DT and transfer internals. |
+| [`docs/getting-started/building-your-sdk.md`](../getting-started/building-your-sdk.md), [`skills/noorm/references/sdk.md`](../../skills/noorm/references/sdk.md) | Consumer setup, typed routines, and test usage patterns. |
 
 ## Constraints
 
 - Call `connect()` before accessing Kysely or connected namespace operations; `requireConnection` throws `NotConnectedError` otherwise. Disconnect in cleanup so held connections do not keep the pool open.
 - Password callbacks may return a string or promise for PostgreSQL, MySQL, and MSSQL. SQLite rejects callbacks. A callback takes precedence over resolved static credentials; do not expect the old password on `ctx.noorm.config.connection`.
-- Runtime-credential connection failures preserve the original thrown error and disable automatic connection retries, even when retry options request them. Observer error payloads instead use `Runtime credential connection failed` and omit server error fields; handle the thrown error separately from telemetry.
+- Runtime-credential connection failures preserve the original thrown error and disable automatic connection retries, even when retry options request them. Observer error payloads instead use `Runtime credential connection failed` and omit server error fields, except for an `SslFileError`, which keeps its real message (field and path, no credential) and is never retried; handle the thrown error separately from telemetry.
 - PostgreSQL `ssl.checkServerIdentity` must be a function and is rejected for other dialects. TLS identity options require explicitly enabled TLS and certificate verification; incompatible options fail connection creation. A relative `ssl.caFile`, `ssl.certFile`, or `ssl.keyFile` is read under `projectRoot`, not the working directory; a relative path is joined to `projectRoot` (a `../` segment can leave it), absolute paths are used as written and `~/` paths resolve from the home directory, and a file that is missing, unreadable, not a regular file, empty, over 1 MiB, or not PEM rejects `connect()` with `SslFileError` (code table in [`docs/wiki/core-db.md`](core-db.md)). Physical pool, session timeout, keep-alive, and TLS behavior belong to core-db.
 - `requireTest: true` rejects a configuration without `isTest: true`, including ordinary inline-only configurations. Inline connection settings do not mark a database as a test database.
 - `requireTest` failures throw `RequireTestError`. The factory resolves identity through `getIdentityForConfig()` after checking this guard.
@@ -359,6 +370,7 @@ SDK unit tests cover namespace behavior by role, guard errors, policy attachment
 - Truncate (`db:truncate`), teardown (`db:teardown`), and reset (`db:reset`) use their own permissions. Dry-run truncate/teardown still require permission but do not require confirmation. Reset does not preserve configured tables because rebuilding would collide with existing objects. A `ResetBuildError` means the teardown already happened, so treat the database as torn down and partly rebuilt; rerun `reset()` once the failing file is fixed.
 - Standalone truncate and teardown honor `settings.teardown.preserveTables` (truncate can override it with `options.preserve`). A full reset deliberately ignores that setting before rebuilding.
 - `withSchema` accepts only alphanumerics, underscores, and hyphens; invalid names throw synchronously. Raw `sql` fragments resolve against the connection's default schema, so raw SQL issued through a schema view hits the wrong schema. The `describe*` methods ignore the view's schema and take their own optional `schema` argument; `listTables()` takes none.
+- An impersonation switch or revert statement that fails closes the connection instead of returning it to the pool, and the call throws the statement's error. Treat a thrown `impersonate()` or `scope.revert()` as a lost connection, not a pooled one with the role still set.
 - PostgreSQL transaction procedure detection matches names and namespaces, not argument overloads or search-path precedence. A same-named function/procedure ambiguity can still select a failing `CALL`; use `tvf` when calling the function.
 - SQLite has no procedure support. TVFs and impersonation support PostgreSQL and MSSQL, not MySQL or SQLite. TVPs are MSSQL-only, enforce consistent row keys, and obey the `2100` parameter limit.
 - Vault decryption needs a private key. `vault.set` throws `VaultAccessError` without a usable vault key; reads can return `null` or an empty object instead. DT import and transfer writes use destination reset permission; export is ungated by the DT wrapper.
@@ -372,7 +384,7 @@ SDK unit tests cover namespace behavior by role, guard errors, policy attachment
 ## Coupling
 
 - Core-state owns configuration precedence, synthetic naming, state persistence, settings, and the resolver used by the factory; `freshState` bypasses its per-project manager singletons. Core-identity supplies environment identity overrides, config identity, and vault primitives.
-- Core-db owns physical connections, pool behavior, database exploration, teardown, and live transfer. The SDK forwards runtime credentials and PostgreSQL TLS callbacks through the connection runtime-options boundary, re-exports `SslFileError` from [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts), and leaves SSL file reads (`resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts)) to core-db; the field-pair constant `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts). Core-state owns `anchorSslFiles` in [`src/core/config/anchor.ts`](../../src/core/config/anchor.ts), which `Context` and `bindSdkDestination` call.
+- Core-db owns physical connections, pool behavior, database exploration, teardown, and live transfer. The SDK forwards runtime credentials and PostgreSQL TLS callbacks through the connection runtime-options boundary, re-exports `SslFileError` (asserted by [`tests/sdk/bundle-smoke.test.ts`](../../tests/sdk/bundle-smoke.test.ts)) from [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts), and leaves SSL file reads (`resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts)) to core-db; the field-pair constant `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts). Core-state owns `anchorSslFiles` in [`src/core/config/anchor.ts`](../../src/core/config/anchor.ts), which `Context` and `bindSdkDestination` call.
 - Core-policy owns channel/role decisions, including `withPolicyConfirmation`. The `Context` constructor binds policy by calling `bindSdkPolicy` directly; transfer and vault `copy` call `bindSdkDestination`, which calls `bindSdkPolicy` and then anchors SSL paths. `bindSdkPolicy` calls core-state's `bindPolicyContext`. Namespace wrappers enforce those decisions; direct Kysely access remains the raw SQL surface.
 - Core-runner and core-change own SQL execution and migration semantics behind the SDK namespaces. Wrapper signatures and returned core result types must stay aligned.
 - `mcp-rpc` creates contexts in [`src/mcp/server.ts`](../../src/mcp/server.ts) (`channel: 'agent'`, `freshState: true`); [`src/mcp/prepared.ts`](../../src/mcp/prepared.ts) calls `run[prepareRunContext]`. `cli` drives the SDK through `withContext` in [`src/cli/_utils.ts`](../../src/cli/_utils.ts), and [`src/cli/run/_render-secrets.ts`](../../src/cli/run/_render-secrets.ts) creates one for the preview/inspect secret probe.

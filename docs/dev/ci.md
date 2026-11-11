@@ -213,6 +213,16 @@ noorm run build --json | jq '.status'
 ```
 
 
+## Live TLS Tests
+
+noorm's own CI proves certificate files with real handshakes against its MySQL and SQL Server test containers. `tests/integration/connection/mssql-tls.test.ts` needs only the container from `docker-compose.test.yml`. `tests/integration/connection/mysql-tls.test.ts` needs the MySQL container's public CA in a file and is skipped without it:
+
+```bash
+docker exec noorm-test-mysql cat /var/lib/mysql/ca.pem > /tmp/mysql-ca.pem
+TEST_MYSQL_CA_FILE=/tmp/mysql-ca.pem bun test --serial tests/integration/connection/mysql-tls.test.ts tests/integration/connection/mssql-tls.test.ts
+```
+
+
 ## See Also
 
 - [CI Automation Guide](../guide/automation/ci.md) - End-to-end walkthrough with test/prod flows
