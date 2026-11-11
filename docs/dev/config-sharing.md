@@ -16,7 +16,7 @@ Sharing configs via plaintext (email, Slack) exposes credentials. noorm solves t
 
 Config sharing uses X25519 key exchange with AES-256-GCM encryption. Each user has an identity keypair stored at `~/.noorm/`. When Alice exports a config for Bob, she encrypts it with Bob's public key. Only Bob's private key can decrypt it.
 
-Credentials (user/password) are intentionally excluded from exports. The recipient provides their own database credentials during import. This ensures shared configs don't contain hardcoded passwords.
+Credentials are excluded from exports: `user`, `password`, and an inline client key and certificate (`ssl.key`, `ssl.cert`). The recipient provides their own database credentials during import, so a shared config holds no password.
 
 > **This flow is TUI-only.** It lives in `src/tui/screens/config/ConfigExportScreen.tsx` and `ConfigImportScreen.tsx`, reached from `noorm ui` → config list → `+` (more) → `[x]` export / `[i]` import.
 >
@@ -57,7 +57,7 @@ sequenceDiagram
     CLI->>State: findKnownUsersByEmail(email)
     State-->>CLI: [KnownUser with publicKey]
 
-    Note over CLI: Build export data<br/>(excludes user/password)
+    Note over CLI: Build export data<br/>(excludes credentials)
 
     CLI->>Crypto: encryptForRecipient(data, publicKey)
 
@@ -85,8 +85,11 @@ The exported data includes everything needed to recreate the config except crede
             host: 'db.example.com',
             port: 5432,
             database: 'myapp',
-            ssl: true,
-            // NO user/password
+            tlsServerName: 'db.internal.corp',
+            connectTimeoutMs: 10000,
+            pool: { max: 5 },
+            ssl: { caFile: './certs/corp-ca.pem' },
+            // NO user, password, ssl.key or ssl.cert
         },
     },
     secrets: {
@@ -95,6 +98,20 @@ The exported data includes everything needed to recreate the config except crede
     },
 }
 ```
+
+The export copies the stored connection and removes the credentials. Stage defaults are not added to it.
+
+| Connection field | In the file |
+|---|---|
+| `dialect`, `host`, `port`, `database`, `filename` | Yes |
+| `tlsServerName` | Yes |
+| `pool`, `connectTimeoutMs`, `statementTimeoutMs`, `queryTimeoutMs`, `applicationName`, `keepAlive`, `keepAliveInitialDelayMs` | Yes |
+| `ssl.caFile`, `ssl.certFile`, `ssl.keyFile` | Yes, as paths. The files are not read |
+| `ssl.ca`, `ssl.rejectUnauthorized` | Yes. An inline `ca` is a public certificate and travels as PEM inside the encrypted envelope |
+| `user`, `password` | No |
+| `ssl.key`, `ssl.cert` | No. An `ssl` object left with no field exports as `true` |
+
+A recipient of a config that authenticates with an inline client key and certificate supplies their own after import. For file paths, the recipient needs the same files at the same paths, because a relative path resolves from their working directory (the project root in the CLI and TUI) and `~/` from their home directory.
 
 `access` is the source of truth; `protected` rides along so an as-yet-unupgraded importer still reaches a safe (if coarser) access decision. `paths` is *not* exported — the recipient's project layout is their own.
 
@@ -107,9 +124,13 @@ When importing a config, the recipient:
 
 1. Selects or provides the `.noorm.enc` file
 2. File is decrypted using recipient's private key
-3. Preview shows config details (dialect, host, database, secrets count)
+3. Preview shows config details: dialect, host, database, SSL on or off, certificate verification, each certificate file path, the TLS server name, and the secrets count
 4. Recipient enters their database credentials
 5. Config is saved with credentials, secrets are imported
+
+Import saves the connection fields the config schema accepts, with `user` and `password` from the form and never from the file. A key the schema does not know is not saved, with one exception: an unknown key under `pool` fails the whole import with `pool.<key> is not a pool option`. A file that holds only `dialect`, `host`, `port`, `database` and `ssl` imports to a config with those fields.
+
+Import does not check that a certificate file exists. When the file names one, the preview says `A certificate file path must exist on this machine.` A missing file fails when the config first connects, and `config validate` or the TUI connection test reports it.
 
 ```mermaid
 sequenceDiagram
@@ -210,7 +231,7 @@ Each export generates a fresh keypair, so no two exports share a wrapping key an
 
 ### Why Exclude Credentials?
 
-Database passwords are:
+Database passwords and client keys are:
 - Personal (each user has their own)
 - Rotatable (change without re-sharing configs)
 - Auditable (track who accessed what)

@@ -7,6 +7,7 @@
 import { checkConfigPolicy } from '../core/policy/index.js';
 import type { Permission } from '../core/policy/index.js';
 import { bindPolicyContext, sameTarget } from '../core/config/resolver.js';
+import { anchorSslFiles } from '../core/config/anchor.js';
 import type { Config } from '../core/config/types.js';
 import type { Settings } from '../core/settings/index.js';
 import type { CreateContextOptions } from './types.js';
@@ -257,6 +258,8 @@ export function bindSdkDestination(config: Config, state: ContextState): Config 
         ? stored.isTest === true && sameTarget(stored.connection, config.connection)
         : undefined;
 
-    return bindSdkPolicy(config, state.settings, state.projectRoot, undefined, isTest);
+    const bound = bindSdkPolicy(config, state.settings, state.projectRoot, undefined, isTest);
+
+    return { ...bound, connection: anchorSslFiles(bound.connection, state.projectRoot) };
 
 }

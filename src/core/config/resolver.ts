@@ -12,7 +12,9 @@ import { merge, clone } from '@logosdx/utils';
 
 import type { Config, ConfigInput, CompletenessCheck } from './types.js';
 import { getEnvConfigName } from '../environment.js';
-import { parseConfig, type ConfigSchemaType } from './schema.js';
+import { ConfigValidationError, parseConfig, validateConfigInput, type ConfigSchemaType } from './schema.js';
+import { wrongCaseSslKeyMessage } from '../connection/options.js';
+import { combineSsl } from './ssl-combine.js';
 import { getEnvConfig } from './index.js';
 import { stageFields } from './stage.js';
 import type { SettingsManager, StageDefaults } from '../settings/index.js';
@@ -106,12 +108,73 @@ function mergeLayer(merged: Partial<ConfigInput>, layer: Partial<ConfigInput>): 
 
     const pool = layer.connection?.pool;
     const lower = merged.connection?.pool;
+    const ssl = combineSsl(merged.connection?.ssl, layer.connection?.ssl);
+    const { ssl: _ssl, ...connection } = layer.connection ?? {};
+    const withoutSsl = layer.connection ? { ...layer, connection } : layer;
 
-    if (!lower || (pool?.idleTimeoutMs === undefined && pool?.idleTimeoutMillis === undefined)) return merge(merged, layer);
+    const result = !lower || (pool?.idleTimeoutMs === undefined && pool?.idleTimeoutMillis === undefined)
+        ? merge(merged, withoutSsl)
+        : merge({ ...merged, connection: { ...merged.connection, pool: omitIdleTimeouts(lower) } }, withoutSsl);
 
-    const { idleTimeoutMs: _idle, idleTimeoutMillis: _alias, ...rest } = lower;
+    if (ssl !== undefined) result.connection = { ...result.connection, ssl };
 
-    return merge({ ...merged, connection: { ...merged.connection, pool: rest } }, layer);
+    return result;
+
+}
+
+function omitIdleTimeouts(pool: NonNullable<NonNullable<ConfigInput['connection']>['pool']>) {
+
+    const { idleTimeoutMs: _idle, idleTimeoutMillis: _alias, ...rest } = pool;
+
+    return rest;
+
+}
+
+// The merge cannot see a conflict inside one layer once a higher layer replaces one of its forms.
+// The schema strips a misspelled key, which would silently drop a certificate, so a wrong-case key fails here.
+function assertSslLayer(ssl: NonNullable<ConfigInput['connection']>['ssl']): void {
+
+    if (ssl && typeof ssl === 'object') {
+
+        for (const key of Object.keys(ssl)) {
+
+            const message = wrongCaseSslKeyMessage(key);
+
+            if (message) {
+
+                throw new ConfigValidationError(message, `connection.ssl.${key}`, [{ code: 'custom', path: ['connection', 'ssl', key], message }]);
+
+            }
+
+        }
+
+    }
+
+    validateConfigInput({ connection: { ssl } });
+
+}
+
+function mergeStoredLayers(stored: Partial<ConfigInput>, stageDefaults: StageDefaults | null): Partial<ConfigInput> {
+
+    const defaults: Partial<ConfigInput> = clone(DEFAULTS);
+    const staged = stageDefaults ? mergeLayer(defaults, clone(stageFields(stageDefaults, true))) : defaults;
+
+    // merge() adopts a layer's nested objects by reference; a later overlay would otherwise write into the stored record.
+    return mergeLayer(staged, clone(stored));
+
+}
+
+function omitUndefined<T extends object>(fields: T): T {
+
+    const defined = { ...fields };
+
+    for (const key in defined) {
+
+        if (defined[key] === undefined) delete defined[key];
+
+    }
+
+    return defined;
 
 }
 
@@ -203,7 +266,7 @@ export function bindPolicyContext<T extends { name: string; access: ConfigAccess
 function applyPolicyContext(
     config: ConfigSchemaType,
     stageNames: string[],
-    isTest: boolean,
+    isTest: boolean | undefined,
     settings?: SettingsProvider,
     validate = true,
 ): ConfigSchemaType {
@@ -232,6 +295,30 @@ function stageNamesOf(name: string, stage?: string): string[] {
 export function withConfigPolicy(config: Config, settings: SettingsProvider, validate = true): Config {
 
     return applyPolicyContext(config, [], config.isTest === true, settings, validate);
+
+}
+
+/** Re-validates roles on a bound config and keeps its bound `isTest` trust, which the config's own `isTest` field must not widen.
+ * @example revalidateConfigPolicy(activeConfig, new SettingsProvider(settingsManager)) */
+export function revalidateConfigPolicy(config: Config, settings: SettingsProvider): Config {
+
+    return applyPolicyContext(config, [], undefined, settings);
+
+}
+
+/** A stored config over its stage's defaults, with policy bound and no `NOORM_*` variable or flag; only a stored `isTest` is trusted.
+ * @example effectiveConfig(stored, new SettingsProvider(settingsManager)) */
+export function effectiveConfig(
+    stored: Partial<ConfigInput> & { name: string },
+    settings: SettingsProvider,
+    validate = true,
+): Config {
+
+    // The TUI keeps a blank field as a key set to undefined, which merge() would let erase the stage value.
+    const layer = { ...omitUndefined(stored), connection: omitUndefined(stored.connection ?? {}) };
+    const merged = mergeStoredLayers(layer, getStageDefaults(stored.name, undefined, settings));
+
+    return applyPolicyContext(parseConfig(merged), [], stored.isTest === true, settings, validate);
 
 }
 
@@ -273,7 +360,7 @@ export const configNotFoundMessage = (name: string): string => `Config "${name}"
  * 1. Defaults
  * 2. Stage defaults (from settings.yml, if stage provided or config name matches)
  * 3. Stored config (if name provided or active config exists)
- * 4. Environment variables (NOORM_*)
+ * 4. Environment variables (NOORM_*); `NOORM_ACCESS_*` only when no stored config is used
  * 5. CLI flags
  *
  * @example
@@ -361,23 +448,16 @@ export function resolveConfig(state: StateProvider, options: ResolveOptions = {}
     const stageDefaults = getStageDefaults(configName, options.stage, options.settings);
 
     // 4. Merge: defaults <- stage <- stored <- env <- flags
-    // Clone DEFAULTS to avoid mutation
-    const envConfig = getEnvConfig();
-    let merged: Partial<ConfigInput> = clone(DEFAULTS);
-
-    if (stageDefaults) {
-
-        merged = mergeLayer(merged, clone(stageFields(stageDefaults, true)));
-
-    }
-
-    // merge() adopts a layer's nested objects by reference; the overlays below would otherwise write into the stored record.
-    merged = mergeLayer(merged, clone(stored));
+    // Stored access roles are the config's guardrail, so NOORM_ACCESS_* shapes only a config with no stored record.
+    const { access: _envAccess, ...envConfig } = getEnvConfig();
+    let merged = mergeStoredLayers(stored, stageDefaults);
 
     // Captured before the env/flag overlays so they cannot grant the isTest relaxation.
     const storedConnection = { ...merged.connection };
     const storedIsTest = stored.isTest === true;
 
+    assertSslLayer(envConfig.connection?.ssl);
+    assertSslLayer(options.flags?.connection?.ssl);
     merged = mergeLayer(merged, envConfig);
     merged = mergeLayer(merged, options.flags ?? {});
 
@@ -531,6 +611,8 @@ function resolveFromEnvOnly(
 
     }
 
+    assertSslLayer(envConfig.connection?.ssl);
+    assertSslLayer(flags?.connection?.ssl);
     merged = mergeLayer(merged, envConfig);
     merged = mergeLayer(merged, flags ?? {});
 

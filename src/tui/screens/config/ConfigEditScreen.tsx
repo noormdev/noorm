@@ -32,6 +32,10 @@ import {
     validateConfigName,
     validatePort,
     buildConnectionConfig,
+    buildSslFields,
+    validateSslForm,
+    sslPinnedByRename,
+    connectionOverStage,
     buildAccessFromValues,
     getRoleOptions,
 } from '../../utils/index.js';
@@ -79,6 +83,17 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
         () => (settingsManager ? new SettingsProvider(settingsManager) : null),
         [settingsManager],
     );
+
+    // What the SSL fields open on. A stored config its stage makes invalid still opens, on its stored values.
+    const effectiveConnection = useMemo(() => {
+
+        if (!config) return undefined;
+
+        const [effective] = connectionOverStage(config.name, config.connection, settingsManager);
+
+        return effective ?? config.connection;
+
+    }, [config, settingsManager, settings]);
 
     // Form fields with existing values
     const fields: FormField[] = useMemo(() => {
@@ -138,6 +153,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 defaultValue: config.connection.password ?? '',
                 placeholder: '(unchanged if empty)',
             },
+            ...(config.connection.dialect === 'sqlite' ? [] : buildSslFields(config.connection, effectiveConnection)),
             {
                 key: 'userRole',
                 label: 'User Role',
@@ -162,7 +178,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             },
         ];
 
-    }, [config, settings]);
+    }, [config, settings, effectiveConnection]);
 
     const save = useCallback(
         async (values: FormValues, verify: boolean) => {
@@ -176,12 +192,26 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             }
 
             const dialect = config.connection.dialect as Dialect;
+            const newName = String(values['name']);
+            const stageSsl = settingsManager?.getStage(newName)?.defaults?.ssl;
 
-            // Build connection config (keep dialect from original, preserve port and password if not provided)
-            const connectionConfig = buildConnectionConfig(values, dialect, {
-                port: config.connection.port,
-                password: config.connection.password,
-            });
+            const pinnedSsl = newName !== config.name
+                ? sslPinnedByRename(values, dialect, stageSsl, config.connection, effectiveConnection)
+                : undefined;
+
+            const sslError = validateSslForm(values, dialect, pinnedSsl ?? stageSsl, config.connection, effectiveConnection);
+
+            if (sslError) {
+
+                setConnectionError(sslError);
+                setTestFailed(false);
+
+                return;
+
+            }
+
+            const builtConnection = buildConnectionConfig(values, dialect, config.connection, effectiveConnection);
+            const connectionConfig = pinnedSsl === undefined ? builtConnection : { ...builtConnection, ssl: pinnedSsl };
 
             const controller = task.start();
 
@@ -194,10 +224,11 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
                 setBusyLabel('Testing connection...');
                 setCancellable(true);
 
-                const result = await testConnection(connectionConfig, {
-                    testServerOnly: true,
-                    signal: controller.signal,
-                });
+                const [tested, stageErr] = connectionOverStage(newName, connectionConfig, settingsManager);
+
+                const result = stageErr
+                    ? { ok: false, error: stageErr.message }
+                    : await testConnection(tested, { testServerOnly: true, signal: controller.signal });
 
                 // Cancelled or superseded: whoever did that already owns the
                 // screen, and a driver that answered anyway must not undo it.
@@ -216,7 +247,6 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             }
 
             // Build updated config
-            const newName = String(values['name']);
             const access = buildAccessFromValues(values);
             const updatedConfig = {
                 ...config,
@@ -269,7 +299,7 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
             back();
 
         },
-        [stateManager, config, configName, settings, settingsProvider, refresh, showToast, back, task],
+        [stateManager, settingsManager, config, configName, settings, settingsProvider, effectiveConnection, refresh, showToast, back, task],
     );
 
     // Escape while busy stops the operation instead of walking away from it.

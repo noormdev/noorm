@@ -70,7 +70,7 @@ flowchart TD
     EO --> R
 ```
 
-The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins. At policy-check time, a protected stage caps each effective permission against the original operator matrix for users or viewer matrix for agents without changing role assignments. See [stage precedence](/guide/environments/stages#which-value-wins).
+The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins, except that `NOORM_ACCESS_*` never changes the access roles of a stored config. At policy-check time, a protected stage caps each effective permission against the original operator matrix for users or viewer matrix for agents without changing role assignments. See [stage precedence](/guide/environments/stages#which-value-wins).
 
 `NOORM_CONNECTION_HOST` overrides the stored host. Execution commands select a config but do not expose connection-field flags. [`config create`](#config-create) accepts connection overrides when saving a new config.
 
@@ -445,7 +445,7 @@ noorm config export dev --output ./dev.json
 |---|---|
 | `--output`, `-o` | Write to a file with mode `0600` instead of stdout |
 
-Plain output is the bare config object that `config import` reads, so redirecting round-trips. `--json` wraps it as `{success, name, config}`, which `config import` does not accept. Gated by `secret:read`.
+File-form certificate settings (`ssl.caFile`, `ssl.certFile`, `ssl.keyFile`) export as their paths, and the files are not read. Inline `ca`, `cert` and `key` export as the stored PEM, private key included. Plain output is the bare config object that `config import` reads, so redirecting round-trips. `--json` wraps it as `{success, name, config}`, which `config import` does not accept. Gated by `secret:read`.
 
 
 #### `config import <path>`
@@ -464,6 +464,8 @@ noorm config import ./staging.json --force --yes
 | `--yes`, `-y` | Confirm the overwrite. An overwrite rewrites `access`, so it is a `config:write` confirm cell |
 
 JSON: `name`, `overwritten`.
+
+`config import` saves a certificate path without checking that the file exists. A missing file fails when the config connects, and `config validate` reports it.
 
 
 #### `config validate <name>`

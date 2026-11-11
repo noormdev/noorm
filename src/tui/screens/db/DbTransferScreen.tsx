@@ -30,7 +30,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
-import { attempt } from '@logosdx/utils';
+import { attempt, attemptSync } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -53,7 +53,7 @@ import {
 } from '../../components/index.js';
 
 import { checkConfigPolicy } from '../../../core/policy/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 
 import { transferData, getTransferPlan } from '../../../core/transfer/index.js';
 import {
@@ -275,8 +275,24 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
             return;
 
         }
-        const config = withConfigPolicy(stored, new SettingsProvider(settingsManager), false);
 
+        // Roles stay unvalidated so a destination with an unknown role loads and is refused by the policy check below.
+        const [config, configErr] = attemptSync(() => effectiveConfig(stored, new SettingsProvider(settingsManager), false));
+
+        if (configErr) {
+
+            if (!isCancelled()) {
+
+                setError(configErr.message);
+                setPhase('error');
+
+            }
+
+            release();
+
+            return;
+
+        }
 
         setDestConfig(config);
 

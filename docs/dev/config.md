@@ -52,9 +52,9 @@ interface Config {
         filename?: string     // SQLite only — alternative to database
         user?: string
         password?: string
-        ssl?: boolean | SSLConfig
+        ssl?: boolean | SSLConfig  // see TLS Certificates below
         pool?: PoolOpts         // min/max default to 0/10; PgPoolOpts and TarnPoolOpts add the per-dialect options, see below
-        tlsServerName?: string  // PostgreSQL/MSSQL certificate hostname, including IP dial hosts
+        tlsServerName?: string  // Certificate hostname for PostgreSQL, MySQL and MSSQL, including IP dial hosts
         connectTimeoutMs?: number  // Per attempt, defaults to 15000
         statementTimeoutMs?: number // PostgreSQL server-side timeout
         queryTimeoutMs?: number     // PostgreSQL client-side timeout
@@ -96,6 +96,82 @@ needs it.
 `keepAliveInitialDelayMs` is rejected on MSSQL, where tedious fixes the delay at 30 seconds, and on SQLite, which has no socket. On PostgreSQL and MySQL it also turns `keepAlive` on unless `keepAlive` is `false`. `keepAlive: false` turns keepalive off on both, which on MySQL overrides mysql2's default of on.
 
 
+## TLS Certificates
+
+A private CA or a client certificate belongs in a file that a rotation replaces, not in the config. `connection.ssl` names the file, and noorm reads it each time a pool opens, on every connect attempt:
+
+```typescript
+connection: {
+    dialect: 'postgres',
+    host: '10.0.0.5',
+    database: 'myapp',
+    tlsServerName: 'db.internal.corp',
+    ssl: {
+        caFile: './certs/corp-ca.pem',
+        certFile: '~/.certs/client.pem',
+        keyFile: '~/.certs/client.key',
+    },
+}
+```
+
+| Field | Inline form | File form |
+|-------|-------------|-----------|
+| CA certificate | `ca` | `caFile` |
+| Client certificate | `cert` | `certFile` |
+| Client key | `key` | `keyFile` |
+| Validation | `rejectUnauthorized` | |
+
+`ssl` is `true`, `false`, or an object of those fields. Setting the inline and file form of one field in one layer fails validation and names the field (`ssl.ca and ssl.caFile cannot both be set; use one`). An empty path fails too (`ssl.caFile must not be empty`).
+
+| Where the path is | It resolves from |
+|-------------------|------------------|
+| Absolute | Itself |
+| Leading `~/` | The home directory |
+| Relative, in the CLI or TUI | The working directory, which both set to the project root |
+| Relative, in the SDK | The `projectRoot` option |
+
+A relative path in a `settings.yml` stage default means a different file on each machine with a different project root, so the file must exist at that path wherever the config connects.
+
+A path that is not a readable, non-empty regular file holding a PEM block fails the connection with `SslFileError`. It carries `field` (`ssl.caFile`), `path` and `code`, never file content. `code` is the system error code, `EINVAL` for a path that is not a regular file, `EMPTY` for an empty file, `EFBIG` for a file over 1 MiB, or `ENOTPEM` for a file with no `-----BEGIN ` line. The factory does not retry an `SslFileError`, and the `connection:error` event carries its message. `config validate` and the TUI connection test report the same message. SQLite never reads `ssl` files.
+
+A file-form setting is stored as its path, never the file's content. `config export` copies `ssl` as stored, so a file-form setting exports as its path and an inline `ca`, `cert` or `key` exports as the stored PEM. `config import` accepts a path without checking that the file exists.
+
+### Combining layers
+
+The stage, stored config, environment and inline connection each supply `ssl`. Each layer is checked on its own, then combined field by field with `combineSsl` in `src/core/config/ssl-combine.ts`:
+
+| Higher layer | Lower layer | Result |
+|--------------|-------------|--------|
+| `false` | anything | `false`: SSL is off |
+| `true` | an object | The lower object's `ca`, `cert` and `key` fields, without its `rejectUnauthorized`; `true` when none remain |
+| an object | an object | Each of `ca`, `cert` and `key` takes the higher layer's form, inline or file, replacing the lower layer's form of that field. `rejectUnauthorized` comes from the higher object alone |
+| an object | `true`, `false` or nothing | The object |
+| no `ssl` in the layer | anything | The lower layer's `ssl`, unchanged |
+
+`rejectUnauthorized` is never inherited. It reaches the result only from the highest layer that sets `ssl`, and only when that layer is an object that sets it. A layer that sets `ssl` without it validates the certificate, whatever a lower layer said. A layer that wants validation off states `ssl: { rejectUnauthorized: false }` itself.
+
+| Stage | Stored | Resolves to |
+|-------|--------|-------------|
+| `{ rejectUnauthorized: false }` | `true` | `true` |
+| `{ rejectUnauthorized: false }` | `{ caFile }` | `{ caFile }` |
+| `{ rejectUnauthorized: false }` | no `ssl` | `{ rejectUnauthorized: false }` |
+| `{ caFile }` | `true` | `{ caFile }` |
+
+A stage `ssl: { rejectUnauthorized: false }` therefore applies only to a config that has no `ssl` of its own. A stored inline `ca` over a stage `caFile` resolves to the inline `ca` alone. `config sync` combines with the same function, and the stage is the higher layer, so a stage `ssl: { caFile }` over a stored `ssl: { certFile, keyFile }` keeps the stored `certFile` and `keyFile`, and a stage `ssl: true` over a stored `{ caFile, rejectUnauthorized: false }` stores `{ caFile }`.
+
+### Per dialect
+
+| | PostgreSQL | MySQL | MSSQL |
+|---|---|---|---|
+| `ca`, `cert`, `key` | Passed to `pg` | Passed to mysql2 | Passed to tedious as `cryptoCredentialsDetails` |
+| `rejectUnauthorized: false` | Encrypts, skips validation | Encrypts, skips validation | Encrypts, skips validation, and lifts the IP-host name requirement |
+| `tlsServerName` | Needs `ssl` on and validation; an IP dial host is allowed | Needs `ssl` on and validation; a hostname only, an IP address throws | Hostname only; works without `ssl`; required for a validated connection to an IP host |
+
+MySQL checks the server's host name only when `tlsServerName` is set. MSSQL always encrypts, and validates the certificate when `ssl` is on and `rejectUnauthorized` is not `false`.
+
+A rejected certificate produces an error that names `ssl.caFile` (or `NODE_EXTRA_CA_CERTS` for the whole process) and `ssl.rejectUnauthorized: false`. A hostname mismatch names `tlsServerName` and the hostnames the certificate is issued for.
+
+
 ## Environment Variables
 
 `getEnvConfig()` delegates to `makeNestedConfig` from `@logosdx/utils`. Underscores separate object levels. All-uppercase segments become lowercase; mixed-case segments retain their spelling, so a schema field such as `connectTimeoutMs` stays within one segment.
@@ -107,6 +183,8 @@ export NOORM_CONNECTION_POOL_idleTimeoutMs=10000
 ```
 
 These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, and `connection.pool.idleTimeoutMs`. `NOORM_CONNECTION_CONNECT_TIMEOUT_MS` instead builds nested `connection.connect.timeout.ms`; it does not set a timeout.
+
+An `ssl` segment in another letter case, such as `NOORM_CONNECTION_SSL_CAFILE`, becomes the key `cafile`. noorm refuses it and names the spelling to use (`ssl.caFile`), as it does for an inline `ssl` object with a key like `cafile`.
 
 **Connection variables:**
 
@@ -123,9 +201,10 @@ These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, an
 | `NOORM_CONNECTION_POOL_MAX` | `connection.pool.max` | |
 | `NOORM_CONNECTION_FILENAME` | `connection.filename` | SQLite file path |
 | `NOORM_CONNECTION_connectTimeoutMs` | `connection.connectTimeoutMs` | Positive integer, milliseconds per attempt |
-| `NOORM_CONNECTION_tlsServerName` | `connection.tlsServerName` | PostgreSQL/MSSQL certificate identity |
+| `NOORM_CONNECTION_tlsServerName` | `connection.tlsServerName` | Certificate identity on PostgreSQL, MySQL and MSSQL |
 | `NOORM_CONNECTION_SSL_rejectUnauthorized` | `connection.ssl.rejectUnauthorized` | Boolean |
 | `NOORM_CONNECTION_SSL_CA`, `_CERT`, `_KEY` | `connection.ssl.ca`, `.cert`, `.key` | PEM strings |
+| `NOORM_CONNECTION_SSL_caFile`, `_certFile`, `_keyFile` | `connection.ssl.caFile`, `.certFile`, `.keyFile` | File paths, camelCase segment. Do not combine with the scalar `NOORM_CONNECTION_SSL` |
 | `NOORM_CONNECTION_POOL_idleTimeoutMs` | `connection.pool.idleTimeoutMs` | Nonnegative integer; greater than zero on MySQL and MSSQL. `_POOL_idleTimeoutMillis` is an alias |
 | `NOORM_CONNECTION_POOL_maxLifetimeMs`, `_maxUses`, `_allowExitOnIdle` | `connection.pool.<option>` | PostgreSQL only |
 | `NOORM_CONNECTION_POOL_acquireTimeoutMs`, `_createTimeoutMs`, `_reapIntervalMs` | `connection.pool.<option>` | MySQL and MSSQL only, positive integer |
@@ -135,7 +214,7 @@ These set `connection.connectTimeoutMs`, `connection.ssl.rejectUnauthorized`, an
 | `NOORM_CONNECTION_keepAlive` | `connection.keepAlive` | PostgreSQL and MySQL TCP keepalive, boolean |
 | `NOORM_CONNECTION_keepAliveInitialDelayMs` | `connection.keepAliveInitialDelayMs` | PostgreSQL and MySQL, nonnegative integer |
 
-The native parser converts numeric and boolean values, except keys containing `password`, which retain strings. The config schemas validate the merged result and strip unknown fields outside `pool`. An unknown `pool` key is an error that names the camelCase spelling; no other key has a spelling map or unsupported-name check. Use either scalar `NOORM_CONNECTION_SSL` or its nested fields; the parser does not provide a conflict-resolution contract for combining them.
+The native parser converts numeric and boolean values, except keys containing `password`, which retain strings. The config schemas validate the merged result and strip unknown fields outside `pool`. An unknown `pool` key is refused, and so is an `ssl` key spelled in another letter case in the environment or inline layer; a key that differs only in letter case gets the right spelling. Use either scalar `NOORM_CONNECTION_SSL` or its nested fields; the parser does not provide a conflict-resolution contract for combining them.
 
 **Path variables** (override `settings.yml` paths, not `Config`):
 

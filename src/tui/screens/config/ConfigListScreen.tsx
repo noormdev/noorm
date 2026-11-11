@@ -29,8 +29,10 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, useToast, type SelectListItem } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
 import { formatAccessTag } from '../../../core/policy/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 import type { ConfigAccess } from '../../../core/policy/index.js';
+import type { ConnectionConfig } from '../../../core/connection/types.js';
+import { skipsVerification } from '../../utils/index.js';
 
 /**
  * Config list item value.
@@ -41,6 +43,16 @@ interface ConfigListValue {
     isActive: boolean;
     access: ConfigAccess;
     isTest: boolean;
+}
+
+function tlsTag(connection: ConnectionConfig): string | null {
+
+    const { ssl } = connection;
+
+    if (connection.dialect === 'sqlite' || !ssl) return null;
+
+    return skipsVerification(ssl) ? 'tls unverified' : 'tls';
+
 }
 
 /**
@@ -60,10 +72,28 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
         configs.length > 0 ? (configs[0]?.name ?? null) : null,
     );
 
+    // A stored config that cannot be built into an effective one (an unknown role, for one) still gets its row, without the tag.
+    const effectiveTlsTag = (name: string): string | null => {
+
+        if (!stateManager || !settingsManager) return null;
+
+        const [effective] = attemptSync(() => {
+
+            const stored = stateManager.getConfig(name);
+
+            return stored && effectiveConfig(stored, new SettingsProvider(settingsManager));
+
+        });
+
+        return effective ? tlsTag(effective.connection) : null;
+
+    };
+
     // Convert configs to list items
     const items: SelectListItem<ConfigListValue>[] = configs.map((config) => {
 
         const accessTag = formatAccessTag(config);
+        const tls = effectiveTlsTag(config.name);
 
         return {
             key: config.name,
@@ -75,7 +105,7 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
                 access: config.access,
                 isTest: config.isTest,
             },
-            description: `${config.dialect}${config.isActive ? ' (active)' : ''}${accessTag ? ` [${accessTag}]` : ''}${config.isTest ? ' [test]' : ''}`,
+            description: `${config.dialect}${config.isActive ? ' (active)' : ''}${accessTag ? ` [${accessTag}]` : ''}${config.isTest ? ' [test]' : ''}${tls ? ` [${tls}]` : ''}`,
             icon: config.isActive ? '●' : '○',
         };
 
@@ -97,7 +127,7 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
 
             const selected = stateManager.getConfig(item.value.name);
             if (!selected || !settingsManager) return;
-            const [bound, policyErr] = attemptSync(() => withConfigPolicy(selected, new SettingsProvider(settingsManager)));
+            const [bound, policyErr] = attemptSync(() => effectiveConfig(selected, new SettingsProvider(settingsManager)));
             if (policyErr) {
 
                 showToast({ message: policyErr.message, variant: 'error' });

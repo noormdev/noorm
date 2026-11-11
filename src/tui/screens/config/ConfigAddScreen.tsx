@@ -37,6 +37,9 @@ import {
     validateConfigName,
     validatePort,
     buildConnectionConfig,
+    buildSslFields,
+    validateSslForm,
+    connectionOverStage,
     buildAccessFromValues,
     getRoleOptions,
 } from '../../utils/index.js';
@@ -50,7 +53,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
 
     const { back, navigate } = useRouter();
     const fromInit = Boolean(params.fromInit);
-    const { stateManager, configs, refresh } = useAppContext();
+    const { stateManager, settingsManager, configs, refresh } = useAppContext();
     const { settings } = useSettings();
     const { showToast } = useToast();
 
@@ -130,6 +133,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             type: 'password',
             placeholder: '(optional)',
         },
+        ...buildSslFields(),
         {
             key: 'userRole',
             label: 'User Role',
@@ -167,6 +171,17 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             }
 
             const dialect = values['dialect'] as Dialect;
+            const configName = String(values['name']);
+            const sslError = validateSslForm(values, dialect, settingsManager?.getStage(configName)?.defaults?.ssl);
+
+            if (sslError) {
+
+                setConnectionError(sslError);
+                setTestFailed(false);
+
+                return;
+
+            }
 
             // Build connection config
             const connectionConfig = buildConnectionConfig(values, dialect);
@@ -182,11 +197,12 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
                 setBusyLabel('Testing connection...');
                 setCancellable(true);
 
+                const [tested, stageErr] = connectionOverStage(configName, connectionConfig, settingsManager);
+
                 // Server only - the database may not exist yet.
-                const result = await testConnection(connectionConfig, {
-                    testServerOnly: true,
-                    signal: controller.signal,
-                });
+                const result = stageErr
+                    ? { ok: false, error: stageErr.message }
+                    : await testConnection(tested, { testServerOnly: true, signal: controller.signal });
 
                 // Cancelled or superseded: whoever did that already owns the
                 // screen, and a driver that answered anyway must not undo it.
@@ -205,7 +221,6 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             }
 
             // Build full config
-            const configName = String(values['name']);
             const access = buildAccessFromValues(values);
             const config: Config = {
                 name: configName,
@@ -268,7 +283,7 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
             }
 
         },
-        [stateManager, configs, settings, refresh, showToast, back, navigate, fromInit, task],
+        [stateManager, settingsManager, configs, settings, refresh, showToast, back, navigate, fromInit, task],
     );
 
     // Escape while busy stops the operation instead of walking away from it.

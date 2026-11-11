@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { attempt } from '@logosdx/utils';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
@@ -23,6 +24,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusList, type StatusListItem } from '../../components/index.js';
 import { validateConfigChecks } from '../../../core/config/validate.js';
+import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 
 /**
  * Validate steps.
@@ -38,7 +40,7 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
 
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ConfigValidate');
-    const { stateManager } = useAppContext();
+    const { stateManager, settingsManager } = useAppContext();
 
     const configName = params.name;
 
@@ -58,13 +60,26 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
     // Run validation on mount
     useEffect(() => {
 
-        if (!stateManager || !configName || !config) return;
+        if (!stateManager || !settingsManager || !configName || !config) return;
 
         const validate = async () => {
 
-            const { checks, valid } = await validateConfigChecks(config);
+            // Roles stay unvalidated: this screen is where a config with an unknown role gets diagnosed.
+            const [report, err] = await attempt(async () =>
+                validateConfigChecks(effectiveConfig(config, new SettingsProvider(settingsManager), false)),
+            );
 
-            const results: StatusListItem[] = checks.map((check) => ({
+            if (err) {
+
+                setItems([{ key: 'config', label: 'Config', status: 'error', detail: err.message }]);
+                setIsValid(false);
+                setStep('complete');
+
+                return;
+
+            }
+
+            const results: StatusListItem[] = report.checks.map((check) => ({
                 key: check.key,
                 label: check.label,
                 status: check.status,
@@ -72,14 +87,14 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
             }));
 
             setItems(results);
-            setIsValid(valid);
+            setIsValid(report.valid);
             setStep('complete');
 
         };
 
         validate();
 
-    }, [stateManager, configName, config]);
+    }, [stateManager, settingsManager, configName, config]);
 
     // Keyboard handling
     useInput((input, key) => {

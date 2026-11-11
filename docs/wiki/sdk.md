@@ -35,27 +35,32 @@ Use `createContext()` for normal consumer startup rather than constructing `Cont
 
 The `Context` constructor revalidates `config.access` through `bindSdkPolicy`, which maps `settings.access.roles` and the protected-stage ceiling from `settings.stages[*].defaults.protected` into core-state's `bindPolicyContext`, with `options.stage` as the stage name. Metadata carried from another project or an older settings snapshot cannot supply authority.
 
+The `Context` constructor also rewrites relative `ssl.caFile`, `ssl.certFile`, and `ssl.keyFile` paths in `config.connection` to absolute paths under `projectRoot` with `anchorSslFiles`, for stored, environment, and inline configurations alike. It runs after policy binding, so the policy target identity hashes the path as written, not the anchored one. `~/` and absolute paths are left as written, and the connection runtime reads them at connect time. Core-state owns `anchorSslFiles`; core-db owns the file reads.
+
 Runtime password callbacks and PostgreSQL `ssl.checkServerIdentity` stay outside serializable configuration. The factory removes a shadowed stored or environment password from the resolved configuration when a callback wins. It does not write that removal back to state.
+
+`createContext` anchors SSL file paths in the `Context` constructor after identity resolution, so a later `connect()` reads the same files whatever the working directory:
 
 ```mermaid
 sequenceDiagram
-    %% source: src/sdk/index.ts, src/sdk/context.ts, src/core/config/resolver.ts
+    %% source: src/sdk/index.ts, src/sdk/context.ts, src/sdk/guards.ts, src/core/config/resolver.ts, src/core/config/anchor.ts
     participant Caller
-    participant SDK as createContext
+    participant Factory as createContext
     participant Resolver as resolveConfig
     participant Ctx as Context
-    Caller->>SDK: options.connection
-    SDK->>Resolver: serializable connection flags
-    Resolver-->>SDK: resolved Config
-    SDK->>SDK: remove shadowed password
-    SDK->>SDK: reject callback on SQLite and checkServerIdentity off PostgreSQL
-    SDK->>SDK: checkRequireTest
-    SDK->>SDK: getIdentityForConfig
-    SDK-->>Caller: unconnected Context
-    Caller->>Ctx: connect()
-    Ctx->>Ctx: createConnection with runtime options
-    Caller->>Ctx: disconnect()
-    Ctx->>Ctx: release scopes and destroy connection
+    participant Policy as bindSdkPolicy
+    participant Anchor as anchorSslFiles
+    Caller->>Factory: options.connection
+    Factory->>Resolver: serializable connection flags
+    Resolver-->>Factory: resolved Config
+    Factory->>Factory: remove shadowed password
+    Factory->>Factory: reject callback on SQLite and checkServerIdentity off PostgreSQL
+    Factory->>Factory: checkRequireTest
+    Factory->>Factory: getIdentityForConfig
+    Factory->>Ctx: new Context(config, settings, identity,<br/>options, projectRoot, state)
+    Ctx->>Policy: bindSdkPolicy, when config.access is set
+    Ctx->>Anchor: config.connection, projectRoot
+    Factory-->>Caller: unconnected Context
 ```
 
 The factory separates serializable overrides from runtime hooks, and `connect()` supplies those hooks only when opening the connection.
@@ -63,6 +68,25 @@ The factory separates serializable overrides from runtime hooks, and `connect()`
 ### Connection lifecycle
 
 `connect()` returns immediately when already connected. On success it stores the connection; on failure the context remains unconnected. `disconnect()` releases held explicit impersonation scopes before destroying the connection, then clears the connection and cached change manager. Reconnecting uses the same resolved configuration and runtime hooks. Cleanup is explicit through `disconnect()`.
+
+`connect()` reads the SSL files each time it opens a connection, and `disconnect()` releases held scopes before it destroys the connection:
+
+```mermaid
+sequenceDiagram
+    %% source: src/sdk/context.ts, src/core/connection/factory.ts, src/core/connection/ssl-files.ts
+    participant Caller
+    participant Ctx as Context
+    participant Conn as createConnection
+    participant Files as resolveSslFiles
+    Caller->>Ctx: connect()
+    Ctx->>Conn: config, runtime options
+    Conn->>Files: config
+    Files-->>Conn: PEM contents, or SslFileError
+    Conn-->>Ctx: connection
+    Caller->>Ctx: disconnect()
+    Ctx->>Ctx: release #35;heldConnections
+    Ctx->>Ctx: destroy connection
+```
 
 ### Connection controls
 
@@ -73,7 +97,7 @@ The factory separates serializable overrides from runtime hooks, and `connect()`
 | `config: string` | Selects a stored config. |
 | `config: false` | Ignores `NOORM_CONFIG` and the active stored config. Stage defaults (`stage`, `NOORM_NAME`), `NOORM_isTest`, `NOORM_ACCESS_*`, and `NOORM_CONNECTION_*` still apply. With no inline `connection`, and no `dialect` plus `database` from `NOORM_CONNECTION_*` and stage defaults, the factory throws `No connection available for { config: false }`. |
 | `name` | Names a context that uses no stored config; wins over `NOORM_NAME` and reaches the resolver as `unstoredName`. The name is a key, not a label: it is `configName` on events and keys change history, run checksums, locks, pipeline history, and local secrets. Reopening a database under another name makes applied changes pending and builds run again. The resolver throws when a stored config is selected (including the active config or `NOORM_CONFIG`; pass `config: false` or an inline `connection`), or when a stored config already has that name. A stage with that name still applies its protected ceiling and `isTest: false`; its other defaults need `stage`. |
-| `connection` | An `InlineConnection<DialectConnectionConfig>`: non-persisted fields applied after environment settings. `password` may be a callback, `ssl.checkServerIdentity` a function, and `driver` an object. |
+| `connection` | An `InlineConnection<DialectConnectionConfig>`: non-persisted fields applied after environment settings. `password` may be a callback, `ssl.checkServerIdentity` a function, and `driver` an object. `ssl` may be a boolean or an object that takes `rejectUnauthorized`, the inline PEM fields `ca`, `cert`, and `key`, or their file-path forms `caFile`, `certFile`, and `keyFile`. The inline and file form of the same field cannot both be set (`ssl.<inline> and ssl.<file> cannot both be set; use one`), and across layers the higher layer's form of a field replaces the lower layer's; detail in [`docs/wiki/core-state.md`](core-state.md). Relative file paths are anchored to `projectRoot` when the `Context` is constructed, so they do not depend on the working directory; an unreadable file rejects `connect()` with `SslFileError`. |
 
 Inline `pool` is typed per dialect through `DialectConnectionConfig`, so an option the dialect cannot honor is a compile error. The SDK entrypoint re-exports `DialectConnectionConfig` and the option types `PoolOpts`, `PgPoolOpts`, `TarnPoolOpts`, `MysqlPoolOpts`, and `MssqlPoolOpts`.
 
@@ -188,10 +212,10 @@ Principal names must match `[a-zA-Z0-9_@.\-\\]+`; invalid names fail before SQL 
 | `db` | `listTables`, `describeTable`, corresponding view/procedure/function/type exploration, indexes, foreign keys, and `overview`, all run through `runGatedExplore` behind the `explore` permission (CLI, MCP, and RPC explore commands reach it through the symbol-keyed `gatedExplore` method); plus `previewTeardown` (checks `db:teardown` allow/deny without confirmation), `truncate` (`db:truncate`), `teardown` (`db:teardown`), and `reset` (`db:reset`). `reset()` resolves with the rebuild's `BatchResult` and throws `ResetBuildError` (its `result` field holds the failed `BatchResult`) when the build status is not `success`. Before dropping anything it checks `db:reset` and `run:build`, runs `ensureTracking`, and requires a readable schema directory; after teardown it runs `build({ force: true })`. |
 | `dt` | `exportTable` and `importFile`; import checks `db:reset`. |
 | `lock` | `acquire`, `release`, `status`, `withLock`, and `forceRelease`. `acquire`, `release`, and `withLock` check `lock:acquire`; `acquire` and `withLock` also call `ensureTracking`. `status` needs only channel visibility, reads through `requireCurrentSchema` without migrating, and removes expired locks only when `lock:acquire` is allowed. Force release checks `lock:force`. |
-| `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. `set` and `propagate` check `vault:read` as well as `vault:write`/`vault:propagate`. `copy` binds the destination through `bindSdkPolicy`, checks `vault:read` on the source and `vault:write` on the destination (write skipped on dry run), and runs under `withPolicyConfirmation` for both configs; `withDestinationRead` also checks `vault:read` on the destination. |
+| `vault` | `init`, `status`, `set`, `get`, `getAll`, `list`, `delete`, `exists`, `propagate`, and `copy`. Decrypting operations take a private key. `set` and `propagate` check `vault:read` as well as `vault:write`/`vault:propagate`. `copy` binds the destination through `bindSdkDestination` (policy binding plus SSL path anchoring), checks `vault:read` on the source and `vault:write` on the destination (write skipped on dry run), and runs under `withPolicyConfirmation` for both configs; `withDestinationRead` also checks `vault:read` on the destination. |
 | `secrets` | Config-scoped `get`, `list`, `set`, and `delete`, gated by `secret:read` or `secret:write`. |
 | `templates` | `render` checks `run:file` permission through `checkConfigPolicy`, so a user-channel confirmation cell does not block this SQL-free render. It resolves secrets and global secrets into the returned string and passes the resolved `Config` to `processFile` without a cast. |
-| `transfer` | `to` and `plan`; both rebind the destination config's access roles, protected-stage ceiling, and policy context through `bindSdkPolicy` first, and pass the context's channel to core so an agent-channel context is never authorised with user permissions. Writes check the destination config's `db:reset`, not the source config's permission. |
+| `transfer` | `to` and `plan`; both rebind the destination config's access roles, protected-stage ceiling, and policy context through `bindSdkDestination` first (policy binding, then SSL path anchoring), and pass the context's channel to core so an agent-channel context is never authorised with user permissions. Writes check the destination config's `db:reset`, not the source config's permission. |
 | `utils` | Offline SHA-256 `checksum`; `testConnection` returns `{ ok, error? }` rather than throwing connection failures. |
 
 The public entrypoint re-exports namespace classes, option/result types, `ExtractArgs`/`ExtractReturn`, `TransactionScope`, policy types, `tvp()`/`TvpValue`, and catchable errors:
@@ -204,6 +228,7 @@ The public entrypoint re-exports namespace classes, option/result types, `Extrac
 | `VaultAccessError` | `vault.set()` cannot obtain a usable vault key. Reads can instead return `null` or `{}`. |
 | `ImpersonationError` | Unsupported dialect or invalid principal name. |
 | `ResetBuildError` | `db.reset()` dropped the schema and the rebuild did not succeed. The schema was dropped and the rebuild stopped part way, so the database holds only the files listed as successful in `err.result.files`; `err.result` is the `BatchResult`. |
+| `SslFileError` | `connect()` rejected an `ssl.caFile`, `ssl.certFile`, or `ssl.keyFile` that is missing, unreadable, not a regular file, empty, over 1 MiB, or not PEM; codes in [`docs/wiki/core-db.md`](core-db.md). Carries `field`, `path`, and `code`, never file content; re-exported from core-db. |
 | `DisconnectedError` | `disconnect()` ran while a `withConnection` callback was in flight; the pinned connection is discarded. |
 | `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` | Re-exported core change errors for validation, lookup, state, and manifest failures. |
 | `LockAcquireError`, `LockExpiredError` | Re-exported core lock failures. |
@@ -295,7 +320,7 @@ Compute workers transform rows while `OrderBuffer` preserves export ordering.
 | [`src/sdk/context.ts`](../../src/sdk/context.ts), [`src/sdk/state.ts`](../../src/sdk/state.ts) | Shared state, `runGatedExplore`, connection lifecycle, schema views, transaction and impersonation entry points. |
 | [`src/sdk/routines.ts`](../../src/sdk/routines.ts), [`src/sdk/sql.ts`](../../src/sdk/sql.ts), [`src/sdk/tvp.ts`](../../src/sdk/tvp.ts) | Routine dispatch, dialect SQL builders, MSSQL table-valued parameters. |
 | [`src/sdk/impersonate/`](../../src/sdk/impersonate) | Dedicated-connection scopes and dialect impersonation/revert strategies. |
-| [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts), [`src/sdk/namespaces/`](../../src/sdk/namespaces), [`src/sdk/guards.ts`](../../src/sdk/guards.ts) | Lazy management wrappers; `guards.ts` holds `checkRequireTest`, `checkProtectedConfig`, and `bindSdkPolicy`. |
+| [`src/sdk/noorm-ops.ts`](../../src/sdk/noorm-ops.ts), [`src/sdk/namespaces/`](../../src/sdk/namespaces), [`src/sdk/guards.ts`](../../src/sdk/guards.ts) | Lazy management wrappers; `guards.ts` holds `checkRequireTest`, `checkProtectedConfig`, `bindSdkPolicy`, and `bindSdkDestination`. |
 | [`src/sdk/namespaces/pipelines.ts`](../../src/sdk/namespaces/pipelines.ts), [`src/core/pipeline/errors.ts`](../../src/core/pipeline/errors.ts), [`src/core/pipeline/parse.ts`](../../src/core/pipeline/parse.ts), [`src/core/pipeline/sql-literal.ts`](../../src/core/pipeline/sql-literal.ts) | `pipelines` wrapper, coded errors, run-ID and limit validators, pipeline-mode `$.quote`/`$.escape`. Execution belongs to core-runner. |
 | [`src/core/dt/index.ts`](../../src/core/dt/index.ts), [`src/core/dt/paging.ts`](../../src/core/dt/paging.ts), [`src/core/dt/schema.ts`](../../src/core/dt/schema.ts) | Export/import orchestration, keyset paging, schema construction and validation. |
 | [`src/core/dt/writer.ts`](../../src/core/dt/writer.ts), [`src/core/dt/reader.ts`](../../src/core/dt/reader.ts), [`src/core/dt/crypto.ts`](../../src/core/dt/crypto.ts) | File streams, compression, encryption. |
@@ -325,7 +350,7 @@ SDK unit tests cover namespace behavior by role, guard errors, policy attachment
 - Call `connect()` before accessing Kysely or connected namespace operations; `requireConnection` throws `NotConnectedError` otherwise. Disconnect in cleanup so held connections do not keep the pool open.
 - Password callbacks may return a string or promise for PostgreSQL, MySQL, and MSSQL. SQLite rejects callbacks. A callback takes precedence over resolved static credentials; do not expect the old password on `ctx.noorm.config.connection`.
 - Runtime-credential connection failures preserve the original thrown error and disable automatic connection retries, even when retry options request them. Observer error payloads instead use `Runtime credential connection failed` and omit server error fields; handle the thrown error separately from telemetry.
-- PostgreSQL `ssl.checkServerIdentity` must be a function and is rejected for other dialects. TLS identity options require explicitly enabled TLS and certificate verification; incompatible options fail connection creation. Physical pool, session timeout, keep-alive, and TLS behavior belong to core-db.
+- PostgreSQL `ssl.checkServerIdentity` must be a function and is rejected for other dialects. TLS identity options require explicitly enabled TLS and certificate verification; incompatible options fail connection creation. A relative `ssl.caFile`, `ssl.certFile`, or `ssl.keyFile` is read under `projectRoot`, not the working directory; a relative path is joined to `projectRoot` (a `../` segment can leave it), absolute paths are used as written and `~/` paths resolve from the home directory, and a file that is missing, unreadable, not a regular file, empty, over 1 MiB, or not PEM rejects `connect()` with `SslFileError` (code table in [`docs/wiki/core-db.md`](core-db.md)). Physical pool, session timeout, keep-alive, and TLS behavior belong to core-db.
 - `requireTest: true` rejects a configuration without `isTest: true`, including ordinary inline-only configurations. Inline connection settings do not mark a database as a test database.
 - `requireTest` failures throw `RequireTestError`. The factory resolves identity through `getIdentityForConfig()` after checking this guard.
 - The SDK cannot prompt. Guarded operations throw `ProtectedConfigError` on denial or unconfirmed user-channel operations. `yes: true` supplies user confirmation but cannot override agent-channel denial, because `confirm` collapses to deny on the agent channel before `options.yes` is read; core-policy owns the matrix.
@@ -347,8 +372,8 @@ SDK unit tests cover namespace behavior by role, guard errors, policy attachment
 ## Coupling
 
 - Core-state owns configuration precedence, synthetic naming, state persistence, settings, and the resolver used by the factory; `freshState` bypasses its per-project manager singletons. Core-identity supplies environment identity overrides, config identity, and vault primitives.
-- Core-db owns physical connections, pool behavior, database exploration, teardown, and live transfer. The SDK forwards runtime credentials and PostgreSQL TLS callbacks through the connection runtime-options boundary.
-- Core-policy owns channel/role decisions, including `withPolicyConfirmation`. The `Context` constructor, transfer, and vault copy bind policy through `bindSdkPolicy`, which calls core-state's `bindPolicyContext`. Namespace wrappers enforce those decisions; direct Kysely access remains the raw SQL surface.
+- Core-db owns physical connections, pool behavior, database exploration, teardown, and live transfer. The SDK forwards runtime credentials and PostgreSQL TLS callbacks through the connection runtime-options boundary, re-exports `SslFileError` from [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts), and leaves SSL file reads (`resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts)) to core-db; the field-pair constant `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts). Core-state owns `anchorSslFiles` in [`src/core/config/anchor.ts`](../../src/core/config/anchor.ts), which `Context` and `bindSdkDestination` call.
+- Core-policy owns channel/role decisions, including `withPolicyConfirmation`. The `Context` constructor binds policy by calling `bindSdkPolicy` directly; transfer and vault `copy` call `bindSdkDestination`, which calls `bindSdkPolicy` and then anchors SSL paths. `bindSdkPolicy` calls core-state's `bindPolicyContext`. Namespace wrappers enforce those decisions; direct Kysely access remains the raw SQL surface.
 - Core-runner and core-change own SQL execution and migration semantics behind the SDK namespaces. Wrapper signatures and returned core result types must stay aligned.
 - `mcp-rpc` creates contexts in [`src/mcp/server.ts`](../../src/mcp/server.ts) (`channel: 'agent'`, `freshState: true`); [`src/mcp/prepared.ts`](../../src/mcp/prepared.ts) calls `run[prepareRunContext]`. `cli` drives the SDK through `withContext` in [`src/cli/_utils.ts`](../../src/cli/_utils.ts), and [`src/cli/run/_render-secrets.ts`](../../src/cli/run/_render-secrets.ts) creates one for the preview/inspect secret probe.
 - Worker-bridge owns the compute protocol and ordered worker infrastructure consumed by DT. Live transfer consumes DT's in-memory conversion.

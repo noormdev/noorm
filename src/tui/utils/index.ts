@@ -24,11 +24,15 @@ export {
     validateConfigName,
     validatePort,
     buildConnectionConfig,
+    buildSslFields,
+    validateSslForm,
+    sslPinnedByRename,
+    connectionOverStage,
+    skipsVerification,
     buildAccessFromValues,
     isConfigGuarded,
     DEFAULT_PORTS,
     getRoleOptions,
-    type ConnectionDefaults,
 } from './config-validation.js';
 export { getErrorMessage } from './error.js';
 export { validateStagePort } from './settings-validation.js';

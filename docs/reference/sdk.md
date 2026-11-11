@@ -105,7 +105,7 @@ createContext<DB = unknown, Procs = object, Funcs = object, Tvfs = object>(
 |---|---|---|---|
 | `config` | `string \| false` | `NOORM_CONFIG`, then the active config only when `connection` is absent, then inline/env-only mode | Stored config to use. `false` uses no stored config and ignores `NOORM_CONFIG` and the active config |
 | `name` | `string` | `NOORM_NAME`, then `__inline__` or `__env__` | Name of a context that uses no stored config. Throws when a stored config is selected |
-| `connection` | `CreateContextOptions['connection']` | — | Non-persisted connection overrides, including runtime credential and PostgreSQL TLS callbacks, [pool options](#pool-options), and [driver options](#driver-options) |
+| `connection` | `CreateContextOptions['connection']` | — | Non-persisted connection overrides, including runtime credential and PostgreSQL TLS callbacks, [TLS certificates](#tls-certificates), [pool options](#pool-options), and [driver options](#driver-options) |
 | `projectRoot` | `string` | `process.cwd()` | Directory that holds `.noorm/` and the paths in `settings.yml` |
 | `requireTest` | `boolean` | `false` | Throws `RequireTestError` unless the resolved config has `isTest: true` |
 | `channel` | `'user' \| 'agent'` | `'user'` | Which half of the config's `access` applies; see [Access policy](#access-policy) |
@@ -161,7 +161,7 @@ Stage defaults (`isTest: true`, `access`, connection fields) come from the `stag
 
 Synthetic config names appear in errors and event payloads. With no state file, an inline or environment-only context needs no `.noorm/` directory. [Deploying an application](/guide/deployment) covers packaging and pool sizing for that setup.
 
-Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap effective permission cells at policy-check time without changing assigned roles. Nothing in `connection` is saved.
+Stage connection defaults such as `host`, `port`, `user`, `ssl`, and `password` merge into `connection` before environment and inline overrides. `ssl` combines field by field across layers, and `rejectUnauthorized` is never inherited: it comes from the highest layer that sets `ssl`, so a stage `rejectUnauthorized: false` reaches only a config with no `ssl` of its own. [Combining layers](/dev/config#combining-layers) has the rules. Stage `isTest` is a default, and `requireTest` checks the final resolved value. Protected stages cap effective permission cells at policy-check time without changing assigned roles. Nothing in `connection` is saved.
 
 For example, open a MySQL database without creating stored state:
 
@@ -237,9 +237,50 @@ A runtime callback takes precedence over stored and environment passwords. The S
 
 The connection factory records what the callback throws and `connect()` rejects with exactly that value, so a provider's error class survives `instanceof`. This holds for a value that is not an `Error` too, such as a string or the `undefined` of a bare `Promise.reject()`; no login is attempted without a credential. A login the pool makes after `connect()` has no `connect()` caller: there, a rejection that is not an object reaches the failing query as an `Error` with the rejected value as its `cause`, and an object reaches it unchanged. Provider errors may contain secrets. Sanitize them before logging in application code; the fixed event payload does not change the thrown error. A connection with a callback is not retried, because a retry would ask the provider to issue another credential.
 
+### TLS certificates
+
+A private CA and a client certificate work on PostgreSQL, MySQL and MSSQL. Name each by path and noorm reads the file each time a pool opens, on every connect attempt, so a rotated file needs no new context:
+
+```typescript
+const ctx = await createContext<DB>({
+    config: false,
+    name: 'orders',
+    projectRoot: '/srv/app',
+    connection: {
+        dialect: 'mysql',
+        host: '10.0.0.5',
+        database: 'orders',
+        user: 'app',
+        tlsServerName: 'db.internal.corp',
+        ssl: { caFile: 'certs/corp-ca.pem' },
+    },
+});
+```
+
+| `ssl` field | Meaning |
+|---|---|
+| `ca`, `cert`, `key` | PEM text |
+| `caFile`, `certFile`, `keyFile` | Paths read into `ca`, `cert` and `key` each time a pool opens, on every connect attempt |
+| `rejectUnauthorized` | `false` encrypts without validating the certificate |
+
+One field takes one form: `ca` with `caFile` fails with `ssl.ca and ssl.caFile cannot both be set; use one`. A relative path resolves from `projectRoot`, a leading `~/` from the home directory, and an absolute path is used as written.
+
+A path that is not a readable regular file, or is empty, over 1 MiB, or holds no PEM block, rejects `connect()` with `SslFileError`, which carries `field`, `path` and `code` and never file content. `connect()` does not retry it, and `connection:error` carries its message.
+
+```typescript
+import { attempt } from '@logosdx/utils';
+import { SslFileError } from '@noormdev/sdk';
+
+const [, err] = await attempt(() => ctx.connect());
+
+if (err instanceof SslFileError) console.error(err.field, err.path, err.code);
+```
+
+Per-dialect behavior, `tlsServerName` rules, error hints and how stage, stored, environment and inline `ssl` combine are in the [certificate reference](/dev/config#tls-certificates).
+
 ### PostgreSQL TLS identity
 
-For PostgreSQL through an IP tunnel, set `ssl: { ca: trustedCa }` and `tlsServerName` to the certificate's DNS identity. TLS must be explicitly enabled; combining an identity option with `rejectUnauthorized: false` is rejected. The CA validates the chain and the name validates the peer identity. On IP hosts the name also supplies SNI. For DNS dial hosts pg replaces SNI with the dial host, but noorm still verifies the configured name; select a dial host whose SNI reaches the intended certificate. Without `tlsServerName`, pg and Node use their normal host behavior.
+For PostgreSQL through an IP host, set `ssl: { caFile }` (or `ca`) and `tlsServerName` to the certificate's DNS identity. The CA validates the chain and the name validates the peer identity. On IP hosts the name also supplies SNI. For DNS dial hosts pg replaces SNI with the dial host, but noorm still verifies the configured name; select a dial host whose SNI reaches the intended certificate. Without `tlsServerName`, pg and Node use their normal host behavior. `tlsServerName` and the runtime `checkServerIdentity` callback need `ssl` on and certificate validation, and are rejected with `rejectUnauthorized: false`.
 
 Inline SSL objects may provide `checkServerIdentity(hostname, certificate)` at runtime. It receives the configured TLS name when present, otherwise Node's hostname, and the peer certificate. Returning an error rejects the connection. This callback replaces Node's standard identity check and must implement any checks the application requires; it does not replace CA chain verification. It cannot be stored in YAML.
 
@@ -335,8 +376,8 @@ const ctx = await createContext({
 | Dialect | `driver` is merged into | Later entries win |
 |---|---|---|
 | PostgreSQL | The `pg` Pool config | Flat config fields, `pool`, `driver`, then `host`, `port`, `user`, `password`, `database`, `min`, `max`, `ssl`, `connectionTimeoutMillis` |
-| MySQL | The mysql2 connection options | Keepalive fields, `driver`, then `host`, `port`, `user`, `database`, `ssl`, `connectTimeout` |
-| MSSQL | The tedious `options` block | `driver`, then `port`, `database`, `trustServerCertificate`, `encrypt`, `serverName`, `connectTimeout` |
+| MySQL | The mysql2 connection options | Keepalive fields, `driver`, then `host`, `port`, `user`, `database`, `ssl`, `stream`, `connectTimeout` |
+| MSSQL | The tedious `options` block | `driver`, then `port`, `database`, `trustServerCertificate`, `cryptoCredentialsDetails`, `encrypt`, `serverName`, `connectTimeout` |
 | SQLite | Nothing | `createContext()` throws `Driver options are not supported for SQLite` |
 
 A key in the last group of each row is overwritten by noorm's value. A key that selects the target, the credentials, or TLS is rejected instead: `createContext()` throws `driver.<key> is not allowed on <dialect>`. `connect()` throws the same error, and the SQLite one, for a `Context` constructed directly, before the driver opens a connection.
@@ -361,13 +402,15 @@ The rejection exists because a trusted `isTest` config's access is bound to the 
 | `NOORM_CONNECTION_DIALECT` | `postgres`, `mysql`, `sqlite`, or `mssql`. Any other value throws |
 | `NOORM_CONNECTION_DATABASE` | With the dialect, switches on env-only mode |
 | `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_SSL` | Override the matching `connection` field of the resolved config |
+| `NOORM_CONNECTION_SSL_caFile`, `_certFile`, `_keyFile` | Override `connection.ssl.caFile`, `.certFile` and `.keyFile`; see [TLS certificates](#tls-certificates) |
 | `NOORM_CONNECTION_POOL_<option>` | Set a [pool option](#pool-options) |
 | `NOORM_CONNECTION_keepAliveInitialDelayMs` | Set `connection.keepAliveInitialDelayMs`; see [Session and keepalive controls](#session-and-keepalive-controls) |
+| `NOORM_ACCESS_USER`, `NOORM_ACCESS_AGENT` | Access roles of a config that has no stored record. Ignored when a stored config is selected, so the environment cannot change its roles |
 | `NOORM_PATHS_SQL`, `NOORM_PATHS_CHANGES` | Override `paths.sql` and `paths.changes` from `settings.yml` |
 | `NOORM_IDENTITY_PRIVATE_KEY`, `_NAME`, `_EMAIL` | CI identity. All three are required, otherwise they are ignored. They let the context decrypt state and vault keys with no key file on disk |
 | `NOORM_YES` | Any value except empty, `0`, or `false` confirms `confirm` cells on the `user` channel, like `yes: true` |
 
-An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }`.
+An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }`, unless `NOORM_ACCESS_USER` and `NOORM_ACCESS_AGENT` set it.
 
 | Throws | When |
 |---|---|
@@ -565,7 +608,9 @@ await scope.revert();
 |---|---|
 | Scope members | `kysely`, `proc`, `func`, `tvf`, `transaction`, `revert`. No `noorm` and no lifecycle methods; management operations stay on `ctx.noorm`, running as the context's own principal |
 | Explicit mode holds a pooled connection | Until `revert()` or `ctx.disconnect()`. `disconnect()` releases an unreverted scope without running the revert SQL, because it destroys the pool |
-| `revert()` | Idempotent after it succeeds. After a failure the scope stays revertible, so a retry re-runs the revert |
+| `revert()` | Idempotent after it succeeds. After a failure it rejects with the error and the scope is over: a later call does nothing |
+| A failed switch or revert statement | The connection is closed instead of returned to the pool, in both modes, because its identity is then unknown. The error is thrown, and the next query opens a new connection. In callback mode a revert failure replaces an error `fn` threw |
+| `disconnect()` during callback mode | The call rejects with `DisconnectedError`, as [`withConnection`](#pinned-connections) does |
 
 
 ### Schema scoping
@@ -1453,7 +1498,7 @@ Every class below is exported from `@noormdev/sdk`:
 | Transfer and DT | `TransferOptions`, `TransferPlan`, `TransferTablePlan`, `TransferResult`, `TransferTableResult`, `ConflictStrategy`, `ExportOptions`, `ImportOptions` |
 | Routines | `tvp`, `TvpValue`, `ImpersonatedScope`, `RoutineCalls`, `TransactionScope`, `ExtractArgs`, `ExtractReturn` |
 | Events | `noormObserver`, `NoormEvents`, `NoormEventNames` |
-| Errors | `RequireTestError`, `ProtectedConfigError`, `NotConnectedError`, `ResetBuildError`, `DisconnectedError`, `DatabaseConnectionError`, `VersionMismatchError`, `MigrationError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
+| Errors | `RequireTestError`, `ProtectedConfigError`, `SslFileError`, `NotConnectedError`, `ResetBuildError`, `DisconnectedError`, `DatabaseConnectionError`, `VersionMismatchError`, `MigrationError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
 
 Four shapes that public signatures name are not exported: `BatchChangeOptions` (`changes.ff`, `next`, `rewind`), `FileHistoryRecord` (`changes.getFileHistory`), `TeardownOptions` (`db.teardown`), and `ForceReleaseResult` (`lock.forceRelease`). Declare them inline, or derive them with `Parameters<>` and `Awaited<ReturnType<>>`.
 

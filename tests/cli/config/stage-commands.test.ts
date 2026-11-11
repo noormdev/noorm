@@ -328,6 +328,75 @@ describe('cli: stage config creation and sync', () => {
 
     });
 
+    it('config sync keeps the stored certFile and keyFile when the stage ssl is { caFile }', async () => {
+
+        writeStages({ source: { defaults: { ssl: { caFile: './stage-ca.pem' } } } });
+        await state.setConfig('existing', originalConfig({
+            connection: {
+                dialect: 'postgres',
+                host: 'db.invalid',
+                database: 'original',
+                ssl: { certFile: './client.pem', keyFile: './client.key' },
+            },
+        }));
+
+        const result = run('sync', ['--stage', 'source', '--name', 'existing', '--yes']);
+
+        expect(result.status).toBe(0);
+        expect(persistedConfigs()['existing']?.connection.ssl).toEqual({
+            caFile: './stage-ca.pem',
+            certFile: './client.pem',
+            keyFile: './client.key',
+        });
+
+    });
+
+    it('config sync with a stage ssl true drops the stored rejectUnauthorized and keeps its caFile', async () => {
+
+        writeStages({ source: { defaults: { ssl: true } } });
+        await state.setConfig('existing', originalConfig({
+            connection: {
+                dialect: 'postgres',
+                host: 'db.invalid',
+                database: 'original',
+                ssl: { rejectUnauthorized: false, caFile: './stored-ca.pem' },
+            },
+        }));
+
+        const result = run('sync', ['--stage', 'source', '--name', 'existing', '--yes']);
+
+        expect(result.status).toBe(0);
+        expect(persistedConfigs()['existing']?.connection.ssl).toEqual({ caFile: './stored-ca.pem' });
+
+    });
+
+    it('config sync never prints a stored inline key, cert or ca in the preview', async () => {
+
+        writeStages({ source: { defaults: { ssl: true } } });
+        await state.setConfig('existing', originalConfig({
+            connection: {
+                dialect: 'postgres',
+                host: 'db.invalid',
+                database: 'original',
+                ssl: { key: 'SECRET-KEY-BODY', cert: 'CERT-BODY', ca: 'CA-BODY', rejectUnauthorized: false },
+            },
+        }));
+
+        const text = run('sync', ['--stage', 'source', '--name', 'existing']);
+        const json = run('sync', ['--stage', 'source', '--name', 'existing', '--json']);
+
+        for (const result of [text, json]) {
+
+            expect(result.status).toBe(0);
+            expect(result.stdout).not.toContain('SECRET-KEY-BODY');
+            expect(result.stdout).not.toContain('CERT-BODY');
+            expect(result.stdout).not.toContain('CA-BODY');
+            expect(result.stdout).toContain('[inline PEM]');
+
+        }
+
+    });
+
     it('denies sync for a viewer even with yes and leaves encrypted state untouched', async () => {
 
         syncDefaults();

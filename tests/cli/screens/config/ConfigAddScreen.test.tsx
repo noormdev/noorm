@@ -27,6 +27,7 @@ import { ScreenRenderer } from '../../../../src/tui/screens.js';
 import { IdentityInitScreen } from '../../../../src/tui/screens/identity/index.js';
 import type { Config, ConfigSummary } from '../../../../src/core/config/types.js';
 import type { CryptoIdentity, CryptoIdentityInput } from '../../../../src/core/identity/types.js';
+import type { StageDefaults } from '../../../../src/core/settings/types.js';
 import type { Route } from '../../../../src/tui/types.js';
 
 const actualCore = await import('../../../../src/core/index.js');
@@ -597,6 +598,243 @@ describe('cli: ConfigAddScreen save without verifying', () => {
         }
 
     });
+
+});
+
+describe('cli: ConfigAddScreen SSL fields', () => {
+
+    const isChecked = (screen: Screen, label: string): boolean =>
+        rowsOf(screen).some((row) => row.includes(label) && row.includes('☑'));
+
+    async function toggleField(screen: Screen, label: string): Promise<void> {
+
+        const deadline = Date.now() + 4000;
+
+        while (!isOnRow(screen, label) && Date.now() < deadline) {
+
+            screen.stdin.write(DOWN);
+
+            await new Promise((r) => setTimeout(r, 30));
+
+        }
+
+        const before = isChecked(screen, label);
+
+        screen.stdin.write(' ');
+
+        await waitFor(() => isChecked(screen, label) !== before);
+
+    }
+
+    it('should render the SSL fields and save them as typed', async () => {
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await toggleField(screen, 'Use SSL');
+        await fillField(screen, 'CA File', './certs/ca.pem');
+        await fillField(screen, 'Client Cert File', '~/client.pem');
+        await fillField(screen, 'Client Key File', '/etc/client.key');
+        await fillField(screen, 'TLS Server Name', 'db.corp');
+
+        for (const label of ['Use SSL', 'CA File', 'Client Cert File', 'Client Key File', 'TLS Server Name']) {
+
+            expect(hasRow(screen, label)).toBe(true);
+
+        }
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => Boolean(stateManager.getConfig('dev')));
+
+        const connection = stateManager.getConfig('dev')?.connection;
+
+        expect(connection?.ssl).toEqual({ caFile: './certs/ca.pem', certFile: '~/client.pem', keyFile: '/etc/client.key' });
+        expect(connection?.tlsServerName).toBe('db.corp');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should show Verify Certificate checked and save rejectUnauthorized false when it is unchecked', async () => {
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await toggleField(screen, 'Use SSL');
+
+        expect(isChecked(screen, 'Verify Certificate')).toBe(true);
+
+        await toggleField(screen, 'Verify Certificate');
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => Boolean(stateManager.getConfig('dev')));
+
+        expect(stateManager.getConfig('dev')?.connection.ssl).toEqual({ rejectUnauthorized: false });
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should refuse a TLS server name with Use SSL unchecked on PostgreSQL and save nothing', async () => {
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await fillField(screen, 'TLS Server Name', 'db.corp');
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => flat(screen.lastFrame()).includes('TLS server name needs Use SSL'));
+
+        expect(flat(screen.lastFrame())).toContain('TLS server name needs Use SSL');
+        expect(stateManager.getConfig('dev')).toBeNull();
+        expect(testConnectionMock).not.toHaveBeenCalled();
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should refuse a typed certificate path with Use SSL unchecked and save nothing', async () => {
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await fillField(screen, 'CA File', './certs/ca.pem');
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => flat(screen.lastFrame()).includes('A certificate file needs Use SSL'));
+
+        expect(flat(screen.lastFrame())).toContain('A certificate file needs Use SSL');
+        expect(stateManager.getConfig('dev')).toBeNull();
+        expect(testConnectionMock).not.toHaveBeenCalled();
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should store no ssl key when Use SSL is unchecked', async () => {
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => Boolean(stateManager.getConfig('dev')));
+
+        const connection = stateManager.getConfig('dev')?.connection;
+
+        expect(connection).toBeDefined();
+        expect(connection && 'ssl' in connection).toBe(false);
+
+        screen.unmount();
+
+    }, 20_000);
+
+});
+
+describe('cli: ConfigAddScreen connection test over the stage', () => {
+
+    afterEach(() => {
+
+        settingsManager.getStage.mockReturnValue(undefined);
+
+    });
+
+    async function createUnderStage(defaults: StageDefaults) {
+
+        settingsManager.getStage.mockReturnValue({ defaults });
+        testConnectionImpl = async () => ({ ok: true });
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await pressButton(screen, 'Create Config');
+        await waitFor(() => Boolean(stateManager.getConfig('dev')));
+
+        screen.unmount();
+
+        return { tested: testConnectionMock.mock.calls[0]?.[0], saved: stateManager.getConfig('dev')?.connection };
+
+    }
+
+    it('should test with a stage caFile and save no ssl key when the SSL fields are untouched', async () => {
+
+        const { tested, saved } = await createUnderStage({ ssl: { caFile: './certs/stage-ca.pem' } });
+
+        expect(tested).toMatchObject({ database: 'app_dev', ssl: { caFile: './certs/stage-ca.pem' } });
+        expect(saved).toBeDefined();
+        expect(saved && 'ssl' in saved).toBe(false);
+
+    }, 20_000);
+
+    it('should show no stage state for a typed name that matches a stage with ssl', async () => {
+
+        settingsManager.getStage.mockReturnValue({ defaults: { ssl: { caFile: './certs/stage-ca.pem' } } });
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await fillField(screen, 'TLS Server Name', 'db.corp');
+
+        expect(hasRow(screen, 'CA File')).toBe(true);
+        expect(rowsOf(screen).some((row) => row.includes('Use SSL') && row.includes('☐'))).toBe(true);
+        expect(screen.lastFrame()).not.toContain('(stage:');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should save a TLS server name with Use SSL untouched over a stage that supplies ssl', async () => {
+
+        settingsManager.getStage.mockReturnValue({ defaults: { ssl: { caFile: './certs/stage-ca.pem' } } });
+
+        await giveIdentity();
+
+        const screen = renderRoute('config/add');
+
+        await fillConfigForm(screen);
+        await fillField(screen, 'TLS Server Name', 'db.corp');
+
+        screen.stdin.write(CTRL_S);
+
+        await waitFor(() => Boolean(stateManager.getConfig('dev')));
+
+        const connection = stateManager.getConfig('dev')?.connection;
+
+        expect(connection?.tlsServerName).toBe('db.corp');
+        expect(connection && 'ssl' in connection).toBe(false);
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should test with the stage password when user and password are blank', async () => {
+
+        const { tested, saved } = await createUnderStage({ user: 'stage-user', password: 'stage-pw' });
+
+        expect(tested).toMatchObject({ user: 'stage-user', password: 'stage-pw' });
+        expect(saved?.user).toBeUndefined();
+        expect(saved?.password).toBeUndefined();
+
+    }, 20_000);
 
 });
 

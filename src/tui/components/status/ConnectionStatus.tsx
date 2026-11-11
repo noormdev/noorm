@@ -18,6 +18,8 @@ import { Badge } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 
+import { isSslFileErrorMessage } from '../../../core/connection/ssl-files.js';
+
 /**
  * Connection status types.
  */
@@ -65,7 +67,7 @@ const statusConfig: Record<
  */
 export function isDatabaseNotFoundError(error: string | null | undefined): boolean {
 
-    if (!error) return false;
+    if (!error || isSslFileErrorMessage(error)) return false;
 
     const lower = error.toLowerCase();
 

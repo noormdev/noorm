@@ -16,6 +16,7 @@ import { getConnectionManager } from './manager.js';
 import { connectTimeoutFor } from './defaults.js';
 import { DatabaseConnectionError, explainConnectionError } from './errors.js';
 import { PasswordCallbackRejection } from './login.js';
+import { SslFileError, resolveSslFiles } from './ssl-files.js';
 
 type DialectFactory = (
     config: ConnectionConfig,
@@ -221,7 +222,7 @@ async function openConnection(
 
                 }
 
-                const conn = await createFn!(config, trackedRuntime, configName);
+                const conn = await createFn!(await resolveSslFiles(config), trackedRuntime, configName);
 
                 // The driver can hand back a live pool after the caller gave
                 // up. Nothing else holds it at this point, so close it here.
@@ -279,6 +280,9 @@ async function openConnection(
                     // hold the pool open for another two rounds of backoff.
                     if (err instanceof OperationAbortedError) return false;
 
+                    // The path is in the message, and a path can hold a retry word.
+                    if (err instanceof SslFileError) return false;
+
                     // A retry would ask the callback to issue another credential.
                     if (runtime?.password) return false;
 
@@ -325,7 +329,8 @@ async function openConnection(
         const server = !runtime?.password && explained instanceof DatabaseConnectionError
             ? { serverCode: explained.serverCode, serverMessage: explained.serverMessage }
             : {};
-        const message = runtime?.password
+        // An SslFileError holds a field and a path, no credential.
+        const message = runtime?.password && !(explained instanceof SslFileError)
             ? 'Runtime credential connection failed'
             : explained.message;
 
@@ -445,7 +450,10 @@ interface ConnectionTestResult {
     aborted?: boolean;
 }
 
-async function probeConnection(config: ConnectionConfig, signal?: AbortSignal): Promise<ConnectionTestResult> {
+async function probeConnection(
+    config: ConnectionConfig,
+    signal?: AbortSignal,
+): Promise<{ result: ConnectionTestResult; sslFileFailed: boolean }> {
 
     const [conn, err] = await attempt(() =>
         createConnection(config, '__test__', {}, signal),
@@ -455,17 +463,17 @@ async function probeConnection(config: ConnectionConfig, signal?: AbortSignal): 
 
         if (err instanceof OperationAbortedError) {
 
-            return { ok: false, error: err.message, aborted: true };
+            return { result: { ok: false, error: err.message, aborted: true }, sslFileFailed: false };
 
         }
 
-        return { ok: false, error: err.message };
+        return { result: { ok: false, error: err.message }, sslFileFailed: err instanceof SslFileError };
 
     }
 
     await conn!.destroy();
 
-    return { ok: true };
+    return { result: { ok: true }, sslFileFailed: false };
 
 }
 
@@ -527,15 +535,16 @@ export async function testConnection(
 
     }
 
-    const result = await probeConnection(config, options.signal);
+    const { result, sslFileFailed } = await probeConnection(config, options.signal);
 
     // The target goes first because a login scoped to its own database (an
     // Azure SQL contained user) cannot open the system database at all.
-    const targetMissing = !result.ok && !result.aborted && !!result.error?.includes('does not exist');
+    // An SslFileError message carries a path, which may hold the phrase.
+    const targetMissing = !result.ok && !result.aborted && !sslFileFailed && !!result.error?.includes('does not exist');
 
     if (options.testServerOnly && systemDb && targetMissing) {
 
-        return probeConnection({ ...config, database: systemDb }, options.signal);
+        return (await probeConnection({ ...config, database: systemDb }, options.signal)).result;
 
     }
 

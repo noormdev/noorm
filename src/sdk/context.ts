@@ -5,11 +5,13 @@
  * database. Noorm-specific operations (schema, changes, locks, etc.)
  * live behind the ctx.noorm namespace via NoormOps.
  */
-import type { Kysely } from 'kysely';
+import type { Kysely, QueryExecutorProvider } from 'kysely';
 import { sql } from 'kysely';
+import { attempt } from '@logosdx/utils';
 
 import type { Dialect } from '../core/connection/index.js';
 import type { Config } from '../core/config/types.js';
+import { anchorSslFiles } from '../core/config/anchor.js';
 import type { Settings } from '../core/settings/index.js';
 import type { Identity } from '../core/identity/index.js';
 import { createConnection } from '../core/connection/index.js';
@@ -53,6 +55,22 @@ function validateSchemaName(name: string): void {
             `Invalid schema name: "${name}". ` +
             'Only alphanumeric characters, underscores, and hyphens are allowed.',
         );
+
+    }
+
+}
+
+// A failed identity switch may still have been applied by the server (a
+// client-side timeout), so its connection is closed rather than pooled.
+async function switchIdentity(db: QueryExecutorProvider, connection: PinnedConnection, statement: string): Promise<void> {
+
+    const [, err] = await attempt(() => sql.raw(statement).execute(db));
+
+    if (err) {
+
+        connection.discard();
+
+        throw err;
 
     }
 
@@ -123,6 +141,8 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             config = bindSdkPolicy(config, settings, projectRoot, options.stage ? [options.stage] : undefined);
 
         }
+
+        config = { ...config, connection: anchorSslFiles(config.connection, projectRoot) };
 
         this.#state = {
             connection: null,
@@ -520,6 +540,9 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
      * via dialect-specific SQL, and provides a scoped query interface.
      * Two modes: callback (auto-reverts) and explicit (caller reverts).
      *
+     * When the switch or the revert statement fails, the connection is
+     * closed instead of returned to the pool, and the error is thrown.
+     *
      * @example
      * ```typescript
      * // Callback mode — auto-reverts, even on throw
@@ -578,15 +601,11 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         fn: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => Promise<T>,
     ): Promise<T> {
 
-        return this.kysely.connection().execute(async (db) => {
+        return this.withConnection(async (db, connection) => {
 
-            await sql.raw(impersonateSql).execute(db);
+            await switchIdentity(db, connection, impersonateSql);
 
-            const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
-
-                await sql.raw(revertSql).execute(db);
-
-            }, this.dialect);
+            const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, () => switchIdentity(db, connection, revertSql), this.dialect);
 
             try {
 
@@ -595,7 +614,7 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
             }
             finally {
 
-                await sql.raw(revertSql).execute(db);
+                await switchIdentity(db, connection, revertSql);
 
             }
 
@@ -608,60 +627,42 @@ export class Context<DB = unknown, Procs = object, Funcs = object, Tvfs = object
         revertSql: string,
     ): Promise<ImpersonatedScope<DB, Procs, Funcs, Tvfs>> {
 
-        // === Declaration block ===
-        let resolveHolder!: () => void;
-        const connectionHeld = new Promise<void>(resolve => {
+        const ready = Promise.withResolvers<ImpersonatedScope<DB, Procs, Funcs, Tvfs>>();
+        const reverted = Promise.withResolvers<void>();
+        let released = false;
 
-            resolveHolder = resolve;
+        const held = this.withConnection(async (db, connection) => {
 
-        });
+            await switchIdentity(db, connection, impersonateSql);
 
-        let resolveReady!: (scope: ImpersonatedScope<DB, Procs, Funcs, Tvfs>) => void;
-        let rejectReady!: (err: unknown) => void;
-        const ready = new Promise<ImpersonatedScope<DB, Procs, Funcs, Tvfs>>((resolve, reject) => {
+            ready.resolve(buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
 
-            resolveReady = resolve;
-            rejectReady = reject;
+                // A failed revert already gave the connection up; `db` must not be queried again.
+                if (released) return;
 
-        });
+                released = true;
 
-        // Registered so disconnect() can release a scope the caller never
-        // reverted. Removed on a successful revert so the set only ever holds
-        // connections that are genuinely still out.
-        const release = () => resolveHolder();
+                try {
 
-        this.#heldConnections.add(release);
+                    await switchIdentity(db, connection, revertSql);
 
-        // === Business logic block ===
-        const connectionDone = this.kysely.connection().execute(async (db) => {
+                }
+                finally {
 
-            await sql.raw(impersonateSql).execute(db);
+                    reverted.resolve();
 
-            const scope = buildScope<DB, Procs, Funcs, Tvfs>(db, async () => {
+                }
 
-                await sql.raw(revertSql).execute(db);
-                this.#heldConnections.delete(release);
-                resolveHolder();
+            }, this.dialect));
 
-            }, this.dialect);
-
-            resolveReady(scope);
-
-            await connectionHeld;
+            await reverted.promise;
 
         });
 
-        connectionDone.catch(err => {
+        // Also absorbs the DisconnectedError of a scope disconnect() released.
+        held.catch(ready.reject);
 
-            // The connection never became a usable scope, so there is nothing
-            // for disconnect() to release.
-            this.#heldConnections.delete(release);
-            rejectReady(err);
-
-        });
-
-        // === Commit block ===
-        return ready;
+        return ready.promise;
 
     }
 

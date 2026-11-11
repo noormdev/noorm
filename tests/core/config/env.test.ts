@@ -9,9 +9,11 @@
  * NOORM_CONNECTION_HOST=localhost    ->  { connection: { host: 'localhost' } }
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 import {
     getEnvConfig,
     EnvConfigSchema,
+    ConfigValidationError,
 } from '../../../src/core/config/index.js';
 import { getEnvConfigName, isCi, isEnvTruthy, shouldSkipConfirmations } from '../../../src/core/environment.js';
 
@@ -31,11 +33,15 @@ describe('config: env', () => {
             'NOORM_CONNECTION_USER',
             'NOORM_CONNECTION_PASSWORD',
             'NOORM_CONNECTION_SSL',
+            'NOORM_CONNECTION_POOL',
             'NOORM_CONNECTION_POOL_MIN',
             'NOORM_CONNECTION_POOL_MAX',
             'NOORM_CONNECTION_connectTimeoutMs',
             'NOORM_CONNECTION_POOL_idleTimeoutMillis',
             'NOORM_CONNECTION_SSL_rejectUnauthorized',
+            'NOORM_CONNECTION_SSL_caFile',
+            'NOORM_CONNECTION_SSL_certFile',
+            'NOORM_CONNECTION_SSL_keyFile',
             'NOORM_CONNECTION_futureOption',
             'NOORM_IDENTITY_EMAIL',
             // Top-level
@@ -216,6 +222,56 @@ describe('config: env', () => {
                 ssl: { rejectUnauthorized: false },
                 futureOption: 'enabled-value',
             });
+
+        });
+
+        it('nests the ssl file variables under ssl', () => {
+
+            process.env['NOORM_CONNECTION_SSL_caFile'] = '/certs/ca.pem';
+            process.env['NOORM_CONNECTION_SSL_certFile'] = '/certs/client.pem';
+            process.env['NOORM_CONNECTION_SSL_keyFile'] = '/certs/client.key';
+
+            expect(getEnvConfig().connection).toEqual({
+                ssl: {
+                    caFile: '/certs/ca.pem',
+                    certFile: '/certs/client.pem',
+                    keyFile: '/certs/client.key',
+                },
+            });
+
+        });
+
+        for (const scalar of ['true', 'false']) {
+
+            it(`should refuse NOORM_CONNECTION_SSL=${scalar} beside a nested ssl variable, naming both`, () => {
+
+                process.env['NOORM_CONNECTION_SSL'] = scalar;
+                process.env['NOORM_CONNECTION_SSL_caFile'] = '/certs/ca.pem';
+
+                const [config, err] = attemptSync(() => getEnvConfig());
+
+                expect(config).toBeNull();
+                expect(err).toBeInstanceOf(ConfigValidationError);
+                expect(err instanceof ConfigValidationError && err.field).toBe('connection.ssl');
+                expect(err?.message).toContain('NOORM_CONNECTION_SSL_caFile');
+                expect(err?.message).toMatch(/scalar NOORM_CONNECTION_SSL cannot be combined with a nested NOORM_CONNECTION_SSL_\* variable/);
+                expect(err?.message).toContain('set one form, not both');
+                expect(err?.message).not.toMatch(/enables?/i);
+
+            });
+
+        }
+
+        it('should keep the parser error for a scalar beside a nested variable under another key', () => {
+
+            process.env['NOORM_CONNECTION_POOL'] = '5';
+            process.env['NOORM_CONNECTION_POOL_MAX'] = '5';
+
+            const [, err] = attemptSync(() => getEnvConfig());
+
+            expect(err).toBeInstanceOf(Error);
+            expect(err).not.toBeInstanceOf(ConfigValidationError);
+            expect(err?.message).toContain('on primitive value');
 
         });
 

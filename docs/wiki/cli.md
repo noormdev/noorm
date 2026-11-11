@@ -111,11 +111,11 @@ Existing targets are not skipped. A collision without both `--force` and `--yes`
 
 ```mermaid
 flowchart TD
-    %% source: src/cli/config/sync.ts, src/core/config/stage.ts
+    %% source: src/cli/config/sync.ts, src/core/config/stage.ts, src/core/config/ssl-combine.ts
     A["config sync"] --> B["getStage()<br/>getConfig(name)"]
     B --> C["checkConfigPolicy()"]
     C --> D["stageFields()<br/>access comparison"]
-    D --> E["parseConfig()<br/>compute changes"]
+    D --> E["combineSsl()<br/>parseConfig()<br/>compute changes"]
     E --> F{"changes and --yes?"}
     F -->|yes| I["state.setConfig()"]
     F -->|no| G{"changes, TTY,<br/>and not --json?"}
@@ -127,7 +127,9 @@ The target defaults to the source stage name; `--name` selects a different store
 
 Only explicitly supplied stage fields participate: type, `isTest`, access, and supported connection defaults. Sync preserves the stored password, identity, name, and schema-supported fields absent from the stage. Access can tighten but cannot widen existing access, including for protected stages. A custom-role candidate is adopted per channel only if no permission becomes more permissive; incomparable assignments keep the current role. An existing agent role of `false` is kept unless the stage's agent role is also `false`. The core-policy domain owns the ceiling rules.
 
-Plain output prints the preview before asking `Apply these changes?`, with a negative default. A preview without `--yes` returns `applied: false` for non-TTY or JSON execution, without prompting or saving. JSON includes `stage`, `name`, `changes`, and `applied`; an empty diff returns `applied: false` even with `--yes`. Neither inherited nor existing passwords enter the diff.
+The connection `ssl` setting merges field by field through `combineSsl()` with the stage as the higher layer, rather than being replaced as a whole. A stage `ssl: { caFile }` keeps the stored `certFile` and `keyFile`; a stage `ssl: true` keeps the stored `ca`, `cert`, and `key` fields (inline or file form) but drops a stored `rejectUnauthorized`. The rules themselves belong to core-state ([`docs/wiki/core-state.md`](core-state.md)).
+
+Plain output prints the preview before asking `Apply these changes?`, with a negative default. A preview without `--yes` returns `applied: false` for non-TTY or JSON execution, without prompting or saving. JSON includes `stage`, `name`, `changes`, and `applied`; an empty diff returns `applied: false` even with `--yes`. Neither inherited nor existing passwords enter the diff, and an inline `ca`, `cert`, or `key` in a `connection.ssl` change prints as `[inline PEM]` in both text and JSON previews, because the preview needs only `config:write`, not `secret:read`.
 
 ### Effective validation
 
@@ -316,7 +318,7 @@ Source-checkout detection reads the root package two directories above [`package
 | [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) | TUI copy and rename refuse to move a protected-stage config to an unprotected name; copy and add refuse to overwrite a malformed-access config; a user role that denies every permission can still be edited in Settings and config edit. Runs in the CLI CI group (see below). |
 | [`tests/cli/VaultScreen.test.tsx`](../../tests/cli/VaultScreen.test.tsx) | TUI propagation confirmation; its top-level placement avoids a vault-hook mock loading before the real vault. Moving it into `tests/cli/screens/vault` changes that ordering. |
 
-CI runs the CLI tests in two processes, split out in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) (see [`docs/wiki/infra.md`](infra.md)): every [`tests/cli`](../../tests/cli) file except `cli-logger-settings.test.ts` in one, which includes `protected-config-escape.test.tsx`, and the logger-settings test isolated in its own. The logger-settings test needs the real `SettingsManager`: Bun's `mock.module` registry is process-global and never restored, so another file's mock leaks and makes `createCliLogger()` see empty settings instead of `settings.yml`. The workflow comment says other CLI test files leave `getSettingsManager` mocked for the rest of their process and Bun picks the file order. A locally passing combined suite therefore does not establish CI isolation.
+CI runs the CLI tests as a main group and an isolated logger-settings group, split out in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) (see [`docs/wiki/infra.md`](infra.md)): every [`tests/cli`](../../tests/cli) file except `cli-logger-settings.test.ts` in the main group, which includes `protected-config-escape.test.tsx`, and the logger-settings test isolated in its own process. The logger-settings test needs the real `SettingsManager`: Bun's `mock.module` registry is process-global and never restored, so another file's mock leaks and makes `createCliLogger()` see empty settings instead of `settings.yml`. The workflow comment says other CLI test files leave `getSettingsManager` mocked for the rest of their process and Bun picks the file order. A locally passing combined suite therefore does not establish CI isolation.
 
 ### Reference navigation
 
@@ -334,6 +336,7 @@ CI runs the CLI tests in two processes, split out in [`.github/workflows/ci.yml`
 - Shared flags are definitions, not implicit support. Citty does not validate undeclared flags; a flag takes effect only if the command code reads that key. An undeclared `--dry-run` sets `dry-run`, which nothing reads, so the operation runs for real.
 - `config create` requires an identity private key. Bulk mode forbids overrides and passwords; a collision or policy failure aborts preparation without saving candidates. Without an identity private key it throws `An identity private key is required to save configs` and exits `2`. `--force --yes` cannot bypass authorization imposed by policy.
 - `config sync` authorizes before preview and does not accept dialect conversion. A preview is not an applied change: without `--yes`, a non-TTY or `--json` run returns `applied: false` and saves nothing, so automation must pass `--yes` and inspect `applied`.
+- `config export` writes `connection.ssl` as stored. File-form settings (`caFile`, `certFile`, `keyFile`) export as paths and the files are not read; inline PEM exports as PEM. `config import` stores a path without checking that the file exists. A config imported on a machine without the files at those paths saves, then fails at connection time with `SslFileError` (owned by core-db); `config validate` reports the `SslFileError` message in its Connection check.
 - Create, sync, and `config repair-access` read `args.yes` directly and ignore `NOORM_YES`. A CI job setting only `NOORM_YES=1` gets an unapplied preview from `sync`, a collision error from `create`, and a refusal from `repair-access`.
 - `ci init` completes full `parseConfig()` validation before backup, removal, or state initialization. Invalid configuration exits with usage status `2` without replacing existing state, even with `--force --yes`. Replacement requires a successful backup before removal.
 - `noorm init --yes` requires a complete existing identity, checking both key files and identity metadata; when only a private key exists, the error points to `noorm init` or `noorm ui` rather than `identity init`, which refuses an existing private key. The default files are `~/.noorm/identity.key`, `identity.pub`, and `identity.json`. Without yes mode, non-TTY initialization fails. `--here` uses the original invocation directory instead of the discovered parent project; `--force` is required to reinitialize an existing project.
@@ -346,7 +349,7 @@ CI runs the CLI tests in two processes, split out in [`.github/workflows/ci.yml`
 
 ## Coupling
 
-- **core-state** owns settings, stage materialization primitives, encrypted storage, environment spelling, and effective config resolution. CLI create, sync, validation, and CI initialization consume those contracts; runtime resolution details belong in [`docs/wiki/core-state.md`](core-state.md).
+- **core-state** owns settings, stage materialization primitives, encrypted storage, environment spelling, and effective config resolution. CLI create, sync, validation, and CI initialization consume those contracts; runtime resolution details, including `combineSsl()` and path anchoring, belong in [`docs/wiki/core-state.md`](core-state.md). Reading the certificate files at connect time (`resolveSslFiles`) belongs to core-db ([`docs/wiki/core-db.md`](core-db.md)).
 - **core-policy** owns channel detection, `config:write` authorization, human-confirmation restrictions, and protected-stage access ceilings. CLI confirmation flags do not replace those decisions; see [`docs/wiki/core-policy.md`](core-policy.md).
 - **sdk** supplies `createContext()` and owns `requireTest`. Stage `isTest` and explicit CI `--test` supply the metadata that guard consumes; see [`docs/wiki/sdk.md`](sdk.md).
 - **core-identity** supplies environment identity loading, private keys, registration, and vault operations. The CLI owns startup wiring and the `ci` command surface, not those mechanisms. The `lock` commands run through `withContext()`; the lock implementation in [`src/core/lock`](../../src/core/lock) is named by no domain's paths.

@@ -28,11 +28,11 @@ Each operational module keeps its dialect contract separate from the implementat
 
 ### Opening a connection
 
-`createConnection` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) lazy-loads the driver, probes with `SELECT 1`, and tracks successful connections for shutdown. Static credentials use selective retries and explained connection errors. Supplying `RuntimeConnectionOptions.password` disables factory retries for the whole connection attempt, and a failure thrown by the callback itself is neither reworded nor copied into events. `createConnection` throws `Driver options are not supported for SQLite` when `runtime.driver` is set on a SQLite config. The liveness probe also catches a socket that opens successfully and then becomes silent, a failure that the driver's connect timeout no longer covers. The factory probes before tracking, and aborts reclaim connections that arrive after the caller stops waiting. `retry` inside `openConnection` re-runs the dialect factory and probe while `shouldRetry` matches.
+`createConnection` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) lazy-loads the driver, probes with `SELECT 1`, and tracks successful connections for shutdown. Static credentials use selective retries and explained connection errors. Supplying `RuntimeConnectionOptions.password` disables factory retries for the whole connection attempt, and a failure thrown by the callback itself is neither reworded nor copied into events. `createConnection` throws `Driver options are not supported for SQLite` when `runtime.driver` is set on a SQLite config. The liveness probe also catches a socket that opens successfully and then becomes silent, a failure that the driver's connect timeout no longer covers. The factory probes before tracking, and aborts reclaim connections that arrive after the caller stops waiting. `retry` inside `openConnection` re-runs the dialect factory and probe while `shouldRetry` matches. Each attempt first passes the config through `resolveSslFiles`, so the dialect factory receives certificate text and never a path (see Reading certificate files).
 
 ```mermaid
 sequenceDiagram
-    %% source: src/core/connection/factory.ts, src/core/connection/dialects/*.ts, src/core/connection/manager.ts
+    %% source: src/core/connection/factory.ts, src/core/connection/ssl-files.ts, src/core/connection/dialects/*.ts, src/core/connection/manager.ts
     participant Caller
     participant Factory as createConnection
     participant Open as openConnection
@@ -42,8 +42,8 @@ sequenceDiagram
     Caller->>Factory: config, runtime, signal
     Factory->>Open: raceAbort
     loop retry while shouldRetry matches
-        Open->>Open: getDialectFactory(config.dialect)
-        Open->>Dialect: createFn(config, runtime)
+        Open->>Open: getDialectFactory(config.dialect), resolveSslFiles(config)
+        Open->>Dialect: createFn(resolvedConfig, runtime)
         Dialect-->>Open: ConnectionResult
         Open->>Dialect: SELECT 1
         alt probe fails
@@ -62,9 +62,9 @@ sequenceDiagram
     end
 ```
 
-Without a dynamic password, `shouldRetry` excludes abort failures and errors whose message contains `authentication`, `password`, `missing driver`, `login failed`, `failed to open`, `does not exist`, `unknown database`, or `access denied`. It retries errors containing `ECONNREFUSED`, `ETIMEDOUT`, `too many connections`, or `connection reset`. `explainConnectionError` in [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) maps static driver failures into diagnostics. The missing-database wording also controls `testConnection`'s server-only fallback.
+Without a dynamic password, `shouldRetry` excludes abort failures and errors whose message contains `authentication`, `password`, `missing driver`, `login failed`, `failed to open`, `does not exist`, `unknown database`, or `access denied`. It never retries an `SslFileError`, because its message carries a path that could contain one of those words. It retries errors containing `ECONNREFUSED`, `ETIMEDOUT`, `too many connections`, or `connection reset`. `explainConnectionError` in [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) maps static driver failures into diagnostics and returns an `SslFileError` unchanged. The missing-database wording also controls `testConnection`'s server-only fallback, which `testConnection` skips when the failure was an `SslFileError`.
 
-With a dynamic password, `trackCallbackFailure` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) wraps the callback and records what it throws. A failure that is the callback's own error reaches the caller unchanged, including the original error object, and `connection:error` receives `Runtime credential connection failed` without the original message or server fields. A driver failure on the same path still goes through `explainConnectionError`, but its event message is `Runtime credential connection failed` and carries no `serverCode` or `serverMessage`. `guardPasswordCallback` in [`src/core/connection/login.ts`](../../src/core/connection/login.ts) turns a non-object rejection into `PasswordCallbackRejection` so drivers do not read it as a successful login; the factory rethrows its `cause`. Query failures after opening propagate through the query caller.
+With a dynamic password, `trackCallbackFailure` in [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) wraps the callback and records what it throws. A failure that is the callback's own error reaches the caller unchanged, including the original error object, and `connection:error` receives `Runtime credential connection failed` without the original message or server fields. An `SslFileError` is the exception to the `Runtime credential connection failed` event wording: its message holds a field and a path but no credential, so the event carries that message as written. A driver failure on the same path still goes through `explainConnectionError`, but its event message is `Runtime credential connection failed` and carries no `serverCode` or `serverMessage`. `guardPasswordCallback` in [`src/core/connection/login.ts`](../../src/core/connection/login.ts) turns a non-object rejection into `PasswordCallbackRejection` so drivers do not read it as a successful login; the factory rethrows its `cause`. Query failures after opening propagate through the query caller.
 
 ### Refreshing credentials for physical connections
 
@@ -152,7 +152,7 @@ sequenceDiagram
 
 ### TLS identity and connection controls
 
-The adapters map controls explicitly; a field in `ConnectionConfig` is not a promise that every dialect implements it.
+The adapters map controls explicitly; a field in `ConnectionConfig` is not a promise that every dialect implements it. Certificate fields reach each adapter as inline PEM text; the file forms are read earlier, as described in Reading certificate files.
 
 | Control | Implemented behavior |
 |---|---|
@@ -163,9 +163,60 @@ The adapters map controls explicitly; a field in `ConnectionConfig` is not a pro
 | `keepAlive`, `keepAliveInitialDelayMs` | PostgreSQL and MySQL. The delay forwards to `keepAliveInitialDelayMillis` (pg) or `keepAliveInitialDelay` (mysql2) and implies keepalive unless `keepAlive` is `false`. MSSQL and SQLite reject the delay. |
 | PostgreSQL `tlsServerName` | Verifies the configured certificate identity even when the dial host differs. It supplies SNI for an IP dial host; `pg` uses the dial host as SNI for DNS dial hosts. |
 | PostgreSQL `runtime.checkServerIdentity` | Calls the supplied verifier with `tlsServerName ?? host` and the certificate. Identity options require explicit SSL and reject `rejectUnauthorized: false`. |
-| MSSQL `tlsServerName` | Uses `resolveTlsServerName` as tedious's certificate hostname. A supplied name cannot be an IP literal. A validating IP connection requires a hostname override; an unverified IP connection uses `UNVERIFIED_TLS_SERVER_NAME`. Encryption stays enabled. |
-| MySQL TLS | Maps a truthy `ssl` to `{}`; it does not forward certificate fields, `tlsServerName`, or `runtime.checkServerIdentity`. |
+| MSSQL `ssl` | Encryption is always on. The certificate is validated (`trustServerCertificate: false`) when `ssl` is `true` or an object whose `rejectUnauthorized` is not `false`; otherwise it is trusted. `ca`, `cert`, and `key` go to tedious as `cryptoCredentialsDetails`. |
+| MSSQL `tlsServerName` | Uses `resolveTlsServerName` as tedious's certificate hostname. A supplied name cannot be an IP literal. A validating IP connection requires a hostname override; an unverified IP connection uses `UNVERIFIED_TLS_SERVER_NAME`. |
+| MySQL `ssl` and `tlsServerName` | `resolveMysqlSsl` maps a truthy `ssl` to `{ ca, cert, key, rejectUnauthorized }` for the fields that are set. With `tlsServerName` it adds `verifyIdentity: true`, passes the name to mysql2 as `host`, and supplies a `stream` (`dialMysqlStream`) that dials the real host with no-delay and keepalive applied. The name cannot be an IP literal, and it requires `ssl` enabled explicitly with verification on. |
+| MySQL runtime verifier | The adapter does not consume `runtime.checkServerIdentity`. |
 | MSSQL runtime verifier | The adapter does not consume `runtime.checkServerIdentity`; its TLS identity control is `tlsServerName`. |
+
+### Reading certificate files
+
+`ConnectionConfig.ssl` takes each certificate field in two forms. `SSL_FIELD_PAIRS` in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) lists them as `[inline, file]`: `ca` and `caFile`, `cert` and `certFile`, `key` and `keyFile`. An inline field holds PEM text; a file field holds a path. `rejectUnauthorized` has no file form. Three files use `SSL_FIELD_PAIRS`: [`src/core/config/schema.ts`](../../src/core/config/schema.ts) rejects a pair with both forms set in one layer, [`src/core/config/ssl-combine.ts`](../../src/core/config/ssl-combine.ts) lets a higher layer's form replace a lower layer's, and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) rejects inline fields in stage defaults and names the file form.
+
+`resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) turns every file field into its inline field. It runs inside `openConnection`, on every connect attempt and immediately before the dialect factory, so a rotated certificate takes effect on the next connection without a config change. It returns a copy and never mutates its input, so the stored config, and anything that redacts or exports it, keeps the paths.
+
+A file is refused on `stat` before it is read and on its content after, so no unchecked bytes reach a dialect factory:
+
+```mermaid
+flowchart TD
+    %% source: src/core/connection/ssl-files.ts
+    Skip{"resolveSslFiles(config)<br/>sqlite, or ssl absent<br/>or boolean?"} -->|"yes, config unchanged"| Same["return"]
+    Skip -->|no| Pair{"next SSL_FIELD_PAIRS<br/>entry with<br/>a file field?"}
+    Pair -->|"none left, copy with<br/>inline fields only"| Same
+    Pair -->|yes| Stat["expand leading ~/<br/>stat(path)"]
+    Stat --> Kind{"regular file,<br/>1 byte to 1 MiB?"}
+    Kind -->|no| Err["throw SslFileError"]
+    Kind -->|yes| Read["readFile(path, 'utf8')"]
+    Read --> Pem{"readable, not blank,<br/>has a PEM block?"}
+    Pem -->|no| Err
+    Pem -->|yes| Swap["set inline field,<br/>delete file field"]
+    Swap --> Pair
+```
+
+`resolveSslFiles` resolves a relative path from the process working directory, and a leading `~/` from the home directory. A path anchored beforehand by `anchorSslFiles` in [`src/core/config/anchor.ts`](../../src/core/config/anchor.ts), which joins relative file paths to the project root and is called from [`src/sdk/context.ts`](../../src/sdk/context.ts) and [`src/sdk/guards.ts`](../../src/sdk/guards.ts), arrives absolute. Anchoring belongs to core-state ([`docs/wiki/core-state.md`](core-state.md)). The reads are async so a path that blocks, such as a FIFO, cannot freeze the event loop past an abort.
+
+`SslFileError` carries `field` (for example `ssl.caFile`), the expanded `path`, and a `code`. It never carries file content, because a `keyFile` may point at any file the process can read and the message reaches events and agent-channel output.
+
+| `code` | Cause |
+|---|---|
+| a system code such as `ENOENT` or `EACCES`, or `UNKNOWN` | `stat` or `readFile` failed |
+| `EINVAL` | The path is not a regular file |
+| `EMPTY` | Zero bytes, or only whitespace |
+| `EFBIG` | Larger than 1 MiB |
+| `ENOTPEM` | No `-----BEGIN ` line |
+
+[`src/core/connection/index.ts`](../../src/core/connection/index.ts) exports `SslFileError`. The factory does not retry it, and `testConnection` does not treat it as a missing database.
+
+Each adapter consumes the resolved text differently:
+
+| Dialect | Resolved `ca`, `cert`, `key` | Notes |
+|---|---|---|
+| PostgreSQL | Passed through as the `pg` `ssl` object (`resolveSsl`) | `tlsServerName` and `runtime.checkServerIdentity` spread the same object and add `servername` and `checkServerIdentity`. |
+| MySQL | Copied into the mysql2 `ssl` object with `rejectUnauthorized` | `tlsServerName` also sets `verifyIdentity`, `host`, and `stream`. |
+| MSSQL | Passed as tedious `cryptoCredentialsDetails` | `rejectUnauthorized: false` turns validation off; encryption stays on. |
+| SQLite | Not applicable | `resolveSslFiles` returns the config unchanged and no file is read. |
+
+On a certificate rejection, `explainConnectionError` words the failure by cause. A hostname mismatch (`ERR_TLS_CERT_ALTNAME_INVALID`) lists the certificate's altnames, truncated at 300 characters, and suggests `tlsServerName`. Any other certificate code suggests `ssl.caFile` or `NODE_EXTRA_CA_CERTS`, and otherwise `ssl.rejectUnauthorized: false`; on PostgreSQL and MySQL with a `tlsServerName` set, the hint adds that the name must be removed because it requires validation. mysql2 replaces the TLS error code with `HANDSHAKE_SSL_ERROR`, so for MySQL `MYSQL_CERTIFICATE_REASONS` recovers the code from the message text. `wrongCaseSslKeyMessage` in [`src/core/connection/options.ts`](../../src/core/connection/options.ts) names the camelCase spelling for an `ssl` key written in the wrong case.
 
 ### Gating a transfer
 
@@ -262,15 +313,16 @@ sequenceDiagram
 | Path | Role |
 |------|------|
 | [`src/core/connection/factory.ts`](../../src/core/connection/factory.ts) | `createConnection`, `testConnection`, `discardConnection` — retry/backoff, liveness probe, abort handling |
-| [`src/core/connection/types.ts`](../../src/core/connection/types.ts) | `ConnectionConfig` controls and runtime-only `RuntimeConnectionOptions` callbacks |
+| [`src/core/connection/types.ts`](../../src/core/connection/types.ts) | `ConnectionConfig` controls (including the `ssl` inline and file fields and `SSL_FIELD_PAIRS`) and runtime-only `RuntimeConnectionOptions` callbacks |
 | [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) | `ConnectionManager` singleton (`getConnectionManager`) — cached and tracked connections, `WorkerBridge` instances, `closeAll`; the lifecycle manager's `releasing` phase calls it, and the `app:shutdown` listener only sets the shutting-down flag |
 | [`src/core/connection/session.ts`](../../src/core/connection/session.ts) | `SESSION_ID_SQL`, `SERVER_CANCEL`, `readSessionId`, `hasServerSideCancel` — per-dialect session-id read and server-side cancel |
-| [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) | `explainConnectionError`, `explainMssqlLoginFailure` — per-dialect error code tables, `DatabaseConnectionError` |
-| [`src/core/connection/options.ts`](../../src/core/connection/options.ts) | `connectionOptionProblems`, `assertConnectionOptions`, `pgPoolOptions`, `tarnPoolOptions`, `driverOptionsFor` — per-dialect pool, keepalive, and driver-option rules |
+| [`src/core/connection/errors.ts`](../../src/core/connection/errors.ts) | `explainConnectionError`, `explainMssqlLoginFailure` — per-dialect error code tables, `DatabaseConnectionError`, certificate-rejection hints |
+| [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) | `resolveSslFiles`, `SslFileError` — reads `caFile`, `certFile`, `keyFile` into `ca`, `cert`, `key` before each dialect factory call |
+| [`src/core/connection/options.ts`](../../src/core/connection/options.ts) | `connectionOptionProblems`, `assertConnectionOptions`, `pgPoolOptions`, `tarnPoolOptions`, `driverOptionsFor`, `ipTlsServerNameMessage`, `wrongCaseSslKeyMessage` — per-dialect pool, keepalive, and driver-option rules plus shared TLS wording |
 | [`src/core/connection/pinned.ts`](../../src/core/connection/pinned.ts) | `trackPinnedConnections` — `withConnection` and `discard()` support for pooled dialects |
 | [`src/core/connection/login.ts`](../../src/core/connection/login.ts) | `guardPasswordCallback`, `PasswordCallbackRejection`, `trackPoolLogins` |
 | [`src/core/connection/defaults.ts`](../../src/core/connection/defaults.ts) | `DEFAULT_PORTS`, `PortSchema` shared with `core/config` and `core/settings` |
-| `src/core/connection/dialects/*.ts` | Physical connection factories, runtime credentials, TLS mapping, idle-error handling, and MSSQL tedious login diagnostics; `mssql-limit-plugin.ts` rewrites `LimitNode` to `TopNode` before Kysely's MSSQL compiler generates SQL |
+| `src/core/connection/dialects/*.ts` | Physical connection factories, runtime credentials, TLS mapping (PostgreSQL `resolveSsl`, MySQL `resolveMysqlSsl`, MSSQL `cryptoCredentialsFor`), idle-error handling, and MSSQL tedious login diagnostics; `mssql-limit-plugin.ts` rewrites `LimitNode` to `TopNode` before Kysely's MSSQL compiler generates SQL |
 | [`src/core/db/operations.ts`](../../src/core/db/operations.ts) | `checkDbStatus`, `createDb`, `destroyDb` |
 | [`src/core/db/policy.ts`](../../src/core/db/policy.ts) | `assertDbPolicy` — shared destructive-lifecycle gate for `core/db` and `core/teardown` |
 | [`src/core/db/dual.ts`](../../src/core/db/dual.ts) | `withDualConnection` — generic two-connection lifecycle used by `transfer` and vault-copy; the `tracking` option makes it call `prepareTrackingSchema` on the destination, and omitting it leaves the destination's tracking tables untouched |
@@ -287,7 +339,7 @@ sequenceDiagram
 | [`src/core/transfer/events.ts`](../../src/core/transfer/events.ts) | `TransferEvents` observer contract |
 | `src/core/transfer/dialects/*.ts` | Per-dialect FK toggle, identity-insert toggle, sequence reset, conflict-aware INSERT (no sqlite module) |
 | `src/cli/db/*.ts` | `noorm db <create\|drop\|explore\|reset\|teardown\|transfer\|truncate>` Citty subcommands; `create.ts`/`drop.ts` call `checkDbStatus`/`createDb`/`destroyDb` directly, bypassing the SDK layer |
-| `tests/core/{connection,db,explore,teardown,transfer}/` (explore: `gate.test.ts`, `dispatch.test.ts`, `peek.test.ts`), [`tests/integration/`](../../tests/integration) | Unit coverage per module plus cross-database integration runs. Under [`tests/integration/connection/`](../../tests/integration/connection): `postgres-runtime-options.test.ts` covers credential refresh, original provider errors, sanitized events, and PostgreSQL session controls; `mysql-runtime-options.test.ts` covers replacement after an idle failure and distinguishes active-query failures; `mysql-packed-sdk.test.ts` covers dynamic credentials from an installed SDK under Node. [`tests/core/teardown/operations.test.ts`](../../tests/core/teardown/operations.test.ts) covers FK re-enable failures and error precedence. |
+| `tests/core/{connection,db,explore,teardown,transfer}/` (connection: `ssl-files.test.ts`, `ssl-files-home.test.ts` with its `fixtures/ssl-home-child.ts` subprocess, and `dialects/*.test.ts` for TLS mapping; explore: `gate.test.ts`, `dispatch.test.ts`, `peek.test.ts`), [`tests/integration/`](../../tests/integration) | Unit coverage per module plus cross-database integration runs. Under [`tests/integration/connection/`](../../tests/integration/connection): `postgres-runtime-options.test.ts` covers credential refresh, original provider errors, sanitized events, and PostgreSQL session controls; `mysql-runtime-options.test.ts` covers replacement after an idle failure and distinguishes active-query failures; `mysql-packed-sdk.test.ts` covers dynamic credentials from an installed SDK under Node. [`tests/core/teardown/operations.test.ts`](../../tests/core/teardown/operations.test.ts) covers FK re-enable failures and error precedence. |
 
 ## Constraints
 
@@ -296,7 +348,10 @@ sequenceDiagram
 | Runtime password callbacks refresh only new physical sessions | Code expecting a rotated or revoked credential to reach pooled sessions keeps running on the old credential until that physical connection is replaced. |
 | A dynamic password disables factory retries, and the callback's own errors are not reworded | Retrying repeats credential issuance. Callback errors can contain secrets; the sanitized observer event is not the original diagnostic. Driver failures on the same path are still explained but emit no server fields. |
 | PostgreSQL identity hooks require SSL with certificate verification | `createPostgresConnection` throws `PostgreSQL TLS identity options require ...` before any socket opens when SSL is not enabled explicitly or certificate verification is off. |
-| Runtime TLS verification hooks are PostgreSQL-specific in the adapters | Assuming MySQL or MSSQL consumes `checkServerIdentity` leaves the custom verification unenforced. |
+| `runtime.checkServerIdentity` is consumed only by PostgreSQL | Assuming MySQL or MSSQL consumes it leaves the custom verification unenforced. `tlsServerName` is the identity control on PostgreSQL, MySQL, and MSSQL. |
+| MySQL `tlsServerName` requires explicit `ssl` with verification and a hostname | `buildMysqlOptions` throws `MySQL TLS identity options require ...` for a missing `ssl` or `rejectUnauthorized: false`, and `Invalid tlsServerName` for an IP literal. |
+| Certificate files are read on every connect attempt, only from regular PEM files up to 1 MiB | A missing, blank, oversized, or non-PEM file throws `SslFileError` before any socket opens and is not retried. |
+| Dialect factories expect resolved `ssl` | A caller that invokes a dialect factory directly instead of `createConnection` leaves `caFile`, `certFile`, and `keyFile` unread, so the adapters do not load the certificate. |
 | MySQL idle reporting depends on established and checkout state | Classifying every socket error as idle mislabels handshake or active-query failures; a failed connection that passes `validate` is handed to the next query. |
 | `PostgreSQL` is never same-server ([`src/core/transfer/same-server.ts`](../../src/core/transfer/same-server.ts)) | Treating it as same-server would, when both configs name the same database, run `INSERT INTO t SELECT ... FROM t`, copying the destination into itself instead of transferring data |
 | `readSessionId` requires a positive integer | Skipping the guard would let a driver's unexpected result flow straight into the mysql `kill query <id>` raw SQL |
@@ -318,6 +373,7 @@ sequenceDiagram
 - **core-identity**: [`src/core/identity/sync.ts`](../../src/core/identity/sync.ts) calls `createConnection` for identity sync; [`src/core/sql-terminal/executor.ts`](../../src/core/sql-terminal/executor.ts) imports the same `session.ts` exports (plus `hasServerSideCancel`) to cancel a query the SQL terminal is running; [`src/core/vault/copy.ts`](../../src/core/vault/copy.ts) calls `withDualConnection` ([`src/core/db/dual.ts`](../../src/core/db/dual.ts)) with `tracking: { channel, dryRun }` to hold source and destination connections open for a vault copy.
 - **core-policy**: `assertDbPolicy` ([`src/core/db/policy.ts`](../../src/core/db/policy.ts)), `checkConfigPolicy` ([`src/cli/db/create.ts`](../../src/cli/db/create.ts), [`src/cli/db/drop.ts`](../../src/cli/db/drop.ts)), and `assertPolicy` ([`src/core/transfer/index.ts`](../../src/core/transfer/index.ts)) resolve against `Permission` values (`db:create`, `db:reset`, `db:destroy`, `db:truncate`, `db:teardown`, `transfer:plan`; transfer gating is described in Gating a transfer, and a trusted `isTest` config allows the `db:*` lifecycle permissions outright) and the role matrix in [`src/core/policy/matrix.ts`](../../src/core/policy/matrix.ts) and [`src/core/policy/types.ts`](../../src/core/policy/types.ts); [`src/core/explore/operations.ts`](../../src/core/explore/operations.ts) takes a required `gate` in `fetchOverview`/`fetchList`/`fetchDetail` (checks `explore`, skipped for `GATED_BY_CALLER`; see Gating explore reads) and `fetchRowPeek` (checks `sql:read`), and throws when the cell is blocked or requires confirmation; [`src/cli/db/transfer.ts`](../../src/cli/db/transfer.ts) loads settings and wraps the destination config with `withConfigPolicy` before transferring.
 - **core-state**: [`src/core/lifecycle/manager.ts`](../../src/core/lifecycle/manager.ts) calls `getConnectionManager`; [`src/core/db/operations.ts`](../../src/core/db/operations.ts) and [`src/core/db/dual.ts`](../../src/core/db/dual.ts) call `bootstrapSchema`/`tablesExist` and `prepareTrackingSchema` (in `tracking.ts`) from [`src/core/version/`](../../src/core/version); [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) subscribes to `app:shutdown` from [`src/core/observer.ts`](../../src/core/observer.ts) only to mark itself shutting down, while the lifecycle manager's releasing phase calls `closeAll`; [`src/core/config/types.ts`](../../src/core/config/types.ts) imports `ConnectionConfig` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts), which owns the connection config type.
+- **core-state**: [`src/core/config/schema.ts`](../../src/core/config/schema.ts), [`src/core/config/ssl-combine.ts`](../../src/core/config/ssl-combine.ts), and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) import `SSL_FIELD_PAIRS` from [`src/core/connection/types.ts`](../../src/core/connection/types.ts). [`src/core/config/schema.ts`](../../src/core/config/schema.ts) rejects a field given in both forms; [`src/core/config/ssl-combine.ts`](../../src/core/config/ssl-combine.ts) lets a higher layer's form replace a lower layer's; `stageSslError` in [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) rejects inline fields in stage defaults and names the file form (`defaults.ssl.<key> is not allowed in stage defaults; use <fileForm>`).
 - **core-change**: [`src/core/teardown/operations.ts`](../../src/core/teardown/operations.ts) imports `ChangeHistory`/`ChangeTracker` from [`src/core/change/`](../../src/core/change) to mark changes stale and record a reset event.
 - **sdk**: [`src/core/transfer/planner.ts`](../../src/core/transfer/planner.ts) and `executor.ts` depend on `buildDtSchema`, `DtStreamer`, `createKeysetPager`, `queryDatabaseVersion` from [`src/core/dt/`](../../src/core/dt) for cross-dialect type conversion and streaming; [`src/sdk/namespaces/db.ts`](../../src/sdk/namespaces/db.ts), `dt.ts`, `transfer.ts` wrap `core/explore`, `core/teardown`, `core/transfer`, `core/dt` directly, and `core/db` is reached only transitively, through `transfer/index.ts`'s use of `db/dual.ts`. [`src/sdk/context.ts`](../../src/sdk/context.ts) calls `createConnection`. [`tsup.sdk.config.ts`](../../tsup.sdk.config.ts) bundles Tarn into the SDK, so Tarn is not a consumer peer dependency. [`docs/wiki/sdk.md`](sdk.md) owns the public SDK connection surface and [`docs/wiki/infra.md`](infra.md) owns package construction.
 - **worker-bridge**: [`src/core/connection/manager.ts`](../../src/core/connection/manager.ts) tracks `WorkerBridge<ConnectionEvents>` instances so they shut down alongside regular connections; [`src/workers/connection.ts`](../../src/workers/connection.ts) imports `core/connection` to own the Kysely instance off the main thread.
