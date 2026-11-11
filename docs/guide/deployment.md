@@ -130,7 +130,7 @@ Kysely queries still work. The management surface refuses:
 ProtectedConfigError: Cannot run.build on config "__env__": "run:build" is not allowed on config "__env__" (role: viewer).
 ```
 
-This stops the SDK's own `ctx.noorm` operations, not hand-written SQL, so grant the runtime's database user only the privileges it needs. The migrate job needs its own environment without these variables. [Access roles](/guide/environments/configs#access-roles) lists what each role permits.
+This stops the SDK's own `ctx.noorm` operations, not hand-written SQL, so grant the runtime's database user only the privileges it needs. The migrate job needs its own environment without these variables. They apply only to an environment-only config: a stored config keeps its own access roles whatever the environment says. [Access roles](/guide/environments/configs#access-roles) lists what each role permits.
 
 
 ## What bites

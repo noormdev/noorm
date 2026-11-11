@@ -4,15 +4,18 @@
  * Verifies callback and explicit modes, dialect checking,
  * error propagation, and guaranteed revert behavior.
  */
-import { describe, it, expect, vi } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import {
     Kysely,
-    DummyDriver,
     PostgresAdapter,
     PostgresIntrospector,
     PostgresQueryCompiler,
+    sql,
 } from 'kysely';
+import type { DatabaseConnection, Driver } from 'kysely';
 
+import { trackPinnedConnections } from '../../../src/core/connection/pinned.js';
 import { Context } from '../../../src/sdk/context.js';
 import { ImpersonationError } from '../../../src/sdk/impersonate/types.js';
 
@@ -44,48 +47,85 @@ const mockIdentity: Identity = {
 };
 
 /**
- * Create a mock Kysely with connection() support.
- *
- * The key: we intercept provideConnection so .connection().execute()
- * calls our mock, and we track all raw SQL executed against it.
+ * A pool of one connection behind the real pin tracker, so a test can tell a
+ * connection that went back to the pool from one that was closed.
  */
-function createMockKysely() {
+function createFakePool() {
 
     const executedSql: string[] = [];
+    const failing = new Set<string>();
+    const stats = { opened: 0, closed: 0 };
+    const pins = trackPinnedConnections();
+    const waiting: Array<() => void> = [];
+    let idle: DatabaseConnection | null = null;
+    let busy = false;
 
-    const executeQueryMock = vi.fn().mockImplementation((compiledQuery) => {
+    const open = (): DatabaseConnection => {
 
-        executedSql.push(compiledQuery.sql);
+        stats.opened++;
 
-        return { rows: [] };
+        return {
+            executeQuery: async (query) => {
 
-    });
+                executedSql.push(query.sql);
 
-    const db = new Kysely<unknown>({
-        dialect: {
-            createAdapter: () => new PostgresAdapter(),
-            createDriver: () => new DummyDriver(),
-            createIntrospector: (db) => new PostgresIntrospector(db),
-            createQueryCompiler: () => new PostgresQueryCompiler(),
-        },
-    });
+                if (failing.has(query.sql)) throw new Error(`${query.sql} failed`);
 
-    const originalExecutor = db.getExecutor();
+                return { rows: [] };
 
-    vi.spyOn(originalExecutor, 'provideConnection').mockImplementation(async (consumer) => {
-
-        return consumer({
-            executeQuery: executeQueryMock,
+            },
             streamQuery: () => {
 
                 throw new Error('not implemented');
 
             },
-        });
+        };
 
+    };
+
+    const driver: Driver = {
+        init: async () => {},
+        acquireConnection: async () => {
+
+            const pinTo = pins.claim();
+
+            if (busy) await new Promise<void>((resolve) => waiting.push(resolve));
+
+            busy = true;
+
+            const connection = idle ?? open();
+
+            idle = null;
+            pinTo(connection);
+
+            return connection;
+
+        },
+        releaseConnection: async (connection) => {
+
+            if (pins.isDiscarded(connection)) stats.closed++;
+            else idle = connection;
+
+            busy = false;
+            waiting.shift()?.();
+
+        },
+        beginTransaction: async () => {},
+        commitTransaction: async () => {},
+        rollbackTransaction: async () => {},
+        destroy: async () => {},
+    };
+
+    const db = new Kysely<unknown>({
+        dialect: {
+            createAdapter: () => new PostgresAdapter(),
+            createDriver: () => driver,
+            createIntrospector: (db) => new PostgresIntrospector(db),
+            createQueryCompiler: () => new PostgresQueryCompiler(),
+        },
     });
 
-    return { db, executedSql, executeQueryMock };
+    return { db, executedSql, stats, failOn: (statement: string) => failing.add(statement), withConnection: pins.withConnection(db) };
 
 }
 
@@ -99,11 +139,22 @@ function createCtx(dialect: Config['connection']['dialect'] = 'postgres') {
         '/tmp/test-project',
     );
 
-    const { db, executedSql, executeQueryMock } = createMockKysely();
+    const { db, withConnection, ...pool } = createFakePool();
 
     Object.defineProperty(ctx, 'kysely', { value: db, configurable: true });
+    Object.defineProperty(ctx, 'withConnection', { value: withConnection, configurable: true });
 
-    return { ctx, executedSql, executeQueryMock };
+    return { ctx, ...pool };
+
+}
+
+/** False when the pool's one connection is still checked out. */
+function canCheckOut(ctx: Context): Promise<boolean> {
+
+    return Promise.race([
+        sql`select 1`.execute(ctx.kysely).then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 500)),
+    ]);
 
 }
 
@@ -210,6 +261,73 @@ describe('sdk: impersonate callback mode', () => {
 
     });
 
+
+    it('should return the connection to the pool after a clean revert', async () => {
+
+        // Discarding costs a reconnect, so only a failed identity switch may pay it.
+        const { ctx, stats } = createCtx('postgres');
+
+        await ctx.impersonate('testuser', async () => {});
+
+        expect(await canCheckOut(ctx)).toBe(true);
+        expect(stats).toEqual({ opened: 1, closed: 0 });
+
+    });
+
+    it('should close the connection when the revert statement fails', async () => {
+
+        // A pooled connection still under SET ROLE would run the next borrower's queries as testuser.
+        const { ctx, stats, failOn } = createCtx('postgres');
+
+        failOn('RESET ROLE');
+
+        const [, err] = await attempt(() => ctx.impersonate('testuser', async () => {}));
+
+        expect(err?.message).toBe('RESET ROLE failed');
+        expect(stats.closed).toBe(1);
+        expect(await canCheckOut(ctx)).toBe(true);
+        expect(stats.opened).toBe(2);
+
+    });
+
+    it('should close the connection when the impersonate statement fails', async () => {
+
+        // A statement that timed out client-side may still have been applied by the server.
+        const { ctx, stats, failOn } = createCtx('postgres');
+        let callbackRan = false;
+
+        failOn("SET ROLE 'testuser'");
+
+        const [, err] = await attempt(() => ctx.impersonate('testuser', async () => {
+
+            callbackRan = true;
+
+        }));
+
+        expect(err?.message).toBe("SET ROLE 'testuser' failed");
+        expect(callbackRan).toBe(false);
+        expect(stats.closed).toBe(1);
+
+    });
+
+    it('should reject with the revert failure when the callback also threw', async () => {
+
+        // The revert failure is the one that closed a connection, so it is the one the caller hears about.
+        const { ctx, stats, failOn } = createCtx('postgres');
+
+        failOn('RESET ROLE');
+
+        const [, err] = await attempt(() => ctx.impersonate('testuser', async () => {
+
+            throw new Error('boom');
+
+        }));
+
+        expect(err?.message).toBe('RESET ROLE failed');
+        expect(stats.closed).toBe(1);
+
+    });
+
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -291,6 +409,68 @@ describe('sdk: impersonate explicit mode', () => {
         const { ctx } = createCtx('mysql');
 
         await expect(ctx.impersonate('user')).rejects.toThrow(ImpersonationError);
+
+    });
+
+    it('should return the connection to the pool after a clean revert', async () => {
+
+        const { ctx, stats } = createCtx('postgres');
+
+        const scope = await ctx.impersonate('testuser');
+
+        await scope.revert();
+
+        expect(await canCheckOut(ctx)).toBe(true);
+        expect(stats).toEqual({ opened: 1, closed: 0 });
+
+    });
+
+    it('should free the pool slot and close the connection when revert() fails', async () => {
+
+        // A failed revert used to keep the connection checked out until disconnect().
+        const { ctx, stats, failOn } = createCtx('postgres');
+
+        const scope = await ctx.impersonate('testuser');
+
+        failOn('RESET ROLE');
+
+        const [, err] = await attempt(() => scope.revert());
+
+        expect(err?.message).toBe('RESET ROLE failed');
+        expect(await canCheckOut(ctx)).toBe(true);
+        expect(stats).toEqual({ opened: 2, closed: 1 });
+
+    });
+
+    it('should not run the revert statement again after a failed revert()', async () => {
+
+        // The connection is closed by then, and its slot may already belong to another caller.
+        const { ctx, executedSql, failOn } = createCtx('postgres');
+
+        const scope = await ctx.impersonate('testuser');
+
+        failOn('RESET ROLE');
+        await attempt(() => scope.revert());
+
+        const [, err] = await attempt(() => scope.revert());
+
+        expect(err).toBeNull();
+        expect(executedSql.filter(s => s === 'RESET ROLE')).toHaveLength(1);
+
+    });
+
+    it('should close the connection when the impersonate statement fails', async () => {
+
+        const { ctx, stats, failOn } = createCtx('postgres');
+
+        failOn("SET ROLE 'testuser'");
+
+        const [scope, err] = await attempt(() => ctx.impersonate('testuser'));
+
+        expect(err?.message).toBe("SET ROLE 'testuser' failed");
+        expect(scope).toBeNull();
+        expect(await canCheckOut(ctx)).toBe(true);
+        expect(stats).toEqual({ opened: 2, closed: 1 });
 
     });
 

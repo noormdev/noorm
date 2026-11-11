@@ -70,7 +70,7 @@ flowchart TD
     EO --> R
 ```
 
-The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins. At policy-check time, a protected stage caps each effective permission against the original operator matrix for users or viewer matrix for agents without changing role assignments. See [stage precedence](/guide/environments/stages#which-value-wins).
+The resolved config merges built-in defaults, matching stage defaults, the stored config, and `NOORM_*` environment variables, in that order. A later layer wins, except that `NOORM_ACCESS_*` never changes the access roles of a stored config. At policy-check time, a protected stage caps each effective permission against the original operator matrix for users or viewer matrix for agents without changing role assignments. See [stage precedence](/guide/environments/stages#which-value-wins).
 
 `NOORM_CONNECTION_HOST` overrides the stored host. Execution commands select a config but do not expose connection-field flags. [`config create`](#config-create) accepts connection overrides when saving a new config.
 
