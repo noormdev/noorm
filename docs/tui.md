@@ -277,7 +277,7 @@ Export (`x` under More) writes `<name>.noorm.enc`, encrypted for one recipient, 
 |---|---|
 | Export carries | Every stored connection field that is not a credential, including `dialect`, `host`, `port`, `database`, `tlsServerName`, `pool`, the timeouts, and in `ssl` the inline `ca`, `rejectUnauthorized` and the three file paths. Stage values are not added |
 | Export withholds | `user`, `password`, and the inline `ssl.key` and `ssl.cert`. The recipient supplies their own |
-| Import preview | Dialect, database and host, then SSL on or off, certificate verification, each certificate file path and the TLS server name |
+| Import preview | Sender and secrets count, dialect, database and host, then SSL on or off, certificate verification, the TLS server name and each certificate file path. `Roles: user <role>, agent <role\|off>` shows the roles the import saves. A file that sets `isTest` adds `Test database: every role gets at least admin's permissions` |
 | Import saves | The connection fields the config schema accepts, with the user and password typed on the import form |
 
 A certificate file path travels as text. The preview says `A certificate file path must exist on this machine.`, and import does not check for the file.

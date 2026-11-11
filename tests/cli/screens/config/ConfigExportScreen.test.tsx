@@ -6,12 +6,14 @@ import { join } from 'node:path';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../../src/tui/focus.js';
+import { FocusProvider, useFocusContext } from '../../../../src/tui/focus.js';
 import { RouterProvider } from '../../../../src/tui/router.js';
 import { AppContextProvider } from '../../../../src/tui/app-context.js';
 import { ToastProvider } from '../../../../src/tui/components/index.js';
 import { ConfigExportScreen } from '../../../../src/tui/screens/config/ConfigExportScreen.js';
 import { decryptWithPrivateKey, generateKeyPair } from '../../../../src/core/identity/crypto.js';
+import { bindPolicyContext } from '../../../../src/core/config/resolver.js';
+import { checkConfigPolicy } from '../../../../src/core/policy/index.js';
 import type { Config } from '../../../../src/core/config/types.js';
 import type { ConnectionConfig } from '../../../../src/core/connection/types.js';
 import type { CryptoIdentity, KnownUser } from '../../../../src/core/identity/types.js';
@@ -77,7 +79,7 @@ function makeConfig(connection: ConnectionConfig): Config {
 
 }
 
-let storedConfig = makeConfig(server);
+let storedConfig: Omit<Config, 'access'> & Partial<Pick<Config, 'access'>> = makeConfig(server);
 let stages: Record<string, { defaults?: StageDefaults }> = {};
 
 const stateManager = {
@@ -96,6 +98,7 @@ const settingsManager = {
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
     settings: { version: '0.1.0' },
+    projectRoot: '/test-project',
     getStages: vi.fn(() => stages),
     getStage: vi.fn((name: string) => stages[name]),
 };
@@ -136,15 +139,22 @@ function isExport(value: unknown): value is { config: { connection: ExportedConn
 
 const originalCwd = process.cwd();
 let workDir = '';
+let isTyping = () => false;
 
-/** Drive the screen to the written file and return what the recipient decrypts. */
-async function exportedConnection(connection: ConnectionConfig): Promise<ExportedConnection> {
+/** Publishes the focus context's `isTyping`, which turns true in the same commit that registers the email field's input handler. */
+function TypingProbe(): null {
 
-    storedConfig = makeConfig(connection);
+    isTyping = useFocusContext().isTyping;
 
-    const file = join(workDir, 'dev.noorm.enc');
+    return null;
+
+}
+
+async function submitRecipient() {
+
     const screen = render(
         <FocusProvider>
+            <TypingProbe />
             <RouterProvider>
                 <AppContextProvider autoLoad={true}>
                     <ToastProvider>
@@ -155,10 +165,24 @@ async function exportedConnection(connection: ConnectionConfig): Promise<Exporte
         </FocusProvider>,
     );
 
-    await waitFor(() => Boolean(screen.lastFrame()?.includes('Recipient email')));
+    // The field is drawn before focus reaches it, and it drops what is typed until then.
+    await waitFor(() => isTyping());
     screen.stdin.write(recipient.email);
     await waitFor(() => Boolean(screen.lastFrame()?.includes(recipient.email)));
     screen.stdin.write('\r');
+
+    return screen;
+
+}
+
+/** Drive the screen to the written file and return what the recipient decrypts. */
+async function exportedConnection(connection: ConnectionConfig): Promise<ExportedConnection> {
+
+    storedConfig = makeConfig(connection);
+
+    const file = join(workDir, 'dev.noorm.enc');
+    const screen = await submitRecipient();
+
     await waitFor(() => existsSync(file) && Boolean(screen.lastFrame()?.includes('exported successfully')));
 
     screen.unmount();
@@ -246,6 +270,30 @@ describe('cli: ConfigExportScreen exported connection', () => {
         const exported = await exportedConnection(server);
 
         expect(exported).toEqual({ dialect: 'postgres', host: 'db.internal', port: 6543, database: 'app' });
+
+    }, 20_000);
+
+    // Activation binds the effective config, so a stage role must gate the export the same way.
+    it('should judge a stored config without roles by the roles of its stage', async () => {
+
+        const { access: _access, ...withoutRoles } = makeConfig(server);
+        const stageRoles: Config['access'] = { user: 'viewer', agent: false };
+
+        stages = { dev: { defaults: { access: stageRoles } } };
+        storedConfig = withoutRoles;
+
+        const asViewer = bindPolicyContext({ ...withoutRoles, access: stageRoles }, { stageIsProtected: () => false });
+        const reason = checkConfigPolicy('user', asViewer, 'secret:read').blockedReason;
+        const screen = await submitRecipient();
+        const frame = () => (screen.lastFrame() ?? '').replace(/[│\s]+/g, ' ');
+
+        await waitFor(() => frame().includes('Press any key'));
+
+        expect(reason).toBeDefined();
+        expect(frame()).toContain(reason);
+        expect(existsSync(join(workDir, 'dev.noorm.enc'))).toBe(false);
+
+        screen.unmount();
 
     }, 20_000);
 

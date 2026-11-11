@@ -402,6 +402,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
         const secretCount = Object.keys(importedData.secrets ?? {}).length;
         const incoming = importedData.config.connection;
+        const access = resolveLegacyAccess(importedData.config.access, importedData.config.protected);
         const ssl = incoming?.ssl;
         const certificateFiles = ssl && typeof ssl === 'object'
             ? [
@@ -411,57 +412,61 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
             ].filter((file) => file.path)
             : [];
 
+        // Rows are shared so the preview and the form fit the 20 rows the shell leaves on an 80x24 terminal.
         return (
-            <Panel title="Import Configuration" paddingX={2} paddingY={1}>
+            <Panel title="Import Configuration" paddingX={2}>
                 <Box flexDirection="column" gap={1}>
                     <Box flexDirection="column">
-                        <Text>
-                            From: <Text color="cyan">{senderEmail}</Text>
-                        </Text>
-                        <Text>
-                            Dialect:{' '}
-                            <Text color="cyan">{importedData.config.connection?.dialect}</Text>
-                        </Text>
-                        <Text>
-                            Database:{' '}
-                            <Text color="cyan">{importedData.config.connection?.database}</Text>
-                        </Text>
-                        <Text>
-                            Host:{' '}
-                            <Text color="cyan">
-                                {importedData.config.connection?.host}:
-                                {importedData.config.connection?.port}
-                            </Text>
-                        </Text>
-                        <Text>
-                            SSL: <Text color="cyan">{ssl ? 'on' : 'off'}</Text>
-                        </Text>
-                        {ssl && (
+                        <Box columnGap={3} flexWrap="wrap">
                             <Text>
-                                Verify certificate:{' '}
-                                <Text color="cyan">{skipsVerification(ssl) ? 'off' : 'on'}</Text>
+                                From: <Text color="cyan">{senderEmail}</Text>
                             </Text>
-                        )}
+                            <Text>
+                                Secrets: <Text color="cyan">{secretCount} included</Text>
+                            </Text>
+                        </Box>
+                        <Box columnGap={3} flexWrap="wrap">
+                            <Text>
+                                Dialect: <Text color="cyan">{incoming?.dialect}</Text>
+                            </Text>
+                            <Text>
+                                Database: <Text color="cyan">{incoming?.database}</Text>
+                            </Text>
+                            <Text>
+                                Host: <Text color="cyan">{incoming?.host}:{incoming?.port}</Text>
+                            </Text>
+                        </Box>
+                        <Box columnGap={3} flexWrap="wrap">
+                            <Text>
+                                SSL: <Text color="cyan">{ssl ? 'on' : 'off'}</Text>
+                            </Text>
+                            {ssl && (
+                                <Text>
+                                    Verify certificate:{' '}
+                                    <Text color="cyan">{skipsVerification(ssl) ? 'off' : 'on'}</Text>
+                                </Text>
+                            )}
+                            {incoming?.tlsServerName && (
+                                <Text>
+                                    TLS server name: <Text color="cyan">{incoming.tlsServerName}</Text>
+                                </Text>
+                            )}
+                        </Box>
                         {certificateFiles.map(({ label, path }) => (
                             <Text key={label}>
                                 {label}: <Text color="cyan">{path}</Text>
                             </Text>
                         ))}
-                        {incoming?.tlsServerName && (
-                            <Text>
-                                TLS server name: <Text color="cyan">{incoming.tlsServerName}</Text>
-                            </Text>
-                        )}
                         {certificateFiles.length > 0 && (
                             <Text dimColor>A certificate file path must exist on this machine.</Text>
                         )}
                         <Text>
-                            Secrets: <Text color="cyan">{secretCount} included</Text>
+                            Roles: user <Text color="cyan">{access.user}</Text>, agent{' '}
+                            <Text color="cyan">{access.agent === false ? 'off' : access.agent}</Text>
                         </Text>
-                    </Box>
-
-                    <Box marginTop={1}>
-                        <Text bold>Enter your database credentials:</Text>
+                        {importedData.config.isTest === true && (
+                            <Text color="yellow">Test database: every role gets at least admin's permissions</Text>
+                        )}
                     </Box>
 
                     <Form

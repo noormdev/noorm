@@ -14,6 +14,10 @@ import { RouterProvider } from '../../../../src/tui/router.js';
 import { AppContextProvider } from '../../../../src/tui/app-context.js';
 import { ToastProvider } from '../../../../src/tui/components/index.js';
 import { ConfigRemoveScreen } from '../../../../src/tui/screens/config/ConfigRemoveScreen.js';
+import { bindPolicyContext } from '../../../../src/core/config/resolver.js';
+import { checkConfigPolicy } from '../../../../src/core/policy/index.js';
+import type { Config } from '../../../../src/core/config/types.js';
+import type { StageDefaults } from '../../../../src/core/settings/types.js';
 
 // Pre-import actual modules for restoration
 const actualCore = await import('../../../../src/core/index.js');
@@ -41,7 +45,9 @@ function makeConfig(name: string) {
 
 }
 
-const createMockStateManager = (configName: string, config: ReturnType<typeof makeConfig> | null) => ({
+type StoredConfig = Omit<Config, 'access'> & Partial<Pick<Config, 'access'>>;
+
+const createMockStateManager = (configName: string, config: StoredConfig | null) => ({
     load: vi.fn().mockResolvedValue(undefined),
     getActiveConfig: vi.fn().mockReturnValue(null),
     getActiveConfigName: vi.fn().mockReturnValue(null),
@@ -53,7 +59,7 @@ const createMockStateManager = (configName: string, config: ReturnType<typeof ma
     isLoaded: true,
 });
 
-const createMockSettingsManager = (stages: Record<string, { locked?: boolean }>) => ({
+const createMockSettingsManager = (stages: Record<string, { locked?: boolean; defaults?: StageDefaults }>) => ({
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
     settings: { version: '0.1.0' },
@@ -77,6 +83,18 @@ mock.module('../../../../src/core/index.js', () => ({
 mock.module('../../../../src/core/identity/index.js', () => ({
     loadExistingIdentity: vi.fn().mockResolvedValue(null),
 }));
+
+async function waitFor(predicate: () => boolean, timeoutMs = 4000) {
+
+    const deadline = Date.now() + timeoutMs;
+
+    while (!predicate() && Date.now() < deadline) {
+
+        await new Promise((r) => setTimeout(r, 10));
+
+    }
+
+}
 
 function TestWrapper({ children }: { children: React.ReactNode }) {
 
@@ -129,7 +147,7 @@ describe('cli: ConfigRemoveScreen', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await waitFor(() => Boolean(lastFrame()?.includes('locked stage')));
 
         const frame = lastFrame();
 
@@ -152,12 +170,65 @@ describe('cli: ConfigRemoveScreen', () => {
             </TestWrapper>,
         );
 
-        await new Promise((r) => setTimeout(r, 50));
+        await waitFor(() => Boolean(lastFrame()?.includes('Are you sure')));
 
         const frame = lastFrame();
 
         expect(frame).toContain('Are you sure');
         expect(frame).not.toContain('locked stage');
+
+        unmount();
+
+    });
+
+    // Activation binds the effective config, so a stage role must gate the delete the same way.
+    it('should judge a stored config without roles by the roles of its stage', async () => {
+
+        const { access: _access, ...withoutRoles } = makeConfig('dev');
+        const stageRoles: Config['access'] = { user: 'viewer', agent: false };
+        const asViewer = bindPolicyContext({ ...withoutRoles, access: stageRoles }, { stageIsProtected: () => false });
+        const reason = checkConfigPolicy('user', asViewer, 'config:rm').blockedReason;
+
+        mockStateManager = createMockStateManager('dev', withoutRoles);
+        mockSettingsManager = createMockSettingsManager({ dev: { defaults: { access: stageRoles } } });
+
+        const { lastFrame, unmount } = render(
+            <TestWrapper>
+                <ConfigRemoveScreen params={{ name: 'dev' }} />
+            </TestWrapper>,
+        );
+        const frame = () => (lastFrame() ?? '').replace(/[│\s]+/g, ' ');
+
+        // The not-found panel shows until the app context has loaded.
+        await waitFor(() => !frame().includes('not found') && (frame().includes('Back') || frame().includes('Are you sure')));
+
+        expect(reason).toBeDefined();
+        expect(frame()).toContain(reason);
+        expect(frame()).not.toContain('Are you sure');
+
+        unmount();
+
+    });
+
+    // Delete is the repair for a config its stage or the defaults make invalid, so it must stay reachable.
+    it('should still offer the delete for a config that cannot be built over the defaults', async () => {
+
+        const base = makeConfig('dev');
+        const unbuildable = { ...base, connection: { ...base.connection, pool: { min: 11 } } };
+
+        mockStateManager = createMockStateManager('dev', unbuildable);
+        mockSettingsManager = createMockSettingsManager({});
+
+        const { lastFrame, unmount } = render(
+            <TestWrapper>
+                <ConfigRemoveScreen params={{ name: 'dev' }} />
+            </TestWrapper>,
+        );
+        const frame = () => (lastFrame() ?? '').replace(/[│\s]+/g, ' ');
+
+        await waitFor(() => !frame().includes('not found') && (frame().includes('Back') || frame().includes('Are you sure')));
+
+        expect(frame()).toContain('Are you sure');
 
         unmount();
 

@@ -36,7 +36,7 @@ import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
 import type { ConnectionConfig } from '../../../core/connection/types.js';
 import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint, guarded } from '../../../core/policy/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -111,7 +111,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
                 if (!settingsManager) throw new Error('Settings are not available');
 
-                return withConfigPolicy(config, new SettingsProvider(settingsManager));
+                return effectiveConfig(config, new SettingsProvider(settingsManager));
 
             });
             if (policyError) {

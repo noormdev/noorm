@@ -23,7 +23,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, ProtectedConfirm, Spinner, useToast, MissingParamPanel, NotFoundPanel } from '../../components/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
-import { canDeleteConfig, SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { canDeleteConfig, effectiveConfig, SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -66,7 +66,12 @@ export function ConfigRemoveScreen({ params }: ScreenProps): ReactElement {
         if (!config) return null;
         if (!settingsProvider) return { allowed: false, requiresConfirmation: false, confirmationPhrase: undefined, blockedReason: 'Settings are not available' };
 
-        const [policyConfig, err] = attemptSync(() => withConfigPolicy(config, settingsProvider));
+        // Deleting is how a config that no longer builds over its stage gets repaired, so its stored roles decide then.
+        const [effective] = attemptSync(() => effectiveConfig(config, settingsProvider));
+        const [policyConfig, err] = effective
+            ? [effective, null]
+            : attemptSync(() => withConfigPolicy(config, settingsProvider));
+
         if (err) return { allowed: false, requiresConfirmation: false, confirmationPhrase: undefined, blockedReason: err.message };
 
         return checkConfigPolicy('user', policyConfig, 'config:rm');
