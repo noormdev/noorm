@@ -40,9 +40,9 @@ For each eligible stage, the call is `materializeStage(stageName, stageName, sta
 
 The shared helper preserves connection defaults and the stage's `type`, `isTest`, and `access` metadata, and derives a local or remote type when absent; it does not clamp `access`, because core-policy applies the protected-stage ceiling at check time. Core-state owns those materialization rules in [`docs/wiki/core-state.md`](core-state.md) and core-policy owns the ceiling ([`docs/wiki/core-policy.md`](core-policy.md)). CLI stage creation uses a different persisted-password contract; see [`docs/wiki/cli.md`](cli.md).
 
-Once settings are loaded, `AppContextProvider` exposes `activeConfig` after `withConfigPolicy(activeConfig, new SettingsProvider(settingsManager), false)`, so every TUI policy gate sees resolved role assignments. Stored assignments stay intact, and an unknown role stays visible for repair and fails closed in policy checks. Before settings load it exposes a copy with a cloned `access`.
+Once settings are loaded, `AppContextProvider` exposes `activeConfig` after `effectiveConfig(activeConfig, new SettingsProvider(settingsManager), false)`. The result is the stored config laid over its stage's defaults, with policy bound and no `NOORM_*` variable or flag applied. `ConnectionProvider` reads that object, so the TUI connects with the stored config over its stage, and every policy gate sees resolved role assignments. Stored assignments stay intact, and an unknown role stays visible for repair and fails closed in policy checks. Before settings load it exposes a copy with a cloned `access`. The memo rebuilds the object only when the active config, settings manager, loaded flag, or settings change, because `ConnectionProvider` compares it by identity.
 
-A stored active config with malformed access does not break startup. `readActiveConfig` catches `ConfigAccessInvalidError` from `sm.getConfig`, so `activeConfig` and `activeConfigName` become `null` and `activeConfigAccessError` carries the message. Startup, `state:loaded`, `config:activated`, and the other observer refreshes all go through `applyActiveConfig`. `HomeScreen` renders the message as a yellow warning in place of the first-config prompt, or under the "none is active" text, so the user can repair the config.
+A stored active config that cannot be used does not break startup. `readActiveConfig` catches `ConfigAccessInvalidError` from `sm.getConfig`, so `activeConfig` and `activeConfigName` become `null` and `activeConfigAccessError` carries the message. A throw from `effectiveConfig` (a stage that makes the connection invalid, for one) is caught the same way: the exposed config is `null` and the error message fills `activeConfigAccessError`, because a render-time throw would end the TUI at every start and the stored connection alone is never a fallback. Startup, `state:loaded`, `config:activated`, and the other observer refreshes all go through `applyActiveConfig`. `HomeScreen` renders the message as a yellow warning in place of the first-config prompt, or under the "none is active" text, so the user can repair the config.
 
 `syncStateFromManagers` refreshes the active config, config summaries, settings, and global identity. Observer subscriptions keep config activation, creation, deletion, connection status, and lock status reflected in React state. `refresh()` resynchronizes the context; it does not rerun stage seeding.
 
@@ -152,13 +152,13 @@ flowchart TD
 
 `SecretReadGate` wraps `SecretListScreen` and gates the local `secret:read` permission. `useVaultSecretKeys(enabled)` gates `vault:read` and returns `vaultConfirmation`, which `SecretListScreen`, `SecretSetScreen`, and `SecretRemoveScreen` render as a confirmation panel. `VaultScreen` checks `vault:read`, `vault:write`, and `vault:propagate`. `useConnection` and `useVaultConnection` accept `enabled`; `enabled: false` skips requesting a connection, so none opens before approval. `useConnection({ ensureSchema: true })` (which `useVaultConnection` uses) calls `prepareTrackingSchema(db, dialect, { channel: 'user', config: activeConfig })`. A role that may write tracking creates or migrates the tables. Any other role only has them checked: older tables make the hook set an error rather than migrate, and missing tables are left absent with no error, because the hook ignores the returned value.
 
-Explore screens (`ExploreOverviewScreen`, `ExploreListScreen`, `ExploreDetailScreen`) and `HomeScreen` pass `userGate(activeConfig)` from core-db's explore module to `fetchOverview`, `fetchList`, and `fetchDetail`. `RowPeekOverlay` receives the same gate and calls `fetchRowPeek` directly; it shows no `ProtectedConfirm` of its own, and `fetchRowPeek` refuses a gate that disallows the read. `DbTruncateScreen` lists tables with `GATED_BY_CALLER`, leaving the truncate's own `db:*` check as the gate. `SqlTerminalScreen` resolves policy with `withConfigPolicy`, checks each permission from `sqlPermissionsFor`, and runs through `withPolicyConfirmation` after a `ProtectedConfirm` for confirmed permissions. `ConfigExportScreen` checks `secret:read` and adds a `confirm` step. Pipeline runs use the same pattern with `pipeline:run`; see Pipeline run, stop, and result.
+Explore screens (`ExploreOverviewScreen`, `ExploreListScreen`, `ExploreDetailScreen`) and `HomeScreen` pass `userGate(activeConfig)` from core-db's explore module to `fetchOverview`, `fetchList`, and `fetchDetail`. `RowPeekOverlay` receives the same gate and calls `fetchRowPeek` directly; it shows no `ProtectedConfirm` of its own, and `fetchRowPeek` refuses a gate that disallows the read. `DbTruncateScreen` lists tables with `GATED_BY_CALLER`, leaving the truncate's own `db:*` check as the gate. `SqlTerminalScreen` rebinds policy with `revalidateConfigPolicy` (which keeps the bound `isTest` trust), checks each permission from `sqlPermissionsFor`, and runs through `withPolicyConfirmation` after a `ProtectedConfirm` for confirmed permissions. `ConfigExportScreen` checks `secret:read` and adds a `confirm` step. Pipeline runs use the same pattern with `pipeline:run`; see Pipeline run, stop, and result.
 
 ### Access roles and protected-stage escape
 
 `settings/access`, `settings/access/add`, and `settings/access/edit` route to `SettingsAccessListScreen` and `SettingsAccessEditScreen`, which edit custom roles; `SettingsListScreen` links to them with a role and override summary. Built-in role checks use core-policy's `BUILTIN_ROLES` and `isBuiltinRole`. For permissions in `USER_ALWAYS_ALLOWED`, the edit screen shows the agent channel's effective cell, since the user channel always reads. `getRoleOptions` in `utils/config-validation.ts` builds config role choices from `BUILTIN_ROLES` plus `settings.access.roles`.
 
-`ConfigAddScreen`, `ConfigEditScreen`, and `ConfigImportScreen` call `validateAccessRoles(config.access, settings.access?.roles)` before saving. `ConfigCopyScreen` calls `stateManager.copyConfig(configName, newName, settingsProvider)` and `ConfigEditScreen` calls `stateManager.renameConfig(configName, updatedConfig, settingsProvider)` on a name change (otherwise `setConfig`), so the state manager keeps the protected-stage ceiling across copy and rename. [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) covers these screens and runs in the CI group for CLI tests.
+`ConfigAddScreen`, `ConfigEditScreen`, and `ConfigImportScreen` call `validateAccessRoles(config.access, settings.access?.roles)` before saving (import calls it on the config `parseConfig` returns). `ConfigCopyScreen` calls `stateManager.copyConfig(configName, newName, settingsProvider)` and `ConfigEditScreen` calls `stateManager.renameConfig(configName, updatedConfig, settingsProvider)` on a name change (otherwise `setConfig`), so the state manager keeps the protected-stage ceiling across copy and rename. [`tests/cli/screens/protected-config-escape.test.tsx`](../../tests/cli/screens/protected-config-escape.test.tsx) covers these screens and runs in the CI group for CLI tests.
 
 ### Pipelines
 
@@ -217,6 +217,8 @@ After settling, `PipelineEvidence` renders the result and is shared with the his
 
 A retired record with outstanding leases stays open until the last `release()`, so a long operation keeps its connection through a config switch. `retainConnection(db, config)` returns a `RetainedConnection` (`db`, `dialect`, `configName`, `release`, `invalidate`) only for the exact published pair, and throws "The database target changed" when the record is retired, the config changed, or shutdown has begun. `invalidate()` closes the record immediately and clears published state; pipeline contexts receive it as `disposeMemoryConnection`.
 
+The record's config is the effective config from `AppContextProvider`, not the stored one. `isDatabaseNotFoundError` in `ConnectionStatus.tsx` and `isDatabaseMissingError` in `home.tsx` return false for a message that `isSslFileErrorMessage` recognises, so an unreadable certificate file is not reported as a missing database.
+
 Every close registers a `releasing`-phase lifecycle resource, so shutdown waits for destroy to finish, and a failed destroy sets exit code 1.
 
 ```mermaid
@@ -234,23 +236,74 @@ stateDiagram-v2
 
 `ConfigAddScreen` and `ConfigEditScreen` submit through `save(values, verify)`. Enter calls it with `verify: true`, which runs `testConnection` (server only, through `testServerOnly: true`, on both screens, since the database may not exist yet) and stops on failure. Both pass `altSubmit={{ ...SAVE_UNVERIFIED, suggest: testFailed, ... }}` to `Form`, so Ctrl+S calls `save(values, false)` and skips the test. `SAVE_UNVERIFIED` lives in [`src/tui/utils/connection.ts`](../../src/tui/utils/connection.ts); `suggest` turns the hint on after a failed test.
 
+The test opens the connection as the TUI will: `connectionOverStage(name, connection, settingsManager)` lays the form's connection over the defaults of the stage named in the form, and the result goes to `testConnection`. When the stage layering throws, or settings are unavailable, the screen reports that message as the connection error and never calls `testConnection`.
+
 ### SSL fields on config forms
 
-`ConfigAddScreen` and `ConfigEditScreen` append the fields from `buildSslFields` after the password field: the `Use SSL` checkbox (`useSsl`), the text fields `sslCaFile`, `sslCertFile`, and `sslKeyFile` for certificate file paths, and `tlsServerName`. On edit, `buildSslFields(config.connection)` defaults them from the stored connection, and the edit screen omits them for SQLite; the add screen lists them for every dialect, and `buildConnectionConfig` ignores them for SQLite. A stored inline PEM (`ca`, `cert`, `key`) shows an empty field with the placeholder `(inline certificate stored)`, because the form edits paths, not certificate bodies.
+`ConfigAddScreen` and `ConfigEditScreen` append the fields from `buildSslFields` after the password field: the `Use SSL` checkbox (`useSsl`), the `Verify Certificate` checkbox (`verifyCertificate`), the text fields `sslCaFile`, `sslCertFile`, and `sslKeyFile` for certificate file paths, and `tlsServerName`. The add form calls `buildSslFields()` with no arguments and lists them for every dialect. The edit form calls `buildSslFields(config.connection, effectiveConnection)` and omits them for SQLite. `effectiveConnection` is the stored connection over its stage (`connectionOverStage`), falling back to the stored one when the stage makes it invalid, so `Use SSL` and `Verify Certificate` open on the state in effect. A stored inline PEM (`ca`, `cert`, `key`) shows an empty path field with the placeholder `(inline certificate stored)`, and a path that comes only from the stage shows `(stage: <path>)`, because the form edits paths, not certificate bodies.
 
-`buildConnectionConfig(values, dialect, existing)` starts from the stored `ConnectionConfig`, so fields the form does not show (pool, inline PEM, timeouts, keepalive) survive an edit. `buildSsl` maps the form to the `ssl` shape:
+`buildConnectionConfig(values, dialect, existing, effective)` starts from the stored `ConnectionConfig`, so fields the form does not show (pool, inline PEM, timeouts, keepalive) survive an edit. `buildSsl` maps the form to the `ssl` shape:
 
 | Form state | Stored `ssl` after submit |
 |---|---|
-| `useSsl` unchecked, no stored `ssl` | left absent, so a stage default still applies |
-| `useSsl` unchecked, stored `ssl` of any shape | `false`; stored certificate fields are discarded |
-| `useSsl` checked, a path entered | the matching `caFile`, `certFile`, or `keyFile` set to the trimmed path, and the matching inline `ca`, `cert`, or `key` deleted |
-| `useSsl` checked, a path blank | that file key deleted; the other stored keys, including inline PEM for untouched fields, are kept |
-| `useSsl` checked, resulting object empty (every path blank and no other stored key, or no stored object) | `true` |
+| `Use SSL` matches the effective state, no path changed, `Verify Certificate` unchanged | the stored `ssl` untouched, absent included, so a stage default still applies |
+| `Use SSL` unchecked, otherwise | `false`; stored certificate fields are discarded |
+| `Use SSL` checked, a path entered | the matching `caFile`, `certFile`, or `keyFile` set to the trimmed path, and the matching inline `ca`, `cert`, or `key` deleted |
+| `Use SSL` checked, a path blank | that file key deleted; the other stored keys, including inline PEM for untouched fields, are kept |
+| `Verify Certificate` unchecked | `rejectUnauthorized: false` set, even when a stage supplied it |
+| `Verify Certificate` checked | a stored `rejectUnauthorized: false` deleted |
+| `Use SSL` checked, resulting object empty | `true` |
 
-`tlsServerName` is set when non-blank and deleted otherwise. SQLite also drops a stored `filename`, since the Database field names the file.
+`tlsServerName` is set when non-blank, deleted when blank and the stored one was not, and left alone when it equals the stored value. An empty port field keeps the stored port (absent included, so a stage port applies); only the add form falls back to the dialect default. SQLite drops host, port, user, password, and a stored `filename` (the Database field names the file), and skips the SSL mapping.
 
-Both screens call `validateSslForm` before the connection test and show the message through `setConnectionError`. Only `ConfigEditScreen` passes the stored connection (`validateSslForm(values, dialect, config.connection)`); `ConfigAddScreen` calls `validateSslForm(values, dialect)` and `buildConnectionConfig(values, dialect)` with none. It rejects an unchecked `Use SSL` with a path that differs from the stored one, and an unchecked `Use SSL` with a `tlsServerName` on PostgreSQL or MySQL. A path equal to the stored value does not count as entered. Core-state owns the config schema, `combineSsl`, and `anchorSslFiles` ([`docs/wiki/core-state.md`](core-state.md)); `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) and imported directly by [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts), while `resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) reads the files at connect time ([`docs/wiki/core-db.md`](core-db.md)).
+Both screens call `validateSslForm` before the connection test and show the message through `setConnectionError`. It combines the stage's `ssl` with the saved one through `combineSsl`, so the check sees what the connection will use:
+
+| Condition | Message starts |
+|---|---|
+| a path differs from the stored one and the combined `ssl` is off | `A certificate file needs Use SSL.` |
+| `tlsServerName` set on PostgreSQL or MySQL and the combined `ssl` is off | `TLS server name needs Use SSL on PostgreSQL and MySQL.` |
+| `tlsServerName` set on PostgreSQL or MySQL and the combined `ssl` skips verification | `TLS server name needs Verify Certificate on PostgreSQL and MySQL.` |
+
+MSSQL skips the `tlsServerName` checks, and SQLite skips validation. A path equal to the stored value does not count as entered. `ConfigEditScreen` passes the stored and effective connections; `ConfigAddScreen` calls `validateSslForm(values, dialect, stageSsl)` and `buildConnectionConfig(values, dialect)` with none. Core-state owns the config schema, `combineSsl`, and `anchorSslFiles` ([`docs/wiki/core-state.md`](core-state.md)); `SSL_FIELD_PAIRS` is defined in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) and imported directly by [`src/tui/utils/config-validation.ts`](../../src/tui/utils/config-validation.ts), while `resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) reads the files at connect time ([`docs/wiki/core-db.md`](core-db.md)).
+
+### Renaming keeps the TLS state shown
+
+A stage links to a config by name, so renaming a config can place a different stage's `ssl` beneath it. On a name change, `ConfigEditScreen` calls `sslPinnedByRename` with the new name's stage `ssl`. It compares the TLS state the form shows (off, verified, or unverified) with the state the saved connection would have under the new stage. When they differ it returns an `ssl` that restates the shown state: `false` for off, the stored certificates plus `rejectUnauthorized: false` for unverified, and the certificates (or `true`) for verified. The screen validates with that value in place of the stage's and saves it in place of the built one.
+
+The rename check runs before validation, and the stage test runs last, so the test sees the pinned state:
+
+```mermaid
+flowchart TD
+    %% source: src/tui/screens/config/ConfigEditScreen.tsx, src/tui/utils/config-validation.ts
+    Save["save(values, verify)"] --> Renamed{"newName !== config.name?"}
+    Renamed -->|yes| Pin["sslPinnedByRename()"]
+    Renamed -->|no| Validate
+    Pin --> Validate["validateSslForm()"]
+    Validate --> Err{"message?"}
+    Err -->|yes| Show["setConnectionError()"]
+    Err -->|no| Build["buildConnectionConfig()<br/>ssl = pinned, if set"]
+    Build --> Test["connectionOverStage()<br/>testConnection()"]
+```
+
+### Effective config across config screens
+
+Config screens bind a stored config through `effectiveConfig` (stage defaults beneath the stored layer, policy bound) rather than `withConfigPolicy`. The calls differ by what each screen must still do with a broken config:
+
+| Screen | Call | Behavior on failure |
+|---|---|---|
+| `ConfigUseScreen`, `ConfigExportScreen`, `ConfigListScreen` (selection) | `effectiveConfig(config, provider)` with role validation | the error is shown (toast or error step) |
+| `ConfigValidateScreen` | `effectiveConfig(config, provider, false)` | roles stay unvalidated so an unknown role is diagnosed; a throw renders one `Config` row in `error` status |
+| `DbTransferScreen` (destination) | `effectiveConfig(stored, provider, false)` | a throw sets the error phase; an unknown role loads and the policy check refuses it |
+| `ConfigRemoveScreen` | `effectiveConfig`, falling back to `withConfigPolicy` | deleting repairs a config that no longer builds over its stage, so its stored roles decide then |
+| `SqlTerminalScreen` | `revalidateConfigPolicy` | the error shows as a toast and the query does not run |
+
+`ConfigListScreen` appends a TLS tag to each row description after `[test]`: `[tls]` when the effective connection has `ssl`, `[tls unverified]` when `skipsVerification(ssl)` is true, and no tag for SQLite or when the config cannot be built into an effective one. The row still renders without the tag in that case.
+
+### Exporting and importing a config
+
+`ConfigExportScreen` writes `name`, `type`, `isTest`, `access`, `protected` (from `guarded`), and `connection`, plus the config's secrets, encrypted for the recipient. `withoutCredentials` builds `connection` by removing `user` and `password` and keeping every other field, so a field added to the connection travels without an edit. An `ssl` object loses its inline `key` and `cert`; if nothing else remains it becomes `true`. The `caFile`, `certFile`, and `keyFile` paths and an inline `ca` stay. The screen's note says user, password, and the inline client key and certificate are not included.
+
+`ConfigImportScreen` previews the incoming config before asking for credentials: sender, secret count, dialect, database, host and port, `SSL` on or off, `Verify certificate` (only when `ssl` is set, derived from `skipsVerification`), `TLS server name` when present, one line per certificate file path with a note that the path must exist on this machine, a `Roles` line with the user role and the agent role (`off` when `access.agent` is `false`), and a yellow `Test database` line when `isTest` is `true`. On save, the screen passes the name, type, `isTest`, resolved access, and the incoming connection with the entered `user` and `password` through `parseConfig`, and saves the parsed result, so a key the schema does not know never reaches state. A payload with no `secrets` imports with none.
 
 ### Identity setup gate and regeneration
 
@@ -278,7 +331,7 @@ flowchart TD
 
 ### Lock screens
 
-`LockAcquireScreen` checks `lock:acquire`, `LockForceScreen` checks `lock:force`, and `LockReleaseScreen` checks `lock:acquire`, all through `checkConfigPolicy('user', activeConfig, ...)`. A disallowed check renders `blockedReason`; `LockAcquireScreen` and `LockReleaseScreen` also pass `check?.allowed !== false` as the enable flag to `useLockStatus`, and `LockForceScreen` skips its connection when denied. All three confirm through `SmartConfirm`: acquire shows it after the form only when `check.requiresConfirmation` is set (otherwise it acquires directly), release uses `check.requiresConfirmation`, and force uses `isConfigGuarded(activeConfig) || check.requiresConfirmation` with the policy's `confirmationPhrase`.
+`LockAcquireScreen` checks `lock:acquire`, `LockForceScreen` checks `lock:force`, and `LockReleaseScreen` checks `lock:acquire`, all through `checkConfigPolicy('user', activeConfig, ...)`. A disallowed check renders `blockedReason`; `LockAcquireScreen` and `LockReleaseScreen` also pass `check?.allowed !== false` as the enable flag to `useLockStatus`, and `LockForceScreen` skips its connection when denied. Each of these screens confirms through `SmartConfirm`: acquire shows it after the form only when `check.requiresConfirmation` is set (otherwise it acquires directly), release uses `check.requiresConfirmation`, and force uses `isConfigGuarded(activeConfig) || check.requiresConfirmation` with the policy's `confirmationPhrase`.
 
 ### Update download progress
 
@@ -343,7 +396,7 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 | [`src/tui/hooks/`](../../src/tui/hooks) | `useConnection` (with `enabled`), `useVaultConnection`, `useVaultSecretKeys` (vault-read policy gate and confirmation), `useLockStatus` from `hooks/useLockStatus.ts`, `useLoadGuard`, `useTransferProgress`, `useSettingsOperation`, `useSecretSource`, and `useAsyncEffect`; exported through `hooks/index.ts`. |
 | [`src/tui/hooks/useAbortableTask.ts`](../../src/tui/hooks/useAbortableTask.ts) | Cancellable per-screen database tasks and suppression of stale results after cancellation. |
 | [`src/tui/hooks/useViewportRows.ts`](../../src/tui/hooks/useViewportRows.ts) | Terminal-size-derived capacity for windowed lists. |
-| [`src/tui/utils/`](../../src/tui/utils) | `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts` (including `getRoleOptions`, `buildSslFields`, `validateSslForm`), `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `progress.ts`, `run-context.ts`, `settings-validation.ts`, and `string.ts`; `utils/index.ts` exports these helpers except `date.ts`. |
+| [`src/tui/utils/`](../../src/tui/utils) | `change-context.ts`, `change-loader.ts`, `clipboard.ts`, `config-validation.ts` (including `getRoleOptions`, `buildSslFields`, `validateSslForm`, `sslPinnedByRename`, `connectionOverStage`, `skipsVerification`), `connection.ts`, `date.ts`, `error.ts`, `identity.ts`, `paths.ts`, `progress.ts`, `run-context.ts`, `settings-validation.ts`, and `string.ts`; `utils/index.ts` exports these helpers except `date.ts`. |
 | [`src/tui/utils/progress.ts`](../../src/tui/utils/progress.ts) | `progressPercentage(completed, total)` returns the 0–100 value expected by Ink's `ProgressBar`, clamping over-counted event streams. |
 | [`src/tui/hooks/useUpdateChecker.ts`](../../src/tui/hooks/useUpdateChecker.ts), [`src/tui/hooks/useUpdateProgress.ts`](../../src/tui/hooks/useUpdateProgress.ts), [`src/tui/screens/UpdateScreen.tsx`](../../src/tui/screens/UpdateScreen.tsx) | Update commands and event-driven download display. |
 | [`src/tui/screens/secret/SecretReadGate.tsx`](../../src/tui/screens/secret/SecretReadGate.tsx) | Policy gate for local secret reads. |
@@ -372,7 +425,9 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 - Gated screens must pass `enabled` to `useConnection`/`useVaultSecretKeys` until policy allows and confirmation is approved; requesting the connection first reads the vault before the user confirms.
 - A screen that can create the first saved state must be wrapped in `requireIdentity` (today `config/add` and `config/import` in `SCREENS`); without it the form can complete and then fail to store because no private key is loaded.
 - `useConnection` passes `channel: 'user'` and the active config to `prepareTrackingSchema` itself; callers pass only `ensureSchema`. `mayWriteTracking` decides from that channel and config, so a hook change that passes a different config lets the wrong role create or migrate tracking tables.
-- `buildConnectionConfig` on edit must receive the stored `connection` as `existing`. Without it, pool, timeouts, keepalive, and inline PEM fields the form does not show are dropped on save. When a stored `ssl` exists, unchecking `Use SSL` on edit stores `ssl: false`, and the stored `caFile`, `certFile`, and `keyFile` are discarded with no confirmation.
+- `buildConnectionConfig` on edit must receive the stored `connection` as `existing` and the effective one as `effective`. Without `existing`, pool, timeouts, keepalive, and inline PEM fields the form does not show are dropped on save; without `effective`, an untouched form copies the stage's TLS state into the stored config. Unchecking `Use SSL` on edit, when that differs from the effective state, stores `ssl: false`, and the stored `caFile`, `certFile`, and `keyFile` are discarded with no confirmation.
+- A rename must go through `sslPinnedByRename`; otherwise the new name's stage can change the TLS state the form showed without the user seeing it.
+- Code that classifies a connection error as a missing database must exclude `isSslFileErrorMessage` matches, or an unreadable certificate file reads as a missing database.
 - Config add, edit, and import call `validateAccessRoles` against `settings.access.roles` before saving; skipping it persists a role name that policy checks later reject.
 - Progress consumers must clear reports at operation boundaries; retaining them shows server activity for a file that has already finished.
 - Cancellation warning duration and confirmation timing share `DOUBLE_PRESS_WINDOW_MS`; diverging them makes the visible warning disagree with the accepted confirmation window.
@@ -392,7 +447,7 @@ A repeated exit request while shutting down (including Ctrl+C on `ShutdownScreen
 ## Coupling
 
 - **core-state** owns settings, stored configs, stage materialization, and observer contracts. `AppContextProvider` orchestrates those managers; [`docs/wiki/core-state.md`](core-state.md) owns their implementation details.
-- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) subscribes to core observer events directly. Screens use domain hooks (`useRunProgress`, `useChangeProgress`, `useLockStatus`, `useConnection`, `useTransferProgress`, `useVaultConnection`, `useVaultSecretKeys`, `useLoadGuard`, `useUpdateChecker`) rather than duplicating those subscriptions. Config screens' `SettingsProvider`, `withConfigPolicy`, and `validateAccessRoles` come from core-state's [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts).
+- [`src/tui/app-context.tsx`](../../src/tui/app-context.tsx) subscribes to core observer events directly. Screens use domain hooks (`useRunProgress`, `useChangeProgress`, `useLockStatus`, `useConnection`, `useTransferProgress`, `useVaultConnection`, `useVaultSecretKeys`, `useLoadGuard`, `useUpdateChecker`) rather than duplicating those subscriptions. Config screens' `SettingsProvider`, `effectiveConfig`, `withConfigPolicy`, `revalidateConfigPolicy`, and `validateAccessRoles` come from core-state's [`src/core/config/resolver.ts`](../../src/core/config/resolver.ts).
 - **cli** owns launching the interactive application and its terminal teardown. Its stage-creation password contract differs from TUI auto-seeding; see [`docs/wiki/cli.md`](cli.md).
 - **core-runner** owns SQL execution and statement-progress production. Run/change screens consume `buildRunContext`, `discoverFiles`, `runBuild`, and `RunContext` from [`src/core/runner/`](../../src/core/runner), and [`src/tui/utils/run-context.ts`](../../src/tui/utils/run-context.ts) holds only `runCancelMessage`; [`src/core/runner/statement-watcher.ts`](../../src/core/runner/statement-watcher.ts) emits the status events. See [`docs/wiki/core-runner.md`](core-runner.md).
 - **core-change**: [`src/tui/screens/change/`](../../src/tui/screens/change) imports `ChangeHistory`, `discoverChanges`, and change types; [`src/tui/screens/home.tsx`](../../src/tui/screens/home.tsx) also uses `ChangeHistory` for recent activity. See [`docs/wiki/core-change.md`](core-change.md).

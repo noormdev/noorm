@@ -194,7 +194,7 @@ Certificates:
 |---|----------|------|------|
 | A | Store the path, read the file at connect time | Rotation works; the private key stays out of state and exports | The file must exist on every machine that connects |
 | B | Read the file when the config is saved and store the PEM | The config is self-contained | The key enters `state.enc` and every export; rotation needs a config edit |
-| C | Document `NODE_EXTRA_CA_CERTS` | No code | No client certificates; unverified in the compiled binary; process-wide |
+| C | Document `NODE_EXTRA_CA_CERTS` | No code | No client certificates; process-wide |
 
 Tunnel:
 

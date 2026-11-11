@@ -171,7 +171,7 @@ The adapters map controls explicitly; a field in `ConnectionConfig` is not a pro
 
 ### Reading certificate files
 
-`ConnectionConfig.ssl` takes each certificate field in two forms. `SSL_FIELD_PAIRS` in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) lists them as `[inline, file]`: `ca` and `caFile`, `cert` and `certFile`, `key` and `keyFile`. An inline field holds PEM text; a file field holds a path. `rejectUnauthorized` has no file form. Three files use `SSL_FIELD_PAIRS`: [`src/core/config/schema.ts`](../../src/core/config/schema.ts) rejects a pair with both forms set in one layer, [`src/core/config/ssl-combine.ts`](../../src/core/config/ssl-combine.ts) lets a higher layer's form replace a lower layer's, and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) rejects inline fields in stage defaults and names the file form.
+`ConnectionConfig.ssl` takes each certificate field in two forms. `SSL_FIELD_PAIRS` in [`src/core/connection/types.ts`](../../src/core/connection/types.ts) lists them as `[inline, file]`: `ca` and `caFile`, `cert` and `certFile`, `key` and `keyFile`. An inline field holds PEM text; a file field holds a path. `rejectUnauthorized` has no file form. `SSL_FIELD_PAIRS` drives these rules: [`src/core/config/schema.ts`](../../src/core/config/schema.ts) rejects a pair with both forms set in one layer, [`src/core/config/ssl-combine.ts`](../../src/core/config/ssl-combine.ts) lets a higher layer's form replace a lower layer's, and [`src/core/settings/schema.ts`](../../src/core/settings/schema.ts) rejects inline fields in stage defaults and names the file form.
 
 `resolveSslFiles` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts) turns every file field into its inline field. It runs inside `openConnection`, on every connect attempt and immediately before the dialect factory, so a rotated certificate takes effect on the next connection without a config change. It returns a copy and never mutates its input, so the stored config, and anything that redacts or exports it, keeps the paths.
 
@@ -205,7 +205,7 @@ flowchart TD
 | `EFBIG` | Larger than 1 MiB |
 | `ENOTPEM` | No `-----BEGIN ` line |
 
-[`src/core/connection/index.ts`](../../src/core/connection/index.ts) exports `SslFileError`. The factory does not retry it, and `testConnection` does not treat it as a missing database.
+[`src/core/connection/index.ts`](../../src/core/connection/index.ts) exports `SslFileError` and `isSslFileErrorMessage`. The factory does not retry the error, and `testConnection` does not treat it as a missing database. `isSslFileErrorMessage` recognizes the error from its message text alone, for callers that hold only a string; [`src/tui/screens/home.tsx`](../../src/tui/screens/home.tsx) and [`src/tui/components/status/ConnectionStatus.tsx`](../../src/tui/components/status/ConnectionStatus.tsx) use it so a certificate-file failure is not classified as a missing database (`isDatabaseMissingError`, `isDatabaseNotFoundError`). Its pattern must change together with `messageFor` in [`src/core/connection/ssl-files.ts`](../../src/core/connection/ssl-files.ts).
 
 Each adapter consumes the resolved text differently:
 
@@ -217,6 +217,32 @@ Each adapter consumes the resolved text differently:
 | SQLite | Not applicable | `resolveSslFiles` returns the config unchanged and no file is read. |
 
 On a certificate rejection, `explainConnectionError` words the failure by cause. A hostname mismatch (`ERR_TLS_CERT_ALTNAME_INVALID`) lists the certificate's altnames, truncated at 300 characters, and suggests `tlsServerName`. Any other certificate code suggests `ssl.caFile` or `NODE_EXTRA_CA_CERTS`, and otherwise `ssl.rejectUnauthorized: false`; on PostgreSQL and MySQL with a `tlsServerName` set, the hint adds that the name must be removed because it requires validation. mysql2 replaces the TLS error code with `HANDSHAKE_SSL_ERROR`, so for MySQL `MYSQL_CERTIFICATE_REASONS` recovers the code from the message text. `wrongCaseSslKeyMessage` in [`src/core/connection/options.ts`](../../src/core/connection/options.ts) names the camelCase spelling for an `ssl` key written in the wrong case.
+
+### Proving certificate files against live servers
+
+The integration tests below complete a real TLS handshake through `createConnection`, so the file-to-PEM path and the rejection wording are checked against actual driver errors, not mocks.
+
+| File | Runs when | What it proves |
+|---|---|---|
+| [`tests/integration/connection/mysql-tls.test.ts`](../../tests/integration/connection/mysql-tls.test.ts) | `TEST_MYSQL_CA_FILE` is set and the MySQL container answers | `ssl.caFile` connects encrypted (`SHOW STATUS LIKE 'Ssl_cipher'` is non-empty). A `tlsServerName` the certificate is not issued for fails with the hostname hint. The certificate's common name, read from that error, connects. `ssl: true` with no CA fails with `SELF_SIGNED_CERT_IN_CHAIN` and the `ssl.caFile` hint. |
+| [`tests/integration/connection/mssql-tls.test.ts`](../../tests/integration/connection/mssql-tls.test.ts) | The MSSQL container answers | `rejectUnauthorized: false` connects with `encrypt_option` `TRUE` in `sys.dm_exec_connections`. `ssl: true` fails with `DEPTH_ZERO_SELF_SIGNED_CERT` and the `ssl.caFile` hint. |
+
+The MySQL file is also what pins the mysql2 message wordings that `MYSQL_CERTIFICATE_REASONS` matches. The MSSQL container keeps its generated certificate in memory, so there is no CA file to point at, and `ssl.caFile` and `tlsServerName` for MSSQL are covered by unit tests only.
+
+The MySQL test needs the container's public CA in a file, and CI exports it before the integration step:
+
+```mermaid
+flowchart TD
+    %% source: .github/workflows/ci.yml, docs/dev/ci.md, tests/integration/connection/mysql-tls.test.ts
+    Export["ci.yml step<br/>Export the MySQL<br/>server CA"] --> Cat["docker exec ... cat<br/>/var/lib/mysql/ca.pem"]
+    Cat --> Check{"file holds<br/>BEGIN CERTIFICATE?"}
+    Check -->|no| Fail["step fails"]
+    Check -->|yes| Env["TEST_MYSQL_CA_FILE<br/>to GITHUB_ENV"]
+    Env --> Test["mysql-tls.test.ts<br/>ssl.caFile"]
+    Test --> Resolve["createConnection<br/>resolveSslFiles"]
+```
+
+Only the public CA leaves the container; its private keys stay inside. Without the variable the file's `describe` is skipped. Run steps and the local command are in the Live TLS Tests section of [`docs/dev/ci.md`](../dev/ci.md); [`docs/wiki/infra.md`](infra.md) owns the workflow.
 
 ### Gating a transfer
 
@@ -339,7 +365,7 @@ sequenceDiagram
 | [`src/core/transfer/events.ts`](../../src/core/transfer/events.ts) | `TransferEvents` observer contract |
 | `src/core/transfer/dialects/*.ts` | Per-dialect FK toggle, identity-insert toggle, sequence reset, conflict-aware INSERT (no sqlite module) |
 | `src/cli/db/*.ts` | `noorm db <create\|drop\|explore\|reset\|teardown\|transfer\|truncate>` Citty subcommands; `create.ts`/`drop.ts` call `checkDbStatus`/`createDb`/`destroyDb` directly, bypassing the SDK layer |
-| `tests/core/{connection,db,explore,teardown,transfer}/` (connection: `ssl-files.test.ts`, `ssl-files-home.test.ts` with its `fixtures/ssl-home-child.ts` subprocess, and `dialects/*.test.ts` for TLS mapping; explore: `gate.test.ts`, `dispatch.test.ts`, `peek.test.ts`), [`tests/integration/`](../../tests/integration) | Unit coverage per module plus cross-database integration runs. Under [`tests/integration/connection/`](../../tests/integration/connection): `postgres-runtime-options.test.ts` covers credential refresh, original provider errors, sanitized events, and PostgreSQL session controls; `mysql-runtime-options.test.ts` covers replacement after an idle failure and distinguishes active-query failures; `mysql-packed-sdk.test.ts` covers dynamic credentials from an installed SDK under Node. [`tests/core/teardown/operations.test.ts`](../../tests/core/teardown/operations.test.ts) covers FK re-enable failures and error precedence. |
+| `tests/core/{connection,db,explore,teardown,transfer}/` (connection: `ssl-files.test.ts`, `ssl-files-home.test.ts` with its `fixtures/ssl-home-child.ts` subprocess, and `dialects/*.test.ts` for TLS mapping; explore: `gate.test.ts`, `dispatch.test.ts`, `peek.test.ts`), [`tests/integration/`](../../tests/integration) | Unit coverage per module plus cross-database integration runs. Under [`tests/integration/connection/`](../../tests/integration/connection): `postgres-runtime-options.test.ts` covers credential refresh, original provider errors, sanitized events, and PostgreSQL session controls; `mysql-runtime-options.test.ts` covers replacement after an idle failure and distinguishes active-query failures; `mysql-tls.test.ts` and `mssql-tls.test.ts` run live TLS handshakes (see Proving certificate files against live servers); `mysql-packed-sdk.test.ts` covers dynamic credentials from an installed SDK under Node. [`tests/core/teardown/operations.test.ts`](../../tests/core/teardown/operations.test.ts) covers FK re-enable failures and error precedence. |
 
 ## Constraints
 
@@ -351,6 +377,7 @@ sequenceDiagram
 | `runtime.checkServerIdentity` is consumed only by PostgreSQL | Assuming MySQL or MSSQL consumes it leaves the custom verification unenforced. `tlsServerName` is the identity control on PostgreSQL, MySQL, and MSSQL. |
 | MySQL `tlsServerName` requires explicit `ssl` with verification and a hostname | `buildMysqlOptions` throws `MySQL TLS identity options require ...` for a missing `ssl` or `rejectUnauthorized: false`, and `Invalid tlsServerName` for an IP literal. |
 | Certificate files are read on every connect attempt, only from regular PEM files up to 1 MiB | A missing, blank, oversized, or non-PEM file throws `SslFileError` before any socket opens and is not retried. |
+| The MySQL live TLS test is skipped without `TEST_MYSQL_CA_FILE` | A local run that omits the CA export reports the MySQL handshake coverage as skipped, not passed. The MSSQL file needs only its container. |
 | Dialect factories expect resolved `ssl` | A caller that invokes a dialect factory directly instead of `createConnection` leaves `caFile`, `certFile`, and `keyFile` unread, so the adapters do not load the certificate. |
 | MySQL idle reporting depends on established and checkout state | Classifying every socket error as idle mislabels handshake or active-query failures; a failed connection that passes `validate` is handed to the next query. |
 | `PostgreSQL` is never same-server ([`src/core/transfer/same-server.ts`](../../src/core/transfer/same-server.ts)) | Treating it as same-server would, when both configs name the same database, run `INSERT INTO t SELECT ... FROM t`, copying the destination into itself instead of transferring data |

@@ -90,6 +90,24 @@ The workflow records separate reasons for isolation: transfer tests exposed Post
 | CLI logger settings | `bun test --serial tests/cli/cli-logger-settings.test.ts` |
 | Integration | `bun test --serial tests/integration` |
 
+The `build` job also exports the MySQL container's public CA before the integration step, so the live TLS test sees `TEST_MYSQL_CA_FILE`. A step runs `docker exec` against the container started from `mysql:8.0`, copies `/var/lib/mysql/ca.pem` to `$RUNNER_TEMP/mysql-ca.pem`, checks for a `BEGIN CERTIFICATE` line, and sets `TEST_MYSQL_CA_FILE` in `$GITHUB_ENV`. Only the public CA leaves the container; the private keys stay inside it.
+
+The export step runs before the integration step, and the variable decides whether `mysql-tls.test.ts` runs:
+
+```mermaid
+flowchart TD
+    %% source: .github/workflows/ci.yml, tests/integration/connection/mysql-tls.test.ts, tests/integration/connection/mssql-tls.test.ts
+    X["Export the MySQL<br/>server CA for the<br/>live TLS test"] --> F["$RUNNER_TEMP/<br/>mysql-ca.pem"]
+    F --> E["TEST_MYSQL_CA_FILE<br/>in $GITHUB_ENV"]
+    E --> I["Run integration tests"]
+    I --> M{"TEST_MYSQL_CA_FILE<br/>set?"}
+    M -->|yes| R["mysql-tls.test.ts<br/>runs"]
+    M -->|no| K["mysql-tls.test.ts<br/>skipped"]
+    I --> S["mssql-tls.test.ts<br/>container only"]
+```
+
+`mysql-tls.test.ts` uses `describe.skipIf(!caFile)`, so a local run without the variable skips it silently; `mssql-tls.test.ts` needs only the [`docker-compose.test.yml`](../../docker-compose.test.yml) container. [`docs/dev/ci.md`](../dev/ci.md) has the local command under Live TLS Tests.
+
 Every `ci.yml` job uses `ubuntu-24.04`; `publish.yml`, `release-binary.yml`, and `docs.yml` use `ubuntu-latest`. CI, documentation, publishing, and manual binary workflows pin Bun `1.4.4`. Bun tests preload [`tests/preload.ts`](../../tests/preload.ts), use a `30,000 ms` timeout and [`tests`](../../tests) root, and set concurrency to `1` in [`bunfig.toml`](../../bunfig.toml).
 
 | Database service | Host port | Local storage |
@@ -202,6 +220,7 @@ The sandbox redirects `HOME`, recreates isolated project state, and normally pro
 - `import` selects `dist/index.js` with `index.d.ts` declarations; `require` selects `dist/index.cjs` with `index.d.cts` declarations. `default` selects the CommonJS runtime. Independently bundling both formats would split constructor and observer identity.
 - Compiled musl binaries fail without `libstdc++` ([`scripts/smoke-alpine.sh`](../../scripts/smoke-alpine.sh) installs it with `apk add`). The builder names worker entries explicitly; a worker omitted from the compile command fails to resolve inside the binary.
 - Compiled binaries disable automatic [`.env`](../../.env) loading. Re-enabling it lets Bun expand or truncate password characters before the connection layer receives the environment.
+- A skipped `mysql-tls.test.ts` is not a failure. If the export step fails to produce a PEM, the `grep` check fails the job before tests run; if the variable is missing locally, the certificate-file handshake against MySQL goes untested.
 - CI runs on `main`, `master`, and `next`. Its path filters cover source, tests, packages, examples, [`bun.lockb`](../../bun.lockb), `bun.lock`, the root [`package.json`](../../package.json), `tsup.*.config.ts`, `scripts/**`, TypeScript configs, and the CI workflow. A docs-only change does not select that workflow; `docs.yml` independently checks documentation and builds the site.
 - `ci.yml` never runs `lint:docs`, and `docs.yml` triggers only on pushes to `master` affecting `docs/**` or its own workflow, plus manual dispatch, with no pull-request trigger. A flag-placement regression in [`README.md`](../../README.md), [`skills/`](../../skills), or [`examples/`](../../examples) therefore passes every workflow and fails the next `docs/**` deploy; an example-only change runs CI without `lint:docs`. A VitePress build failure likewise surfaces only after a push to `master`.
 - The flag-placement checker scans [`README.md`](../../README.md), [`docs`](..), [`skills`](../../skills), and [`examples`](../../examples), exempting explicit contrast/repro documents. The deployed-branch [`CNAME`](../../CNAME) is written independently of the root [`CNAME`](../../CNAME).

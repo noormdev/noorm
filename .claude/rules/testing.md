@@ -20,6 +20,11 @@ docker compose -f docker-compose.test.yml up -d
 `skipIfNoContainer(dialect)` (`tests/utils/db.ts:892`) **throws, it does not skip**, despite the name. 40 files call it in `beforeAll`. Without the containers up you get a wall of failures that read like real regressions. Check the containers before you believe a red suite.
 
 
+## TLS-enforcing services
+
+`postgres-tls` (`15433`), `mysql-tls` (`13307`) and `mssql-tls` (`11435`) sit behind the compose `tls` profile and start only when named, after `sh scripts/gen-test-tls.sh` has written their certificates. The `tests/integration/connection/*-tls-enforced.test.ts` files skip unless `TEST_TLS_DIR` names that directory (`tests/fixtures/tls/generated`). Commands: "Live TLS Tests" in `docs/dev/ci.md`.
+
+
 ## Database safety
 
 The suite runs `TRUNCATE`, `DROP`, and teardown. `assertTestDatabase` (`tests/utils/db.ts:122`) refuses to connect unless the resolved database name is `:memory:` or contains `test` as a `_`/`-` delimited word, and `createTestConnection` calls it on every connection. It exists so a stray `.env` or leaked CI secret cannot aim a destructive suite at a real database.

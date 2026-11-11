@@ -1,5 +1,100 @@
 # @noormdev/cli
 
+## 1.10.1
+
+### Patch Changes
+
+- ad42642: The TUI import preview shows the user and agent roles the import saves, and a `Test database` line when the file sets `isTest`, which gives every role at least admin's permissions on that config. The preview fits an 80x24 terminal with every TLS field set. The TUI export and delete screens judge a config by its effective roles, stage defaults included, as activation does.
+
+## 1.10.0
+
+### Minor Changes
+
+- 80a8404: A config can name its CA, client certificate and client key by file path with `ssl.caFile`, `ssl.certFile` and `ssl.keyFile`, beside the inline `ca`, `cert` and `key`. noorm reads the files each time a pool opens, on every connect attempt, so a rotated certificate needs no config change, and stores the path, never the content. Stage defaults accept the file form. An unreadable, empty, oversized or non-PEM file fails with `SslFileError`, exported from `@noormdev/sdk`.
+
+  Private CAs and client certificates work on PostgreSQL, MySQL and MSSQL. `tlsServerName` also works on MySQL, for hostnames only. Layers combine `ssl` field by field, so a stage `caFile` survives a stored `ssl: true`. The TUI add and edit forms set Use SSL, Verify Certificate (unchecked stores `ssl.rejectUnauthorized: false`), the three file paths and the TLS server name. The edit form shows the state in effect, with `(stage: <path>)` for a file the stage supplies, keeps connection fields it does not show, and leaves the stored `ssl` as it was when no SSL field changed. The config list tags a config `tls` or `tls unverified`. A certificate file error is not reported as a missing database.
+
+  The TUI export carries every connection field that is not a credential, `tlsServerName`, `pool` and the timeouts included, and withholds `user`, `password` and the inline `ssl.key` and `ssl.cert`. The import saves those fields and previews the incoming TLS settings; certificate file paths must exist on the importing machine.
+
+  Behavior changes:
+
+  - TUI: connects with the stored config over its stage's defaults, as the CLI and SDK do. It applies no config variable (`NOORM_CONNECTION_*`, `NOORM_ACCESS_*`) and no flag to a config; settings variables still apply, so `NOORM_STAGES_<stage>_DEFAULTS_*` changes the stage defaults it merges, as `NOORM_PATHS_*` changes its paths. A TUI config whose stage sets a connection default the stored config lacks (`ssl`, `user`, `password`, `port`) connected without it and now uses it. A stage `isTest` or `type` likewise reaches build rules for a stored config that lacks the key; a stage `isTest` grants no permission. A stored value wins, and a stored `ssl: false` turns a stage's `ssl` off.
+  - TUI: a stored config that does not combine with its stage into a valid config is not activated. Home shows the message and the config stays editable.
+  - TUI export: an inline `ssl.key` and `ssl.cert` were written to the export file and are withheld.
+  - A scalar `NOORM_CONNECTION_SSL` beside a nested `NOORM_CONNECTION_SSL_*` variable fails with a message that names both and says to set one form, not both.
+  - MSSQL: `ssl: { rejectUnauthorized: false }` encrypts without validating the server certificate, as on PostgreSQL, and lifts the `tlsServerName` requirement for an IP host.
+  - MySQL: `ssl: { rejectUnauthorized: false }` skips validation, where it validated before. A `tlsServerName` was ignored and now fails the connection when `ssl` is off, when `rejectUnauthorized` is `false`, when the name is an IP address, or when the certificate lacks the name.
+  - MySQL and MSSQL: an inline `ca`, `cert` or `key` already in a config was ignored and is used. A `ca` replaces the default trust store.
+  - A layer that sets `ssl` does not inherit a lower layer's `rejectUnauthorized`: an `ssl` object over a lower `{ rejectUnauthorized: false }` skipped validation on PostgreSQL and now validates. A higher `ssl: true` keeps the lower object's certificate fields, where it replaced the object. Set `rejectUnauthorized: false` in the higher layer to skip validation.
+  - An SDK inline `ssl: undefined` keeps a lower layer's `ssl`.
+  - An environment or inline `ssl` key spelled in another letter case, such as `CAFILE`, is refused with the right spelling.
+
+  See [certificates](https://noorm.dev/dev/config#tls-certificates).
+
+### Patch Changes
+
+- 80a8404: `NOORM_ACCESS_USER` and `NOORM_ACCESS_AGENT` no longer change the access roles of a stored config. Before, `NOORM_ACCESS_USER=admin` replaced a stored restricted role, and `NOORM_ACCESS_AGENT` could turn a stored `agent: false` into a role, up to the stage's ceiling.
+
+  - Behavior change: with a stored config selected, both variables are ignored, including a value that would narrow the role. Narrow a stored config in the config itself.
+  - A config built from the environment alone (`NOORM_CONNECTION_*`, `config: false`) still takes its access roles from them.
+
+- 80a8404: `ctx.impersonate()` closes its connection when the switch statement (`EXECUTE AS USER`, `SET ROLE`) or the revert statement (`REVERT`, `RESET ROLE`) fails, in callback and explicit mode. Before, callback mode returned the connection to the pool, where the next query could run as the impersonated principal, and a failed `scope.revert()` kept the connection checked out until `disconnect()`.
+
+  - Behavior change: after a failed `scope.revert()` the scope is over. The call still rejects with the revert error; a later `revert()` does nothing, where it re-ran the statement before.
+  - Behavior change: `disconnect()` during a callback-mode `impersonate()` rejects that call with `DisconnectedError` and closes its connection, as `withConnection` does. It waited for the callback before.
+
+## 1.9.0
+
+### Minor Changes
+
+- f444065: On a trusted `isTest: true` config, every role, agents included, gets at least admin's permissions, so an agent can build and test against its own test database. Configs without `isTest` are unchanged.
+- f444065: SDK connection controls, pool options for every pooled dialect, and a shorter first run in the TUI and CLI.
+
+  - `createContext({ name })` names a context that uses no stored config. The name is `ctx.noorm.config.name` and the `configName` on events, and it keys change history, run checksums, locks and local secrets, so keep one name per database. It wins over `NOORM_NAME` and throws when a stored config is selected or has that name. A stage with the same name still applies its protected ceiling and `isTest: false`; stage defaults need `stage`.
+  - `createContext({ config: false })` uses no stored config and ignores `NOORM_CONFIG` and the active config. `config` is now typed `string | false`, so a wrapper that reads `options.config` as a string needs to handle `false`.
+  - `connection.driver` passes options through to `pg`, `mysql2`, or `tedious`. It is inline only: noorm does not store it or put it in its own events, though a driver's own validation error can quote a value. `createContext()` rejects keys that select the target, credentials, or TLS, and SQLite accepts none.
+  - Pool options: `idleTimeoutMs` on PostgreSQL, MySQL and MSSQL; `maxLifetimeMs`, `maxUses` and `allowExitOnIdle` on PostgreSQL; `acquireTimeoutMs`, `createTimeoutMs` and `reapIntervalMs` on MySQL and MSSQL. They work in stored configs, as `NOORM_CONNECTION_POOL_*` variables, and inline, where `connection.pool` is typed per dialect. `pool.idleTimeoutMillis` stays as an alias of `pool.idleTimeoutMs`.
+  - An inline or environment `pool.idleTimeoutMs` replaces a stored `pool.idleTimeoutMillis`, and the reverse. One source that sets both to different values fails validation.
+  - Behavior change: a pool option the dialect cannot honor, and a pool key noorm does not know, now fail validation in stored configs, environment variables and inline. Both were dropped without an error before. An all-caps environment segment is lowercased, so `NOORM_CONNECTION_POOL_MAXUSES` fails with a message that names `NOORM_CONNECTION_POOL_maxUses`. SQLite still accepts `pool.min`, `pool.max` and `pool.idleTimeoutMillis`, unused.
+  - Behavior change: `pool.min` above `pool.max` fails validation on PostgreSQL, MySQL and MSSQL. It passed validation before.
+  - Behavior change: MySQL and MSSQL reject `pool.idleTimeoutMs: 0` (and the `idleTimeoutMillis` alias). A stored config with that value was accepted and ignored before.
+  - Behavior change: MySQL pools through Tarn for a string password and a password callback alike, so `pool.min` and the Tarn options apply to both. A checkout that waits for a free connection now fails after `acquireTimeoutMs`, where mysql2's pool queued without a limit, and an idle connection is closed after Tarn's 30 second default when `idleTimeoutMs` is unset. `acquireTimeoutMs` and `createTimeoutMs` default to 30000, or to `connectTimeoutMs` plus 5000 when that is larger, on MySQL and MSSQL.
+  - `keepAliveInitialDelayMs` sets how long a PostgreSQL or MySQL socket stays idle before the first TCP keepalive probe. MSSQL and SQLite reject it.
+  - Behavior change: `keepAlive: false` turns TCP keepalive off on MySQL. It was ignored there before, and mysql2 enables keepalive by default.
+  - Inline `connection.pool` is typed per dialect, so an unsupported pool option on an inline connection with a literal `dialect` is now a compile error. SQLite keeps `min` and `max`.
+  - Behavior change: with a password callback, a driver or server failure during `connect()` is thrown as `DatabaseConnectionError` with the original error as `cause` and the server code kept. Before, the driver's error came back untranslated. What the callback itself throws still comes back unchanged, including a value that is not an `Error`.
+  - `connection:error` has a new `phase: 'login'`, emitted on PostgreSQL, MySQL and MSSQL when a physical connect the pool makes after its first successful one fails. The query still rejects to its caller.
+  - The SDK entry exports `DatabaseConnectionError`, `DisconnectedError`, `ResetBuildError`, `VersionMismatchError`, `MigrationError`, and the types `ConnectionRetryOptions`, `DialectConnectionConfig`, `InlineConnection`, `PinnedConnection`, `PoolOpts`, `PgPoolOpts`, `TarnPoolOpts`, `MysqlPoolOpts` and `MssqlPoolOpts`.
+  - TUI: `Ctrl+S` on the config add and edit forms saves without testing the connection. The normal save still tests, and a failed test names `Ctrl+S`.
+  - TUI: opening config add or config import without an identity shows identity setup first, filled in from git, then continues to the form.
+  - CLI: `noorm identity init` takes `--name` and `--email` as optional and defaults them from `git config`. It exits 1 and asks for `--email` when no email can be determined.
+  - `ctx.withConnection(fn)` pins one connection for a callback, and `connection.discard()` closes it on release instead of returning it to the pool, so a session that stopped answering does not keep its advisory locks.
+  - Behavior change: identity setup in the TUI and in `noorm init` keeps an existing `~/.noorm/identity.key`. With only the private key present it derives `identity.pub` and writes `identity.json`; before, it generated a new keypair over the key, which made existing encrypted state unreadable. `noorm identity init` without `--force` does the same and reports `completedExistingKey: true` in `--json`; it exits 1 only when all three files exist, and `--force --yes` is the one way it replaces a key.
+  - Resolving a stored config with inline or environment overrides no longer changes the stored record in memory, so a later save cannot persist the overrides.
+  - CLI: `--dry-run` no longer creates noorm's tracking tables on a database that has none, on every command that takes it, and `ctx.noorm.pipelines.run(slug, { dryRun: true })` does the same. A dry run against tracking tables that need a migration exits 1 with `tracking tables are at schema version N and this version needs M. A dry run does not migrate them: run a command without --dry-run first, such as "noorm change history".` Before, it migrated them.
+  - CLI and TUI: a role the policy denies every tracked write (a `viewer`) no longer creates or migrates the tracking tables. On the agent channel a `confirm` cell counts as denied, because an agent cannot confirm. Read commands and screens for such a role treat a database without the tables as empty: no changes applied, no lock, no pipeline runs. On tables that need a migration the CLI exits 1, and the TUI shows the same message, saying a role that can write must run a command first. The TUI created the tables for every role when it opened.
+  - `noorm config use` and TUI config activation follow the same rule: for a role that cannot write they create and migrate no tracking tables and register no identity in the database. Both did so for every role before. On the agent channel, `noorm config use` exits 1 on a config with `agent: false` and leaves the active config unchanged.
+  - Behavior change: SDK run and change methods called with `dryRun` or `preview` throw the same dry-run error on tracking tables that need a migration. They skipped the version check before.
+  - TUI: the vault add and delete screens refuse a role denied `vault:read` or `vault:write` when they open, and open no connection. They connected first and refused on save before.
+  - `ctx.noorm.lock.status()`, `ctx.noorm.pipelines.history()` and `getRun()` return unlocked, `[]` and `null` on a database with no tracking tables. `status()` threw there before, and the pipeline readers created the tables.
+  - Behavior change: `ctx.noorm.pipelines.history()` and `getRun()`, and the TUI pipeline history, no longer migrate older tracking tables. They throw an error that names both schema versions; a command that writes migrates them. `ctx.noorm.lock.status()`, `ctx.noorm.changes.history()` and `historyForChange()` throw the same error there; they queried the older layout before.
+  - Behavior change: `ctx.noorm.lock.status()` and `noorm lock status` delete an expired lock only for a role with `lock:acquire`, and are refused on a config hidden from the caller's channel (`agent: false`). Both deleted the row and answered for every caller before.
+  - Behavior change: `noorm change revert <name> --dry-run`, and `ctx.noorm.changes.revert(name)` with `dryRun` or `preview`, fail with `ChangeNotAppliedError` for a change that was never applied, as the real revert does. They reported success before.
+  - `ctx.noorm.pipelines.run()` works on a context created with `freshState: true`. It read the project's shared state and settings instead of the context's own and threw `SettingsManager not loaded`.
+  - `noorm vault cp --dry-run` reports `No vault access on source config` when the source database has no tracking tables. It failed with a SQL error before.
+  - `noorm init` and TUI init list only the files they created. Both listed `.noorm/state/state.enc`, which is written when the first config is saved, and the TUI listed `sql/.gitkeep` for a project laid out under `db/`.
+  - TUI: regenerating an identity copies `identity.key`, `identity.pub` and `identity.json` to `<file>.bak-<timestamp>` in `~/.noorm/` before replacing them, refuses when the backup cannot be written, and shows the backup paths. Before, it replaced the key with no backup.
+  - Behavior change: `ctx.noorm.lock.acquire()`, `withLock()` and `release()`, `noorm lock acquire` and `noorm lock release`, and the TUI acquire and release screens check a new `lock:acquire` permission (viewer deny, operator and admin allow) before creating tracking tables or taking a lock. They were ungated before. The TUI force-release screen now refuses a role that `lock:force` denies, and a refused TUI lock screen opens no connection. Where the role's `lock:acquire` or `lock:force` cell is `confirm`, the TUI acquire, release and force screens ask for the confirmation phrase.
+  - Behavior change: `noorm identity init` exits 1 when `NOORM_IDENTITY_PRIVATE_KEY` is set and no `identity.key` exists. It wrote `identity.pub` with no key file and reported `Identity created.` before.
+  - Behavior change: a context with no stored config selected is refused when `NOORM_NAME` (or the `__inline__` / `__env__` fallback) is the name of a stored config, as `createContext({ name })` already was, because secrets and tracking records are keyed by name. Select the stored config with `NOORM_CONFIG=<name>` or the `config` option, or use another name. With a stored config selected, `NOORM_NAME` can no longer rename the context to another stored config's name.
+  - A role with `vault:read` counts as able to record to the tracking tables, because a vault reader is enrolled in the identities table. On PostgreSQL a login that cannot see the `noorm` schema reads as having no tracking tables instead of failing.
+
+### Patch Changes
+
+- f444065: SDK runs and changes create noorm's tracking tables when the database has none, so `run.build()`, `changes.ff()` and `db.reset()` work on a fresh database without a prior `noorm run build`. `db.reset()` now resolves with the build result and throws `ResetBuildError` when the rebuild fails; before, a failed rebuild resolved as if it had succeeded.
+
+  `db.reset()` checks the tracking schema version and reads the schema directory before it drops anything, so a newer tracking schema or an unreadable `db/sql` leaves the database untouched. `lock.acquire`, `lock.withLock` and `vault.init` also create the tracking tables on a fresh database.
+
 ## 1.8.0
 
 ### Minor Changes

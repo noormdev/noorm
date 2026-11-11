@@ -4,10 +4,11 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
+import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import React from 'react';
 
-import { FocusProvider } from '../../../../src/tui/focus.js';
+import { FocusProvider, useFocusContext } from '../../../../src/tui/focus.js';
 import { RouterProvider } from '../../../../src/tui/router.js';
 import { AppContextProvider } from '../../../../src/tui/app-context.js';
 import { ToastProvider } from '../../../../src/tui/components/index.js';
@@ -73,6 +74,17 @@ async function waitFor(predicate: () => boolean, timeoutMs = 4000) {
 
 }
 
+let isTyping = () => false;
+
+/** Publishes the focus context's `isTyping`, which turns true in the same commit that registers a text field's input handler. */
+function TypingProbe(): null {
+
+    isTyping = useFocusContext().isTyping;
+
+    return null;
+
+}
+
 type Screen = { stdin: { write: (data: string) => void }; lastFrame: () => string | undefined };
 
 const frameOf = (screen: Screen) => stripVTControlCharacters(screen.lastFrame() ?? '');
@@ -98,14 +110,15 @@ async function typeInto(screen: Screen, label: string, text: string) {
     await moveTo(screen, DOWN, '›', label);
 
     screen.stdin.write(ENTER);
-    await waitFor(() => frameOf(screen).includes('↵ commit'));
+    // The edit-mode frame is drawn before the field's input handler is registered, so the frame alone is too early to type.
+    await waitFor(() => isTyping() && frameOf(screen).includes('↵ commit'));
     // A password renders masked, so the typed text cannot be the signal.
     const empty = frameOf(screen);
 
     screen.stdin.write(text);
     await waitFor(() => frameOf(screen) !== empty);
     screen.stdin.write(ENTER);
-    await waitFor(() => !frameOf(screen).includes('↵ commit'));
+    await waitFor(() => !isTyping() && !frameOf(screen).includes('↵ commit'));
 
 }
 
@@ -126,10 +139,13 @@ async function openImport(
 
     const screen = render(
         <FocusProvider>
+            <TypingProbe />
             <RouterProvider>
                 <AppContextProvider autoLoad={true}>
                     <ToastProvider>
-                        <ConfigImportScreen params={{ path: file }} />
+                        <Box width={80} flexDirection="column">
+                            <ConfigImportScreen params={{ path: file }} />
+                        </Box>
                     </ToastProvider>
                 </AppContextProvider>
             </RouterProvider>
@@ -251,6 +267,76 @@ describe('cli: ConfigImportScreen imported connection', () => {
         expect(frame).toContain('Client key file: /etc/client.key');
         expect(frame).toContain('TLS server name: db.corp');
         expect(frame).toContain('must exist on this machine');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should preview the user and agent roles the file carries', async () => {
+
+        const screen = await openImport(server, { access: { user: 'operator', agent: false } });
+
+        expect(frameOf(screen).replace(/[│\s]+/g, ' ')).toContain('Roles: user operator, agent off');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should preview the roles a legacy protected file is saved with', async () => {
+
+        const screen = await openImport(server, { access: undefined, protected: true });
+
+        expect(frameOf(screen).replace(/[│\s]+/g, ' ')).toContain('Roles: user operator, agent viewer');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    // isTest is a privilege: it lifts every role on the saved config to at least admin, so the person importing must see it.
+    it('should say that a test database gives every role at least admin permissions', async () => {
+
+        const screen = await openImport(server, { isTest: true });
+
+        expect(frameOf(screen).replace(/[│\s]+/g, ' ')).toContain("Test database: every role gets at least admin's permissions");
+
+        screen.unmount();
+
+    }, 20_000);
+
+    it('should show no test database line for a file that does not set isTest', async () => {
+
+        const screen = await openImport(server);
+
+        expect(frameOf(screen)).not.toContain('Test database');
+
+        screen.unmount();
+
+    }, 20_000);
+
+    // The shell in src/tui/app.tsx leaves a screen 20 rows on an 80x24 terminal.
+    it('should fit the preview of a file that sets every TLS field, roles and isTest in 20 rows', async () => {
+
+        const screen = await openImport(
+            {
+                ...server,
+                tlsServerName: 'db.corp',
+                ssl: { caFile: './certs/ca.pem', certFile: '~/client.pem', keyFile: '/etc/client.key', rejectUnauthorized: false },
+            },
+            { isTest: true, access: { user: 'operator', agent: false } },
+        );
+        const rows = frameOf(screen).split('\n');
+        const frame = rows.join(' ').replace(/[│\s]+/g, ' ');
+
+        expect(rows.length).toBeLessThanOrEqual(20);
+        expect(rows.every((row) => row.length <= 80)).toBe(true);
+
+        for (const shown of ['ada@example.com', 'postgres', 'db.internal:6543', 'Verify certificate: off', './certs/ca.pem', '~/client.pem',
+            '/etc/client.key', 'db.corp', 'must exist on this machine', 'user operator, agent off', 'Test database', 'Secrets: 0 included',
+            'Database Password', '[ Import ]']) {
+
+            expect(frame).toContain(shown);
+
+        }
 
         screen.unmount();
 

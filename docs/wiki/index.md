@@ -5,7 +5,7 @@ description: noorm manages database schemas and versioned SQL changes through a 
 ---
 
 <wiki-type>repo</wiki-type>
-<scan-sha>923f1560efe1b959db0443e2b39e61b4d6867a69</scan-sha>
+<scan-sha>c551504021609cc6fee5bfe2bfd7bd6d4d2ddbaa</scan-sha>
 <wiki-schema>1</wiki-schema>
 
 # Project signals
