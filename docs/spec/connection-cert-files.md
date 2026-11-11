@@ -26,8 +26,11 @@ The TUI honors every TLS setting the CLI and SDK honor. It connects with the sto
 - A change to the CLI `config export`, which writes the whole config and requires `secret:read`.
 - Stage state on the add form. It shows no stage `ssl` and no stage placeholder, because no screen opens it for a stage.
 - Regenerating `docs/public/image/tui/config-add.png`. The orchestrator runs `docs/tapes/shots.sh` after the checkpoints and then deletes `.claude/project/followups/connection-cert-files-tui-screenshot.md`. No checkpoint touches the image or that file.
-- A fixture CA, a change to `docker-compose.test.yml`, and a live TLS test for PostgreSQL. The live tests use the certificates the MySQL and SQL Server containers generate for themselves.
-- A live MSSQL test that validates the certificate (`ssl.caFile`, `tlsServerName`). SQL Server 2022 holds its self-generated certificate in memory, writes it to no file and lists it in no catalog view, and the driver's rejection carries a code and no certificate.
+- A committed certificate or private key. `scripts/gen-test-tls.sh` generates the fixture certificates on each machine into a gitignored directory.
+- TLS-enforcing services in the default `docker compose up`. They sit behind the `tls` profile and start only when named, and the three plain services and their tests are unchanged.
+- Validating the certificate SQL Server generates for itself. SQL Server 2022 holds it in memory, writes it to no file and lists it in no catalog view, so `tests/integration/connection/mssql-tls.test.ts` stays unvalidated. The validated MSSQL cases run against the `mssql-tls` service, whose certificate comes from a file.
+- A client-certificate case for MSSQL. SQL Server has no client-certificate login.
+- A live plaintext refusal for MSSQL. noorm always encrypts a SQL Server connection, so `ssl: false` connects encrypted to a server that forces encryption.
 - A CI job that runs the compiled binary. Certificate files and `NODE_EXTRA_CA_CERTS` in the binary are checked by hand.
 - Hand-editing `docs/wiki/`. `/refresh-wiki` regenerates those pages after the change.
 
@@ -81,7 +84,14 @@ The TUI honors every TLS setting the CLI and SDK honor. It connects with the sto
 - [ ] Unit-level proof for each server dialect asserts the built driver options (see Risks).
 - [ ] CI writes the MySQL service container's public CA (`/var/lib/mysql/ca.pem`) to a file with `docker exec` before the integration tests, fails the step when the file holds no `-----BEGIN CERTIFICATE-----` line, and exports the path as `TEST_MYSQL_CA_FILE`. No private key leaves the container. `tests/integration/connection/mysql-tls.test.ts` is skipped when the variable is unset. Through `createConnection` it shows that `ssl: { caFile }` connects with a session cipher, that a `tlsServerName` equal to the server certificate's common name connects, that a wrong `tlsServerName` is rejected with the hostname hint, and that `ssl: true` with no CA is rejected with the hint naming `ssl.caFile`. It learns the common name from the mismatch error and names no server version. Its rejection cases pin the mysql2 message wordings that `MYSQL_CERTIFICATE_REASONS` matches.
 - [ ] `tests/integration/connection/mssql-tls.test.ts` runs with the integration group and needs no file from the container. Through `createConnection` it shows that `ssl: { rejectUnauthorized: false }` connects with `encrypt_option` `TRUE` for the session, and that `ssl: true` with no CA is rejected with the hint naming `ssl.caFile`.
-- [ ] `docs/dev/ci.md` says how to run the two live TLS tests locally.
+- [ ] `scripts/gen-test-tls.sh` (POSIX shell and `openssl`, OpenSSL or LibreSSL) writes into `tests/fixtures/tls/generated/`, which `.gitignore` lists: a CA certificate, one server certificate and key per dialect whose only subjectAltName is `db.noorm.test`, a client certificate and key whose common name is `noorm_tls`, and the certificate of a second, unrelated CA. Neither CA key stays on disk. The directory is mode `0700` and its files `0600`. A run that finds every file present changes nothing, and a run that finds some missing regenerates the whole set.
+- [ ] `docker-compose.test.yml` holds `postgres-tls` (host port 15433), `mysql-tls` (13307) and `mssql-tls` (11435) under the `tls` profile, on the images of the plain services, each with a healthcheck. `TEST_POSTGRES_TLS_PORT`, `TEST_MYSQL_TLS_PORT` and `TEST_MSSQL_TLS_PORT` move a host port, and the tests read the same variables. Each start copies the mounted certificate files and gives the key to the server's own user at mode `0600`, and the host files keep their modes. PostgreSQL runs `ssl = on` with a `pg_hba.conf` whose only network line is `hostssl ... scram-sha-256 clientcert=verify-full`. MySQL runs `require_secure_transport = ON` with the fixture `ssl_ca`, `ssl_cert` and `ssl_key`, an account `noorm_tls` altered to `REQUIRE X509`, and an account `noorm_tls_password` that needs no certificate. SQL Server runs as the `mssql` user with an `mssql.conf` `[network]` section that sets `tlscert`, `tlskey` and `forceencryption = 1`. Every database is named `noorm_tls_test`.
+- [ ] `tests/integration/connection/postgres-tls-enforced.test.ts`, `mysql-tls-enforced.test.ts` and `mssql-tls-enforced.test.ts` are skipped when `TEST_TLS_DIR` is unset. Each runs `SELECT` or `SHOW` statements only, destroys every connection, dials `localhost`, and asserts behavior and never certificate or key content. Through `createConnection` each shows that `ssl: { caFile }` with `tlsServerName: 'db.noorm.test'` connects encrypted (PostgreSQL `pg_stat_ssl` for the backend pid, with the client certificate's subject; MySQL `Ssl_cipher`; MSSQL `encrypt_option`), that the unrelated CA and `ssl: true` with no CA are rejected with the hint naming `ssl.caFile`, that a wrong `tlsServerName` is rejected with the hostname hint, that `ssl: { rejectUnauthorized: false }` connects encrypted, and that a missing `caFile` fails with `SslFileError` while a local listener standing in for the server accepts no socket. One case per file connects through the SDK `createContext` with certificate paths relative to a project root that is not the working directory.
+- [ ] PostgreSQL and MSSQL reject `localhost` with the hostname hint when `tlsServerName` is unset. MySQL connects, because it checks the name only under `tlsServerName`.
+- [ ] PostgreSQL and MySQL log in with `certFile` and `keyFile`. Without them PostgreSQL's refusal surfaces as `connection requires a valid client certificate`, and MySQL's as the access-denied hint.
+- [ ] `ssl: false` is refused by PostgreSQL with the `pg_hba.conf` hint and by MySQL, for `noorm_tls_password`, with `The server only accepts TLS connections. Turn ssl on for this connection.` MSSQL connects with `encrypt_option` `TRUE`.
+- [ ] The CI job that runs the integration tests generates the fixtures, starts the three services with `docker compose up -d --wait`, fails the step when one is not healthy, and exports `TEST_TLS_DIR`. The step sits after every step that finds a service container with `--filter ancestor=`, because the TLS containers share those images.
+- [ ] `docs/dev/ci.md` says how to run the live TLS tests locally, the enforced suites included. `.claude/rules/testing.md` names the three services, their ports and `TEST_TLS_DIR`.
 - [ ] `bun run lint`, `bun run typecheck`, `bun run lint:docs` and the five CI test groups pass. New test files do not use `mock.module`, with two exceptions. A new in-process TUI screen test in the CLI group may register the mocks of `src/core/index.js` and `src/core/identity/index.js` that spread the actual module, as `ConfigAddScreen.test.tsx` and `tests/cli/app-context.test.tsx` register them, and the connection-factory mock that `ConfigAddScreen.test.tsx` and `ConfigEditScreen.test.tsx` register, which replaces `testConnection`. `tests/cli/screens/config/ConfigImportScreen.test.tsx` may also register a mock of `src/core/identity/storage.js` that spreads the actual module and replaces `loadPrivateKey` only, because `ConfigImportScreen.tsx` imports `loadPrivateKey` from that module and `tests/cli/hooks/useVaultSecretKeys.test.tsx`, an earlier file in the group, replaces that export. No product import changes for it. Those replacements already hold for the rest of the process, and `AppContextProvider` takes its managers only from `getStateManager` and `getSettingsManager`. A test of a site that connects through `createConnection` (activation) adds no other mock: it proves which config was used by the stage's certificate path in the `SslFileError` message. The activation tests supply an identity with `setIdentityOverride` and clear it with `clearIdentityOverride` in `afterEach`. Their `src/core/identity/index.js` mock replaces `loadExistingIdentity` with `async () => getIdentityOverride()`, because that mock also replaces the export `src/core/identity/sync.ts` imports from `factory.js`, and a stand-in that resolved `null` would end the sync before it connects. A throwaway `HOME` cannot stand in for the override, because `src/core/identity/storage.ts` fixes `~/.noorm` at module load. Each new test file passes alone and in the group command. Tests added to an existing file inherit its mocks.
 
 
@@ -160,8 +170,20 @@ tests/core/connection/
     └── mssql.test.ts ........... M
 tests/integration/connection/
 ├── mysql-tls.test.ts ........... A  (live handshakes with the container's CA; skipped without TEST_MYSQL_CA_FILE)
-└── mssql-tls.test.ts ........... A  (live encryption without validation, and the rejection hint)
-.github/workflows/ci.yml ........ M  (exports the MySQL container's public CA as TEST_MYSQL_CA_FILE)
+├── mssql-tls.test.ts ........... A  (live encryption without validation, and the rejection hint)
+├── postgres-tls-enforced.test.ts A  (live matrix against postgres-tls; skipped without TEST_TLS_DIR)
+├── mysql-tls-enforced.test.ts .. A  (live matrix against mysql-tls; skipped without TEST_TLS_DIR)
+└── mssql-tls-enforced.test.ts .. A  (live matrix against mssql-tls; skipped without TEST_TLS_DIR)
+tests/utils/tls.ts .............. A  (fixture paths, one-query connections, the dial counter, the SDK round trip)
+tests/fixtures/tls/
+├── pg_hba.conf ................. A  (TLS and a client certificate on every network login)
+├── mysql-accounts.sql .......... A  (REQUIRE X509 on noorm_tls; the password-only account)
+└── mssql.conf .................. A  (tlscert, tlskey, forceencryption)
+scripts/gen-test-tls.sh ......... A  (generates the fixture certificates)
+docker-compose.test.yml ......... M  (postgres-tls, mysql-tls, mssql-tls under the tls profile)
+.gitignore ...................... M  (tests/fixtures/tls/generated/)
+.claude/rules/testing.md ........ M  (the TLS services, their ports, TEST_TLS_DIR)
+.github/workflows/ci.yml ........ M  (exports the MySQL container's public CA as TEST_MYSQL_CA_FILE; starts the TLS services and exports TEST_TLS_DIR)
 tests/cli/config/
 ├── export.test.ts .............. M
 ├── import.test.ts .............. M
@@ -506,9 +528,46 @@ tests/integration/connection/mssql-tls.test.ts
 
 .github/workflows/ci.yml
   Export the MySQL server CA for the live TLS test — writes the container's public CA to a file, fails without a certificate line, exports TEST_MYSQL_CA_FILE
+  Start the TLS-enforcing databases — generates the fixtures, starts the three services and waits for healthy, exports TEST_TLS_DIR
+
+scripts/gen-test-tls.sh
+  authority — a self-signed CA certificate
+  signed — a key and a certificate signed by the fixture CA, with the server or client extensions
+
+docker-compose.test.yml
+  postgres-tls — ssl on, the fixture certificate, pg_hba.conf from tests/fixtures/tls
+  mysql-tls — require_secure_transport, the fixture certificate, accounts from mysql-accounts.sql
+  mssql-tls — mssql.conf from tests/fixtures/tls, creates noorm_tls_test, runs the server as mssql
+
+tests/utils/tls.ts
+  TLS_DIR — the fixture directory from TEST_TLS_DIR, undefined when the suites skip
+  TLS_SERVER_NAME — the name the server certificates are issued for
+  tlsFile — a fixture path, absolute or relative to a project root
+  tlsPort — a service port from its variable or the default
+  rowsOver — rows of one query over a connection opened and destroyed for it
+  rejection — the error a connection attempt fails with
+  rejectionBeforeDial — the error, and the sockets a local listener accepted
+  rowsThroughSdk — rows of one query through createContext under a throwaway project root
+
+tests/integration/connection/postgres-tls-enforced.test.ts
+tests/integration/connection/mysql-tls-enforced.test.ts
+tests/integration/connection/mssql-tls-enforced.test.ts
+  caFile, tlsServerName and the client certificate connect encrypted
+  the same through the SDK with paths relative to the project root
+  the unrelated CA is rejected with the hint naming ssl.caFile
+  ssl true with no CA is rejected with the same hint
+  localhost with no tlsServerName: the hostname hint (PostgreSQL, MSSQL), a connection (MySQL)
+  a wrong tlsServerName is rejected with the hostname hint
+  no client certificate is refused by the server (PostgreSQL, MySQL)
+  rejectUnauthorized false connects encrypted
+  ssl false is refused (PostgreSQL, MySQL) or connects encrypted (MSSQL)
+  a missing caFile fails with SslFileError and no socket is opened
 
 docs/dev/ci.md
-  Live TLS Tests — how to run the two tests locally
+  Live TLS Tests — how to run the live TLS tests locally, the enforced suites included
+
+.claude/rules/testing.md
+  TLS-enforcing services — the three services, their ports, TEST_TLS_DIR
 
 tests/cli/config/export.test.ts
   export of a file-form config prints paths and no PEM
@@ -815,6 +874,7 @@ skills/noorm/references/cli.md
 | 11a | TUI export and import, the environment error for a scalar `NOORM_CONNECTION_SSL` beside a nested ssl variable. Depends on 10a and 10b | `src/tui/screens/config/ConfigExportScreen.tsx`, `src/tui/screens/config/ConfigImportScreen.tsx`, `src/core/config/index.ts`, `tests/cli/screens/config/ConfigExportScreen.test.tsx`, `tests/cli/screens/config/ConfigImportScreen.test.tsx`, `tests/core/config/env.test.ts` | atomic-implementer (mode: feature) | ~6 | `bun test --serial tests/core/config/env.test.ts`; `bun run build`, then the CLI group command (the `Run CLI tests` step of `.github/workflows/ci.yml`); each new test file also passes alone; `bun run typecheck`; `bun run lint`; the decrypted export payload holds `tlsServerName` and no `ssl.key`; an unknown key in an import file is not saved; `tests/cli/config/export.test.ts` passes without an edit; the environment error names both variables for a `true` and for a `false` scalar; `ConfigImportScreen.test.tsx` registers the `src/core/identity/storage.js` mock that replaces `loadPrivateKey` only, and passes alone and after `tests/cli/hooks/useVaultSecretKeys.test.tsx` in the group |
 | 11c | Docs, design TUI section, skill reference, changeset, closure of three follow-ups. Depends on 11a | `docs/tui.md`, `docs/guide/environments/configs.md`, `docs/guide/environments/stages.md`, `docs/dev/config-sharing.md`, `docs/dev/datamodel.md`, `docs/design/enterprise-connectivity.md`, `skills/noorm/references/config.md`, `.changeset/connection-cert-files.md`, `.claude/project/followups/` (`connection-cert-files-tui-export-tls-server-name.md`, `connection-cert-files-db-list-badge.md` and `connection-cert-files-env-scalar-plus-nested.md` deleted; `INDEX.md` re-rendered) | atomic-implementer (mode: feature) | ~12 | `bun run lint:docs`; `bun run lint`; `bun run typecheck`; `bun run build`, then the five CI test groups (the same five steps of `.github/workflows/ci.yml`); `atomic followups render`, then `INDEX.md` lists none of the three entries closed in 11c; the changeset names the TUI behavior change and the environment error |
 | 12 | Live TLS tests for MySQL and MSSQL, the CI step that exports the MySQL CA, the manual compiled-binary check, closure of three follow-ups. Depends on 6 | `.github/workflows/ci.yml`, `tests/integration/connection/mysql-tls.test.ts`, `tests/integration/connection/mssql-tls.test.ts`, `docs/dev/ci.md`, `docs/design/enterprise-connectivity.md`, `.claude/project/followups/` (`connection-cert-files-ci-live-tls.md`, `connection-cert-files-compiled-binary.md` and `connection-cert-files-mysql-cert-reason-regex.md` deleted; `INDEX.md` re-rendered) | atomic-implementer (mode: feature) | ~6 | Both test files pass against the local containers with `TEST_MYSQL_CA_FILE` set, and the MySQL file skips without it; `bun run lint`; `bun run typecheck`; `bun run lint:docs`; the binary from `bun run build:binary` connects to MySQL with a `~/` `ssl.caFile`, prints the `SslFileError` message for a missing file, and validates `ssl: true` under `NODE_EXTRA_CA_CERTS` |
+| 13 | TLS-enforcing containers and the enforced live suites: the fixture script, the three compose services, the three test files and their helper, the CI step, docs. Depends on 12 | `scripts/gen-test-tls.sh`, `docker-compose.test.yml`, `.gitignore`, `tests/fixtures/tls/` (`pg_hba.conf`, `mysql-accounts.sql`, `mssql.conf`), `tests/utils/tls.ts`, `tests/integration/connection/{postgres,mysql,mssql}-tls-enforced.test.ts`, `.github/workflows/ci.yml`, `docs/dev/ci.md`, `.claude/rules/testing.md` | atomic-implementer (mode: feature) | ~13 | The three files pass with `TEST_TLS_DIR` set against the three services and skip without it; `mysql-tls.test.ts` and `mssql-tls.test.ts` still pass; `docker compose -f docker-compose.test.yml config -q`; a second run of the script changes no file; `bun run lint`; `bun run typecheck`; `bun run lint:docs` |
 
 
 ## Risks
@@ -827,7 +887,8 @@ skills/noorm/references/cli.md
 | A library caller hands a config with a relative ssl file path straight to `createConnection`, in a process whose working directory is not the project root. It resolves from the working directory and can read a different file. Every SDK path is anchored: the `Context` constructor and `bindSdkDestination` | low | The docs state the working-directory rule for a connection built without the SDK context. Absolute and `~/` paths behave the same everywhere |
 | Resolved PEM is written back onto the context config. `connectionSecrets` (`src/mcp/prepared.ts:26-31`) redacts only inline `ssl.key`, `ssl.cert` and `ssl.ca`, so PEM held on a config object would reach agent-channel output unredacted | med | `resolveSslFiles` returns a new connection for the dialect factory and never mutates the config it receives. The factory test asserts the original config still holds paths and no PEM after a connect |
 | An agent-channel caller (MCP or RPC) points `keyFile` at any file the process can read. The driver sends the key, not noorm's output, but a driver or TLS error could quote bytes from a file that is not PEM | low | `SslFileError` carries the field, path and error code only. `resolveSslFiles` never puts file content in a message or event. Tests in `ssl-files.test.ts` and `factory.test.ts` point `keyFile` at a non-PEM file and assert the content appears in no error text or event |
-| No test opens a validated live TLS connection to PostgreSQL or MSSQL, and none presents a client certificate. `docker-compose.test.yml` sets no certificates for either service, so a `ca`, `cert` or `key` option that is built as asserted and still fails the handshake there is not caught. CI does not run the compiled binary | med | The MySQL live test validates against a CA read from a file, and the MSSQL live test covers encryption without validation and the rejection hint. The remaining proof is unit-level: tests assert the options built for the driver |
+| The enforced-TLS suites are skipped wherever `TEST_TLS_DIR` is unset, so a local integration run without the fixtures proves no validated handshake and no client certificate. CI does not run the compiled binary | low | CI sets the variable in the job that runs the integration tests and fails the step when a TLS service is not healthy. `docs/dev/ci.md` and `.claude/rules/testing.md` give the local commands |
+| The enforced suites pin driver and TLS-library wordings and codes (`SELF_SIGNED_CERT_IN_CHAIN`, `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the PostgreSQL client-certificate refusal), so a runtime, driver or server image upgrade can fail them with no product change | low | Each assertion names the hint it protects, so a failure points at the wording that moved |
 | The MySQL certificate hint is recovered from mysql2 message text, so a wording change in mysql2 or the runtime's TLS library drops it | low | The rejection cases of `tests/integration/connection/mysql-tls.test.ts` assert the hints, so CI fails on a wording change |
 | The activation tests need `syncIdentityWithConfig` to reach `createConnection`. It returns early when `loadExistingIdentity` finds no identity. It imports that function from `src/core/identity/factory.js`, and a `mock.module` of `src/core/identity/index.js` replaces it there too, because the barrel re-exports the same binding. The stand-in the other screen tests register, which resolves `null`, ends the sync before it connects. | med | The activation tests register `loadExistingIdentity: async () => getIdentityOverride()` in their `src/core/identity/index.js` mock, supply the identity with `setIdentityOverride` (`src/core/identity/storage.ts`) and clear it with `clearIdentityOverride` in `afterEach`. A throwaway `HOME` cannot do this in-process, because `storage.ts` fixes `~/.noorm` at module load. The tests assert that the `identity:sync:connection` error was emitted, so a sync that returned early fails the test. |
 | A relative path in a committed `settings.yml` stage default means different files for each machine's project root | low | Stage defaults take the same rule as stored configs, and docs say the path must exist on every machine that connects |
@@ -936,6 +997,14 @@ skills/noorm/references/cli.md
 **Why:** Two follow-ups from the audits of this spec. A file's roles and `isTest` decide what the user and agent roles may do on the imported config, and the preview hid both. The export and remove screens bound the stored config while every other TUI site bound the effective one, so a stage's roles were not applied to a stored config that carries none and the two bindings gave one config two policy fingerprints.
 
 **Superseded:** The import preview showed connection and TLS settings only, on one row each with vertical padding. `ConfigExportScreen` and `ConfigRemoveScreen` bound the stored config with `withConfigPolicy`.
+
+### 2026-11-11 — TLS-enforcing containers and the enforced live suites
+
+**What changed:** Checkpoint 13 adds `scripts/gen-test-tls.sh`, which generates a fixture CA, a server certificate per dialect issued for `db.noorm.test`, a client certificate for `noorm_tls` and an unrelated CA into a gitignored directory. `docker-compose.test.yml` gains `postgres-tls`, `mysql-tls` and `mssql-tls` under the `tls` profile, each enforcing TLS with the fixture certificate. Three test files, skipped without `TEST_TLS_DIR`, run the matrix through `createConnection` and one case each through `createContext`: validated connections, both rejection hints, client-certificate login for PostgreSQL and MySQL, encryption without validation, the plaintext refusal, and a missing `caFile` that opens no socket. CI starts the services in a step and exports the variable. The non-goals on a fixture CA, a PostgreSQL live test and a validated MSSQL live test are replaced by the ones that still hold, and the risk row on live proof is rewritten.
+
+**Why:** PostgreSQL had no live TLS test, no test presented a client certificate, and no MSSQL test validated a certificate, so an option that was built as asserted and failed a real handshake went uncaught.
+
+**Superseded:** A fixture CA, a change to `docker-compose.test.yml`, a live PostgreSQL TLS test and a validated live MSSQL test were non-goals, and the live tests used only the certificates the MySQL and SQL Server containers generate for themselves.
 
 ## Implementation log
 

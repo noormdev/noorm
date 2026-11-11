@@ -159,6 +159,14 @@ jobs:
                   docker exec $(docker ps -q --filter "ancestor=mysql:8.0") cat /var/lib/mysql/ca.pem > "$CA_FILE"
                   grep -q -- '-----BEGIN CERTIFICATE-----' "$CA_FILE"
                   echo "TEST_MYSQL_CA_FILE=$CA_FILE" >> "$GITHUB_ENV"
+            # Not under `services:`, which starts before a step can write the certificates.
+            # Kept after every `--filter ancestor=` step: these containers reuse the service images.
+            - name: Start the TLS-enforcing databases
+              run: |
+                  sh scripts/gen-test-tls.sh
+                  docker compose -f docker-compose.test.yml up -d --wait --wait-timeout 180 postgres-tls mysql-tls mssql-tls \
+                      || { docker compose -f docker-compose.test.yml --profile tls logs --tail 50; exit 1; }
+                  echo "TEST_TLS_DIR=$GITHUB_WORKSPACE/tests/fixtures/tls/generated" >> "$GITHUB_ENV"
             - name: Run integration tests
               env:
                   CI: 'false'
