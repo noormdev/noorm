@@ -2,7 +2,8 @@
  * ConfigExportScreen - export configuration for sharing.
  *
  * Encrypts config + secrets with recipient's public key.
- * Does NOT include user/password (recipient uses their own).
+ * Does NOT include user/password or an inline client key and certificate
+ * (recipient uses their own).
  *
  * @example
  * ```bash
@@ -33,6 +34,7 @@ import {
 } from '../../components/index.js';
 import { encryptForRecipient } from '../../../core/identity/crypto.js';
 import type { KnownUser } from '../../../core/identity/types.js';
+import type { ConnectionConfig } from '../../../core/connection/types.js';
 import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint, guarded } from '../../../core/policy/index.js';
 import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
@@ -47,6 +49,19 @@ type ExportStep =
     | 'exporting' // Encrypting and writing file
     | 'complete' // Success
     | 'error'; // Error occurred
+
+// Removes the credentials and keeps the rest, so a connection field added later travels without an edit here.
+function withoutCredentials(connection: ConnectionConfig): ConnectionConfig {
+
+    const { user: _user, password: _password, ...shared } = connection;
+
+    if (typeof shared.ssl !== 'object') return shared;
+
+    const { key: _key, cert: _cert, ...ssl } = shared.ssl;
+
+    return { ...shared, ssl: Object.keys(ssl).length > 0 ? ssl : true };
+
+}
 
 /**
  * ConfigExportScreen component.
@@ -135,9 +150,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
 
-                // Build export data (omit user/password). `access` is the
-                // source of truth; `protected` rides along so an
-                // as-yet-unupgraded importer on the recipient's end still
+                // `access` is the source of truth; `protected` rides along so
+                // an as-yet-unupgraded importer on the recipient's end still
                 // gets a safe (if coarser) access decision.
                 const exportData = {
                     config: {
@@ -146,14 +160,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                         isTest: config.isTest,
                         access: config.access,
                         protected: guarded(policyConfig),
-                        connection: {
-                            dialect: config.connection.dialect,
-                            host: config.connection.host,
-                            port: config.connection.port,
-                            database: config.connection.database,
-                            ssl: config.connection.ssl,
-                            // NO user/password - recipient uses their own
-                        },
+                        connection: withoutCredentials(config.connection),
                     },
                     secrets: stateManager.getAllSecrets(configName),
                 };
@@ -333,7 +340,7 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
             <Panel title={`Export: ${configName}`} paddingX={2} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
                     <Text>Export configuration for sharing with another user.</Text>
-                    <Text dimColor>Note: Database user/password will NOT be included.</Text>
+                    <Text dimColor>Note: Database user/password and inline client key/certificate will NOT be included.</Text>
 
                     <Box marginTop={1}>
                         <Text>Recipient email: </Text>

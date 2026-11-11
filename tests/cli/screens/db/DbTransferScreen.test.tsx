@@ -28,6 +28,7 @@ import { join } from 'node:path';
 
 import type { Config } from '../../../../src/core/config/types.js';
 import type { Role } from '../../../../src/core/policy/types.js';
+import type { StageDefaults } from '../../../../src/core/settings/types.js';
 import type { TransferOptions, TransferPlan, TransferResult } from '../../../../src/core/transfer/types.js';
 
 import { FocusProvider } from '../../../../src/tui/focus.js';
@@ -35,6 +36,7 @@ import { RouterProvider } from '../../../../src/tui/router.js';
 import { AppContextProvider, useAppContext } from '../../../../src/tui/app-context.js';
 import { ToastProvider } from '../../../../src/tui/components/index.js';
 import { DbTransferScreen } from '../../../../src/tui/screens/db/DbTransferScreen.js';
+import { checkConfigPolicy } from '../../../../src/core/policy/index.js';
 
 const actualCore = await import('../../../../src/core/index.js');
 const actualIdentity = await import('../../../../src/core/identity/index.js');
@@ -45,6 +47,8 @@ const transferCalls: TransferOptions[] = [];
 
 /** Destination config `transferData` was called against, per invocation. */
 const transferDests: Config[] = [];
+
+const planDests: Config[] = [];
 
 /** Down-arrow escape sequence, as Ink's stdin parser expects it. */
 const DOWN = '\u001B[B';
@@ -83,7 +87,13 @@ function makePlan(): TransferPlan {
 
 mock.module('../../../../src/core/transfer/index.js', () => ({
     ...actualTransfer,
-    getTransferPlan: vi.fn(async () => [makePlan(), null]),
+    getTransferPlan: vi.fn(async (_src: Config, dest: Config) => {
+
+        planDests.push(dest);
+
+        return [makePlan(), null];
+
+    }),
     transferData: vi.fn(async (_src: Config, dest: Config, options: TransferOptions) => {
 
         transferDests.push(dest);
@@ -126,7 +136,8 @@ function makeConfig(name: string, role: Role): Config {
 /** Active (source) config is always admin; the destination is what varies. */
 const sourceConfig = makeConfig('source', 'admin');
 
-let destConfig = makeConfig('dest', 'admin');
+/** A stored config may lack `isTest`; its stage can then supply one. */
+let destConfig: Omit<Config, 'isTest'> & { isTest?: boolean } = makeConfig('dest', 'admin');
 
 const createMockStateManager = () => ({
     load: vi.fn().mockResolvedValue(undefined),
@@ -140,12 +151,12 @@ const createMockStateManager = () => ({
     isLoaded: true,
 });
 
-const createMockSettingsManager = () => ({
+const createMockSettingsManager = (destDefaults?: StageDefaults) => ({
     load: vi.fn().mockResolvedValue({ version: '0.1.0' }),
     isLoaded: true,
     settings: { version: '0.1.0' },
     getStages: vi.fn().mockReturnValue({}),
-    getStage: vi.fn().mockReturnValue(undefined),
+    getStage: vi.fn((name: string) => (destDefaults && name === 'dest' ? { defaults: destDefaults } : undefined)),
 });
 
 let mockStateManager = createMockStateManager();
@@ -232,6 +243,7 @@ describe('cli: DbTransferScreen', () => {
 
         transferCalls.length = 0;
         transferDests.length = 0;
+        planDests.length = 0;
         destConfig = makeConfig('dest', 'admin');
         mockStateManager = createMockStateManager();
         mockSettingsManager = createMockSettingsManager();
@@ -354,6 +366,150 @@ describe('cli: DbTransferScreen', () => {
             unmount();
 
             expect(transferCalls).toHaveLength(0);
+
+        });
+
+    });
+
+    describe('effective destination', () => {
+
+        const caFile = './certs/stage-ca.pem';
+
+        /** A server destination that stores no `ssl` and no `isTest`: both can only come from its stage. */
+        function storedDest(userRole: string): Omit<Config, 'isTest'> {
+
+            return {
+                name: 'dest',
+                type: 'local',
+                access: { user: userRole, agent: 'viewer' },
+                connection: { dialect: 'postgres', host: 'db', database: 'app', user: 'app' },
+            };
+
+        }
+
+        async function waitFor(predicate: () => boolean, timeoutMs = 4000) {
+
+            const deadline = Date.now() + timeoutMs;
+
+            while (!predicate() && Date.now() < deadline) {
+
+                await new Promise((r) => setTimeout(r, 10));
+
+            }
+
+        }
+
+        function renderScreen() {
+
+            const screen = render(tree());
+            const frame = () => screen.lastFrame() ?? '';
+
+            /** Writes `keys` until `done` holds: a key written before the step takes focus is dropped. */
+            const press = async (keys: string[], done: () => boolean) => {
+
+                const deadline = Date.now() + 4000;
+
+                while (!done() && Date.now() < deadline) {
+
+                    for (const key of keys) screen.stdin.write(key);
+
+                    await new Promise((r) => setTimeout(r, 30));
+
+                }
+
+            };
+
+            return { ...screen, frame, press };
+
+        }
+
+        /** Walks a destination that needs only the plain confirm from selection to the transfer call. */
+        async function transferToDest() {
+
+            const screen = renderScreen();
+
+            await waitFor(() => screen.frame().includes('Select Destination'));
+            await screen.press(['\r'], () => screen.frame().includes('Select Tables'));
+            await screen.press(['\r'], () => screen.frame().includes('Data Transfer - Options'));
+            await screen.press([DOWN, '\r'], () => screen.frame().includes('Data Transfer - Plan'));
+            await screen.press(['\r'], () => screen.frame().includes('Data Transfer - Confirm'));
+            await screen.press(['y'], () => transferDests.length > 0);
+            screen.unmount();
+
+        }
+
+        it('should hand the plan and the transfer a stage caFile the stored destination lacks', async () => {
+
+            destConfig = storedDest('admin');
+            mockSettingsManager = createMockSettingsManager({ ssl: { caFile } });
+
+            await transferToDest();
+
+            expect(planDests[0]?.connection.ssl).toEqual({ caFile });
+            expect(transferDests[0]?.connection.ssl).toEqual({ caFile });
+
+        });
+
+        it('should check the permission and transfer on the object the plan was given', async () => {
+
+            destConfig = storedDest('admin');
+            mockSettingsManager = createMockSettingsManager({ ssl: { caFile } });
+
+            await transferToDest();
+
+            expect(transferDests).toHaveLength(1);
+            expect(planDests.every((dest) => dest === transferDests[0])).toBe(true);
+            expect(checkConfigPolicy('user', transferDests[0], 'db:reset').allowed).toBe(true);
+
+        });
+
+        it('should load a destination whose role the project does not define', async () => {
+
+            destConfig = storedDest('ghost');
+            mockSettingsManager = createMockSettingsManager({ ssl: { caFile } });
+
+            const screen = renderScreen();
+
+            await waitFor(() => screen.frame().includes('Select Destination'));
+            await screen.press(['\r'], () => screen.frame().includes('Transfer Failed'));
+
+            // Loaded and refused by the policy check: an unknown role fails closed there, not in a thrown validation.
+            expect(screen.frame()).toContain('Transfer Failed');
+            expect(screen.frame()).toContain('not allowed');
+            screen.unmount();
+
+        });
+
+        it('should keep refusing a destination whose stage sets isTest when its role denies db:reset', async () => {
+
+            destConfig = storedDest('viewer');
+            mockSettingsManager = createMockSettingsManager({ isTest: true });
+
+            const screen = renderScreen();
+
+            await waitFor(() => screen.frame().includes('Select Destination'));
+            await screen.press(['\r'], () => screen.frame().includes('Transfer Failed'));
+
+            expect(screen.frame()).toContain('not allowed');
+            expect(planDests).toHaveLength(0);
+            screen.unmount();
+
+        });
+
+        it('should fail the selection for a destination its stage defaults make invalid', async () => {
+
+            // Above the default pool.max of 10, which the stored destination alone does not carry.
+            destConfig = { ...storedDest('admin'), connection: { ...storedDest('admin').connection, pool: { min: 11 } } };
+
+            const screen = renderScreen();
+
+            await waitFor(() => screen.frame().includes('Select Destination'));
+            await screen.press(['\r'], () => /Transfer Failed|Select Tables/.test(screen.frame()));
+
+            expect(screen.frame()).toContain('Transfer Failed');
+            expect(screen.frame()).toContain('pool');
+            expect(planDests).toHaveLength(0);
+            screen.unmount();
 
         });
 

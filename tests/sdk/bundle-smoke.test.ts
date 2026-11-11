@@ -173,6 +173,12 @@ describe.skipIf(!bundleExists)('sdk bundle: error classes', () => {
 
     });
 
+    it('should export SslFileError', () => {
+
+        expect(typeof bundle.SslFileError).toBe('function');
+
+    });
+
     it('should export lock error classes', () => {
 
         expect(typeof bundle.LockAcquireError).toBe('function');

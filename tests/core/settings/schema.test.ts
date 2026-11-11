@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test';
+import { attemptSync } from '@logosdx/utils';
 
 import {
     validateSettings,
@@ -271,6 +272,97 @@ describe('settings: schema validation', () => {
         it('should accept minimal stage', () => {
 
             expect(() => validateStage({})).not.toThrow();
+
+        });
+
+        it('should accept stage ssl as a boolean or a file-form object', () => {
+
+            expect(() => validateStage({ defaults: { ssl: true } })).not.toThrow();
+            expect(() => validateStage({
+                defaults: {
+                    ssl: {
+                        caFile: './ca.pem',
+                        certFile: './client.pem',
+                        keyFile: './client.key',
+                        rejectUnauthorized: false,
+                    },
+                },
+            })).not.toThrow();
+
+        });
+
+        it.each(['ca', 'cert', 'key'])('should refuse inline %s in stage ssl and name the file form', (field) => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { [field]: 'PEM' } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain(`ssl.${field}`);
+            expect(err?.message).toContain(`${field}File`);
+
+        });
+
+        it.each(['caFile', 'certFile', 'keyFile'])('should refuse an empty stage ssl %s and name it', (field) => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { [field]: '' } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain(`ssl.${field}`);
+            expect(err?.message).toContain('must not be empty');
+
+        });
+
+        it.each(['caFile', 'certFile', 'keyFile'])('should refuse a whitespace-only stage ssl %s like an empty one', (field) => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { [field]: ' \t ' } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain(`defaults.ssl.${field} must not be empty`);
+
+        });
+
+        it('should refuse an unknown stage ssl key and name it', () => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { bogus: 1 } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain('ssl.bogus');
+
+        });
+
+        it('should name the inline field and the unknown key when an empty file field is also present', () => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { ca: 'x', caFile: '', bogus: 1 } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toBe(
+                'defaults.ssl.ca is not allowed in stage defaults; use caFile; defaults.ssl.bogus is not a recognized ssl option',
+            );
+
+        });
+
+        it('should treat an inherited object member as an unknown stage ssl key', () => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl: { constructor: 1 } } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain('defaults.ssl.constructor is not a recognized ssl option');
+
+        });
+
+        it.each([
+            ['a string', 'yes'],
+            ['a number', 1],
+            ['null', null],
+            ['an array', []],
+            ['a mistyped field', { caFile: 5 }],
+        ])('should say what stage ssl accepts when given %s', (_label, ssl) => {
+
+            const [, err] = attemptSync(() => validateStage({ defaults: { ssl } }));
+
+            expect(err).toBeInstanceOf(SettingsValidationError);
+            expect(err?.message).toContain(
+                'defaults.ssl must be a boolean or an object of caFile, certFile, keyFile, rejectUnauthorized',
+            );
 
         });
 

@@ -33,7 +33,7 @@ import { Panel, Spinner, useToast, ProtectedConfirm } from '../../components/ind
 import { SqlInput, ResultBrowser } from '../../components/terminal/index.js';
 import { useAbortableTask } from '../../hooks/index.js';
 import { createConnection, testConnection } from '../../../core/connection/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { SettingsProvider, revalidateConfigPolicy } from '../../../core/config/resolver.js';
 import { checkConfigPolicy, getPolicyFingerprint, sqlPermissionsFor, withPolicyConfirmation } from '../../../core/policy/index.js';
 import {
     SqlHistoryManager,
@@ -286,7 +286,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     const handleExecute = useCallback((sql: string) => {
 
         if (!activeConfig || !activeConfigName || !settingsManager) return;
-        const [config, error] = attemptSync(() => withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
+        const [config, error] = attemptSync(() => revalidateConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
         if (error || !config) {
 
             showToast({ message: error?.message ?? 'Settings are not available', variant: 'error' });
@@ -320,7 +320,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
 
         if (!pending || !activeConfig || !settingsManager) return;
         setPending(null);
-        const [config, error] = attemptSync(() => withConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
+        const [config, error] = attemptSync(() => revalidateConfigPolicy(activeConfig, new SettingsProvider(settingsManager)));
         if (error || !config || config.name !== pending.config.name || getPolicyFingerprint(config) !== pending.fingerprint) {
 
             showToast({ message: error?.message ?? 'Policy changed; submit the query again', variant: 'error' });

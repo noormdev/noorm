@@ -37,6 +37,7 @@ A config is saved encrypted with your identity key. If you have no identity yet,
 | Host, Port | SQLite has no host. Port defaults to 5432, 3306, or 1433 |
 | Database | Database name, or file path for SQLite |
 | Username, Password | Stored encrypted in `.noorm/state/state.enc` |
+| Use SSL, Verify Certificate, CA File, Client Cert File, Client Key File, TLS Server Name | See [How do I connect to a server with a private CA?](#how-do-i-connect-to-a-server-with-a-private-ca) |
 | User Role, Agent Role | See [Access roles](#access-roles) |
 | Test Database | Sets `isTest`, read by `rules` in `settings.yml` and the SDK's `requireTest` |
 
@@ -75,6 +76,63 @@ Imported config 'staging'.
 ```
 
 
+## How do I connect to a server with a private CA?
+
+
+Name the CA certificate by path. noorm reads the file each time it opens a connection pool, so replacing the file rotates the certificate and the config stays as it is. This `corp.json` trusts a company CA and presents a client certificate:
+
+```json
+{
+    "name": "corp",
+    "connection": {
+        "dialect": "postgres",
+        "host": "10.0.0.5",
+        "database": "order_to_cash",
+        "tlsServerName": "db.internal.corp",
+        "ssl": {
+            "caFile": "./certs/corp-ca.pem",
+            "certFile": "~/.certs/client.pem",
+            "keyFile": "~/.certs/client.key"
+        }
+    }
+}
+```
+
+The TUI add and edit forms set the same fields:
+
+| Form field | Config field |
+|---|---|
+| Use SSL | `ssl` on or off |
+| Verify Certificate | `ssl.rejectUnauthorized`. Unchecked stores `false`: the connection is encrypted and the server certificate is not validated |
+| CA File | `ssl.caFile` |
+| Client Cert File | `ssl.certFile` |
+| Client Key File | `ssl.keyFile` |
+| TLS Server Name | `tlsServerName` |
+
+The TUI connects with the stored config over its [stage's](/guide/environments/stages#where-do-defaults-apply) `defaults`, and the edit form and the config list show the result:
+
+| Where | What you see |
+|---|---|
+| Edit form, a file the stage supplies | An empty field with the placeholder `(stage: <path>)`, and Use SSL checked |
+| Edit form, a field stored as inline PEM | `(inline certificate stored)`. The edit form keeps the PEM, along with every connection field the form does not show |
+| Add form | No stage state. The stage still applies beneath the form for the connection test and the submit check |
+| Config list | `[tls]` when SSL is on, `[tls unverified]` when `rejectUnauthorized` is `false`, no tag when SSL is off |
+
+A save that touches no SSL field leaves the stored `ssl` as it was, so the stage keeps supplying its value. The form refuses a path you enter or change when SSL would be off in the saved result, and refuses a TLS Server Name on PostgreSQL and MySQL when SSL would be off or Verify Certificate is unchecked. Unchecking Use SSL saves `ssl: false`, drops stored paths, and turns off an `ssl` the stage supplies. The [TUI reference](/tui#config-list) lists every form state.
+
+PostgreSQL, MySQL and MSSQL all honor the certificates, `rejectUnauthorized` and `tlsServerName`. Reach for `tlsServerName` when you dial an IP address, or a host name that differs from the one on the certificate.
+
+| Rule | Detail |
+|---|---|
+| Path base | A relative path resolves from the project root in the CLI and TUI, and from `projectRoot` in the SDK. `~/` is your home directory |
+| One form per field | Set `ca` or `caFile`, never both. The same goes for `cert` and `key` |
+| Stored value | A file-form setting is stored as its path, never the file's content |
+| `config import` | Saves a path without checking that the file exists |
+| A path that cannot be read | The connection fails with a message that names the field and path, for example `Cannot read ssl.caFile './certs/corp-ca.pem': ENOENT`. `config validate` and the TUI connection test show it |
+
+The [certificate reference](/dev/config#tls-certificates) covers how stage, stored, environment and inline layers combine, and the per-dialect behavior. For a certificate or host name error, see [troubleshooting](/guide/troubleshooting). A [stage](/guide/environments/stages#what-can-a-stage-set) can supply `caFile` for every config on it.
+
+
 ## How do I switch configs?
 
 
@@ -90,11 +148,12 @@ Commands use the first of these that is set:
 ## How do I override a config in CI?
 
 
-Environment variables override the stored config. [Stages](/guide/environments/stages#which-value-wins) shows the full order.
+Environment variables override the stored config in the CLI and SDK. The TUI applies no config variable (`NOORM_CONNECTION_*`, `NOORM_ACCESS_*`) and no flag to a config. Settings variables still apply: `NOORM_STAGES_<stage>_DEFAULTS_*` changes the stage defaults the TUI merges, as `NOORM_PATHS_*` changes its paths. [Stages](/guide/environments/stages#which-value-wins) shows the full order.
 
 | Variable | Sets |
 |---|---|
 | `NOORM_CONNECTION_DIALECT`, `_HOST`, `_PORT`, `_DATABASE`, `_USER`, `_PASSWORD`, `_SSL` | `connection.*` on the config |
+| `NOORM_CONNECTION_SSL_caFile`, `_certFile`, `_keyFile` | `connection.ssl.caFile`, `.certFile`, `.keyFile` |
 | `NOORM_PATHS_SQL`, `NOORM_PATHS_CHANGES` | `paths.sql`, `paths.changes`. Never written back to `settings.yml` |
 | `NOORM_ACCESS_USER`, `NOORM_ACCESS_AGENT` | `access` on a config built from the environment. Ignored on a stored config, which keeps its own roles |
 | `NOORM_CONFIG` | Which stored config to use |
@@ -108,7 +167,7 @@ export NOORM_CONNECTION_connectTimeoutMs=30000
 export NOORM_CONNECTION_SSL_rejectUnauthorized=true
 ```
 
-Underscores mean nesting, so splitting `connectTimeoutMs` into words addresses a different object. Use either scalar SSL or nested SSL settings, without mixing both forms. The [environment field reference](/dev/config#environment-variables) lists the supported schema paths and validation behavior. `config validate` tests the effective environment-overridden connection without saving overrides.
+Underscores mean nesting, so splitting `connectTimeoutMs` into words addresses a different object. Use either the scalar `NOORM_CONNECTION_SSL` or the nested `NOORM_CONNECTION_SSL_*` settings. Setting both fails with an error that names the two forms: `A scalar NOORM_CONNECTION_SSL cannot be combined with a nested NOORM_CONNECTION_SSL_* variable (NOORM_CONNECTION_SSL_caFile is set): set one form, not both.` An environment `ssl` that sets both `ca` and `caFile` fails, naming `ssl.ca`. The [environment field reference](/dev/config#environment-variables) lists the supported schema paths and validation behavior. `config validate` tests the effective environment-overridden connection without saving overrides.
 
 When no config is selected by flag, `NOORM_CONFIG`, or `config use`, noorm builds one named `__env__` from the variables. It needs `NOORM_CONNECTION_DIALECT` and `NOORM_CONNECTION_DATABASE`:
 
@@ -257,9 +316,13 @@ Exit 0 when valid, 1 when not. Every check runs, so one report lists all failure
 | | TUI export (`+`, then `x`) | `noorm config export` |
 |---|---|---|
 | File | `<name>.noorm.enc`, encrypted for one recipient | JSON to stdout, or `--output <file>` |
-| Contents | The config and its local secrets, without `user` and `password` | The config, with `password` |
+| Contents | The config and its local secrets | The config as stored |
+| Connection fields carried | Every stored field that is not a credential, including `tlsServerName`, `pool`, the timeouts and certificate file paths | All of them |
+| Withheld | `user`, `password`, and the inline `ssl.key` and `ssl.cert` | Nothing: `password` and inline PEM are in the output |
 | Needs | The recipient's identity known locally | A role that can read secrets |
 | Import | TUI: `+`, then `i` | `noorm config import <file>` |
+
+The TUI import takes `user` and `password` from its form, and its preview shows the incoming SSL state, certificate verification, certificate file paths and TLS server name before you save. A certificate file path travels as text, so the file must exist at that path on the importing machine.
 
 `config export --output` writes the file with `0600` permissions. Treat it as a credential. Creating a config through CLI import is user-channel only. Importing over an existing name needs `--force --yes` and the `config:write` permission, because an overwrite rewrites the config's roles.
 

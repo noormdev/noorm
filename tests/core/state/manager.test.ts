@@ -729,6 +729,24 @@ describe('state: manager', () => {
 
         });
 
+        it('keeps ssl file paths, and no PEM, across an encrypted reload', async () => {
+
+            const ssl = { caFile: 'certs/ca.pem', certFile: '/etc/ssl/cert.pem', keyFile: './key.pem' };
+            await state.setConfig('tls', createTestConfig('tls', {
+                connection: { dialect: 'postgres', host: 'db', database: 'app', ssl },
+            }));
+
+            const reader = new StateManager(tempDir, {
+                stateDir: '.test-state',
+                stateFile: 'state.enc',
+                privateKey: testPrivateKey,
+            });
+            await reader.load();
+
+            expect(reader.getConfig('tls')?.connection.ssl).toEqual(ssl);
+
+        });
+
         it('preserves custom roles across encrypted reload and listings', async () => {
 
             const access = { user: 'auditor', agent: 'automation' };

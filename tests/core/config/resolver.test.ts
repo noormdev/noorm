@@ -2,6 +2,7 @@
  * Config resolver tests.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { join } from 'node:path';
 import { attemptSync } from '@logosdx/utils';
 
 import {
@@ -10,10 +11,18 @@ import {
     canDeleteConfig,
     type StateProvider,
 } from '../../../src/core/config/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
+import { ConfigValidationError } from '../../../src/core/config/schema.js';
+import { effectiveConfig, SettingsProvider, withConfigPolicy } from '../../../src/core/config/resolver.js';
 import type { Config } from '../../../src/core/config/index.js';
 import type { ConfigInput } from '../../../src/core/config/types.js';
-import { getConfigPermission, guarded, UnknownAccessRoleError } from '../../../src/core/policy/index.js';
+import {
+    getConfigPermission,
+    getPolicyContext,
+    getPolicyFingerprint,
+    guarded,
+    policyTargetIdentity,
+    UnknownAccessRoleError,
+} from '../../../src/core/policy/index.js';
 import type { SettingsManager, Stage } from '../../../src/core/settings/index.js';
 
 /**
@@ -54,10 +63,10 @@ function createMockState(
 /**
  * Create a mock settings provider for testing.
  */
-function createMockSettings(stages: Record<string, Stage> = {}): SettingsProvider {
+function createMockSettings(stages: Record<string, Stage> = {}, projectRoot = '/test-project'): SettingsProvider {
 
     const manager = {
-        projectRoot: '/test-project',
+        projectRoot,
         settings: {},
         getStage(name: string): Stage | null {
 
@@ -105,6 +114,10 @@ describe('config: resolver', () => {
             'NOORM_CONNECTION_USER',
             'NOORM_CONNECTION_PASSWORD',
             'NOORM_CONNECTION_SSL',
+            'NOORM_CONNECTION_SSL_CA',
+            'NOORM_CONNECTION_SSL_caFile',
+            'NOORM_CONNECTION_SSL_CAFILE',
+            'NOORM_CONNECTION_SSL_REJECTUNAUTHORIZED',
             // Top-level
             'NOORM_CONFIG',
             'NOORM_NAME',
@@ -724,6 +737,277 @@ describe('config: resolver', () => {
             });
             expect(config!.access).toEqual({ user: 'admin', agent: false });
             expect(getConfigPermission('user', config!, 'sql:ddl')).toBe('deny');
+
+        });
+
+    });
+
+    describe('ssl layer combination', () => {
+
+        function stored(ssl: Config['connection']['ssl']): Config {
+
+            return createConfig({
+                name: 'ci',
+                connection: { dialect: 'postgres', database: 'app', host: 'db', ssl },
+            });
+
+        }
+
+        function stageSsl(ssl: NonNullable<Stage['defaults']['ssl']>): SettingsProvider {
+
+            return createMockSettings({ ci: { defaults: { ssl } } });
+
+        }
+
+        function resolveStored(config: Config, settings?: SettingsProvider, flags?: ConfigInput) {
+
+            return resolveConfig(createMockState({ configs: { ci: config } }), { name: 'ci', settings, flags });
+
+        }
+
+        function resolveEnvOnly(flags?: ConfigInput) {
+
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'app';
+
+            return resolveConfig(createMockState(), { flags });
+
+        }
+
+        it('stored ssl true over stage { caFile } keeps caFile', () => {
+
+            const config = resolveStored(stored(true), stageSsl({ caFile: './stage-ca.pem' }));
+
+            expect(config!.connection.ssl).toEqual({ caFile: './stage-ca.pem' });
+
+        });
+
+        it('stored inline ca over stage caFile resolves to the inline ca only', () => {
+
+            const config = resolveStored(stored({ ca: 'STORED-PEM' }), stageSsl({ caFile: './stage-ca.pem' }));
+
+            expect(config!.connection.ssl).toEqual({ ca: 'STORED-PEM' });
+
+        });
+
+        it('NOORM_CONNECTION_SSL_caFile over stored inline ca resolves to caFile only', () => {
+
+            process.env['NOORM_CONNECTION_SSL_caFile'] = './env-ca.pem';
+            const config = resolveStored(stored({ ca: 'STORED-PEM' }));
+
+            expect(config!.connection.ssl).toEqual({ caFile: './env-ca.pem' });
+
+        });
+
+        it('a stage rejectUnauthorized: false does not reach a stored ssl true', () => {
+
+            const config = resolveStored(stored(true), stageSsl({ rejectUnauthorized: false }));
+
+            expect(config!.connection.ssl).toBe(true);
+
+        });
+
+        it('a stage rejectUnauthorized: false does not reach a stored { caFile }', () => {
+
+            const config = resolveStored(stored({ caFile: './stored-ca.pem' }), stageSsl({ rejectUnauthorized: false }));
+
+            expect(config!.connection.ssl).toEqual({ caFile: './stored-ca.pem' });
+
+        });
+
+        it('a stage rejectUnauthorized: false applies to a stored config with no ssl', () => {
+
+            const config = resolveStored(stored(undefined), stageSsl({ rejectUnauthorized: false }));
+
+            expect(config!.connection.ssl).toEqual({ rejectUnauthorized: false });
+
+        });
+
+        it('a stored rejectUnauthorized: false does not survive NOORM_CONNECTION_SSL=true', () => {
+
+            process.env['NOORM_CONNECTION_SSL'] = 'true';
+            const config = resolveStored(stored({ rejectUnauthorized: false }));
+
+            expect(config!.connection.ssl).toBe(true);
+
+        });
+
+        it('a stored rejectUnauthorized: false does not survive SDK inline ssl: true', () => {
+
+            const config = resolveStored(stored({ rejectUnauthorized: false }), undefined, { connection: { ssl: true } });
+
+            expect(config!.connection.ssl).toBe(true);
+
+        });
+
+        it('a stored { ca, rejectUnauthorized: false } under env true resolves to { ca }', () => {
+
+            process.env['NOORM_CONNECTION_SSL'] = 'true';
+            const config = resolveStored(stored({ ca: 'STORED-PEM', rejectUnauthorized: false }));
+
+            expect(config!.connection.ssl).toEqual({ ca: 'STORED-PEM' });
+
+        });
+
+        it('NOORM_CONNECTION_SSL_CAFILE fails naming ssl.caFile', () => {
+
+            process.env['NOORM_CONNECTION_SSL_CAFILE'] = 'x';
+
+            const [, storedErr] = attemptSync(() => resolveStored(stored(true)));
+            const [, envOnlyErr] = attemptSync(() => resolveEnvOnly());
+
+            expect(storedErr).toBeInstanceOf(ConfigValidationError);
+            expect(envOnlyErr).toBeInstanceOf(ConfigValidationError);
+            expect(storedErr?.message).toContain('ssl.caFile');
+            expect(envOnlyErr?.message).toContain('ssl.caFile');
+
+        });
+
+        it('NOORM_CONNECTION_SSL_REJECTUNAUTHORIZED fails naming ssl.rejectUnauthorized', () => {
+
+            process.env['NOORM_CONNECTION_SSL_REJECTUNAUTHORIZED'] = 'false';
+
+            const [, err] = attemptSync(() => resolveStored(stored(true)));
+
+            expect(err).toBeInstanceOf(ConfigValidationError);
+            expect(err?.message).toContain('ssl.rejectUnauthorized');
+
+        });
+
+        it('SDK inline ssl { cafile } fails naming ssl.caFile; { Ca } fails naming ssl.ca', () => {
+
+            const lower: ConfigInput = { connection: { ssl: Object.fromEntries([['cafile', 'x']]) } };
+            const upper: ConfigInput = { connection: { ssl: Object.fromEntries([['Ca', 'x']]) } };
+
+            const [, lowerErr] = attemptSync(() => resolveStored(stored(true), undefined, lower));
+            const [, upperErr] = attemptSync(() => resolveStored(stored(true), undefined, upper));
+
+            expect(lowerErr?.message).toContain('ssl.caFile');
+            expect(upperErr?.message).toContain('ssl.ca');
+
+        });
+
+        it('SDK inline ssl: null fails with ConfigValidationError, on the stored-config path and the env-only path', () => {
+
+            const flags: ConfigInput = { connection: { ssl: Object.fromEntries([['ssl', null]]).ssl } };
+
+            const [, storedErr] = attemptSync(() => resolveStored(stored(true), undefined, flags));
+            const [, envOnlyErr] = attemptSync(() => resolveEnvOnly(flags));
+
+            expect(storedErr).toBeInstanceOf(ConfigValidationError);
+            expect(envOnlyErr).toBeInstanceOf(ConfigValidationError);
+
+        });
+
+        it('the correct spellings pass', () => {
+
+            process.env['NOORM_CONNECTION_SSL_caFile'] = './ca.pem';
+            const config = resolveStored(stored(true));
+
+            expect(config!.connection.ssl).toEqual({ caFile: './ca.pem' });
+
+        });
+
+        it('stored ssl false over a stage object is off', () => {
+
+            const config = resolveStored(stored(false), stageSsl({ caFile: './stage-ca.pem' }));
+
+            expect(config!.connection.ssl).toBe(false);
+
+        });
+
+        it('environment ca with caFile fails naming ssl.ca', () => {
+
+            process.env['NOORM_CONNECTION_SSL_CA'] = 'PEM';
+            process.env['NOORM_CONNECTION_SSL_caFile'] = './ca.pem';
+
+            const [, storedErr] = attemptSync(() => resolveStored(stored(true)));
+            const [, envOnlyErr] = attemptSync(() => resolveEnvOnly());
+
+            expect(storedErr).toBeInstanceOf(ConfigValidationError);
+            expect(envOnlyErr).toBeInstanceOf(ConfigValidationError);
+            expect(storedErr?.message).toContain('ssl.ca');
+            expect(envOnlyErr?.message).toContain('ssl.ca');
+
+        });
+
+        it('SDK inline ca with caFile fails naming ssl.ca', () => {
+
+            const flags: ConfigInput = { connection: { ssl: { ca: 'PEM', caFile: './ca.pem' } } };
+
+            const [, storedErr] = attemptSync(() => resolveStored(stored(true), undefined, flags));
+            const [, envOnlyErr] = attemptSync(() => resolveEnvOnly(flags));
+
+            expect(storedErr).toBeInstanceOf(ConfigValidationError);
+            expect(envOnlyErr).toBeInstanceOf(ConfigValidationError);
+            expect(storedErr?.message).toContain('ssl.ca');
+            expect(envOnlyErr?.message).toContain('ssl.ca');
+
+        });
+
+        it('environment ca with caFile under an SDK inline ssl { caFile } fails naming ssl.ca, on the stored-config path and the env-only path', () => {
+
+            process.env['NOORM_CONNECTION_SSL_CA'] = 'PEM';
+            process.env['NOORM_CONNECTION_SSL_caFile'] = './ca.pem';
+            const flags: ConfigInput = { connection: { ssl: { caFile: './inline-ca.pem' } } };
+
+            const [, storedErr] = attemptSync(() => resolveStored(stored(true), undefined, flags));
+            const [, envOnlyErr] = attemptSync(() => resolveEnvOnly(flags));
+
+            expect(storedErr).toBeInstanceOf(ConfigValidationError);
+            expect(envOnlyErr).toBeInstanceOf(ConfigValidationError);
+            expect(storedErr?.message).toContain('ssl.ca');
+            expect(envOnlyErr?.message).toContain('ssl.ca');
+
+        });
+
+        it('should keep the stored ssl when a higher layer sets ssl to undefined', () => {
+
+            const config = resolveStored(stored({ caFile: './stored-ca.pem' }), undefined, { connection: { ssl: undefined } });
+
+            expect(config!.connection.ssl).toEqual({ caFile: './stored-ca.pem' });
+
+        });
+
+    });
+
+    describe('ssl file paths as written', () => {
+
+        const root = join('/', 'srv', 'project');
+        const relative = 'certs/ca.pem';
+
+        function storedWithFile(): Config {
+
+            return createConfig({
+                name: 'ci',
+                connection: { dialect: 'postgres', host: 'db', database: 'app', ssl: { caFile: relative } },
+            });
+
+        }
+
+        it('should return the stored path as written, bound to the path as written', () => {
+
+            const stored = storedWithFile();
+            const resolved = resolveConfig(createMockState({ configs: { ci: stored } }), {
+                name: 'ci',
+                settings: createMockSettings({}, root),
+            });
+
+            expect(resolved!.connection.ssl).toEqual({ caFile: relative });
+            expect(getPolicyContext(resolved!.access)?.targetIdentity).toBe(policyTargetIdentity(root, resolved!.connection));
+
+        });
+
+        it('should return the env-only path as written, bound to the path as written', () => {
+
+            process.env['NOORM_CONNECTION_DIALECT'] = 'postgres';
+            process.env['NOORM_CONNECTION_DATABASE'] = 'app';
+            process.env['NOORM_CONNECTION_SSL_caFile'] = relative;
+
+            const resolved = resolveConfig(createMockState(), { settings: createMockSettings({}, root) });
+
+            expect(resolved!.connection.ssl).toEqual({ caFile: relative });
+            expect(getPolicyContext(resolved!.access)?.targetIdentity).toBe(policyTargetIdentity(root, resolved!.connection));
 
         });
 
@@ -2077,6 +2361,174 @@ describe('config: resolver', () => {
             expect(config.name).toBe('test');
             expect(config.connection.user).toBe('stored-user');
             expect(getConfigPermission('agent', config, 'db:destroy')).toBe('allow');
+
+        });
+
+    });
+
+    describe('effectiveConfig', () => {
+
+        const connection: Config['connection'] = { dialect: 'postgres', database: 'app', host: 'db' };
+
+        function stored(overrides: Partial<Config> = {}): Config {
+
+            return createConfig({ name: 'ci', isTest: false, access: { user: 'viewer', agent: 'viewer' }, connection, ...overrides });
+
+        }
+
+        function stage(defaults: Stage['defaults']): SettingsProvider {
+
+            return createMockSettings({ ci: { defaults } });
+
+        }
+
+        const tlsStage = () => stage({ ssl: { caFile: './certs/ca.pem' }, user: 'stage-user', password: 'stage-pw', port: 6543 });
+
+        it('should give a stored config the caFile and password of its stage', () => {
+
+            const config = effectiveConfig(stored(), tlsStage());
+
+            expect(config.connection.ssl).toEqual({ caFile: './certs/ca.pem' });
+            expect(config.connection.password).toBe('stage-pw');
+
+        });
+
+        it('should equal the resolveConfig connection when no NOORM_ variable is set', () => {
+
+            const config = stored({ connection: { ...connection, ssl: true } });
+            const resolved = resolveConfig(createMockState({ configs: { ci: config } }), { name: 'ci', settings: tlsStage() });
+
+            expect(effectiveConfig(config, tlsStage()).connection).toEqual(resolved?.connection);
+
+        });
+
+        it('should ignore NOORM_CONNECTION_HOST', () => {
+
+            const before = effectiveConfig(stored(), tlsStage());
+
+            process.env['NOORM_CONNECTION_HOST'] = 'env.example.com';
+
+            const after = effectiveConfig(stored(), tlsStage());
+
+            expect(after).toEqual(before);
+            expect(after.connection.host).toBe('db');
+
+        });
+
+        it('should keep the stored roles when NOORM_ACCESS_USER is set', () => {
+
+            process.env['NOORM_ACCESS_USER'] = 'admin';
+
+            expect(effectiveConfig(stored(), tlsStage()).access).toEqual({ user: 'viewer', agent: 'viewer' });
+
+        });
+
+        it('should bind the target identity of the effective connection', () => {
+
+            const config = effectiveConfig(stored(), tlsStage());
+
+            expect(getPolicyContext(config.access)?.targetIdentity)
+                .toBe(policyTargetIdentity('/test-project', config.connection));
+
+        });
+
+        it('should mutate neither the stored config nor the stage defaults', () => {
+
+            const config = stored({ connection: { ...connection, ssl: { certFile: './client.pem' }, pool: { max: 3 } } });
+            const defaults: Stage['defaults'] = { ssl: { caFile: './certs/ca.pem' }, user: 'stage-user' };
+            const configBefore = structuredClone(config);
+            const defaultsBefore = structuredClone(defaults);
+
+            effectiveConfig(config, stage(defaults));
+
+            expect(config).toEqual(configBefore);
+            expect(defaults).toEqual(defaultsBefore);
+
+        });
+
+        it('should lay a form connection over the stage defaults', () => {
+
+            const form: Config['connection'] = { dialect: 'postgres', database: 'typed', host: 'form-host', port: 5432 };
+            const config = effectiveConfig({ name: 'ci', connection: form }, tlsStage());
+
+            expect(config.connection).toMatchObject({ ...form, user: 'stage-user', ssl: { caFile: './certs/ca.pem' } });
+
+        });
+
+        it('should take type, isTest and access from the stage where the stored config lacks them', () => {
+
+            const settings = stage({ type: 'remote', isTest: true, access: { user: 'operator', agent: false } });
+            const config = effectiveConfig({ name: 'ci', connection }, settings);
+
+            expect(config.type).toBe('remote');
+            expect(config.isTest).toBe(true);
+            expect(config.access).toEqual({ user: 'operator', agent: false });
+
+        });
+
+        // A trusted isTest gives every role at least the admin cell, so a stage must not be able to grant it.
+        it.each([true, false])('should not trust a stage isTest (roles validated: %p)', (validate) => {
+
+            const settings = stage({ isTest: true });
+            const untrusted = effectiveConfig({ name: 'ci', access: { user: 'viewer', agent: 'viewer' }, connection }, settings, validate);
+            const trusted = effectiveConfig(stored({ isTest: true }), settings, validate);
+
+            expect(untrusted.isTest).toBe(true);
+            expect(getPolicyContext(untrusted.access)?.isTest).toBe(false);
+            expect(getConfigPermission('user', untrusted, 'db:destroy')).toBe('deny');
+            expect(getPolicyContext(trusted.access)?.isTest).toBe(true);
+
+        });
+
+        it('should have the policy fingerprint of the resolveConfig result when no NOORM_ variable is set', () => {
+
+            const config = stored();
+            const resolved = resolveConfig(createMockState({ configs: { ci: config } }), { name: 'ci', settings: tlsStage() });
+
+            if (!resolved) throw new Error('resolveConfig returned no config for "ci"');
+
+            expect(getPolicyFingerprint(effectiveConfig(config, tlsStage()))).toBe(getPolicyFingerprint(resolved));
+
+        });
+
+        it('should treat an undefined stored user and password as absent', () => {
+
+            const config = effectiveConfig(stored({ connection: { ...connection, user: undefined, password: undefined } }), tlsStage());
+
+            expect(config.connection.user).toBe('stage-user');
+            expect(config.connection.password).toBe('stage-pw');
+
+        });
+
+        it('should take the stage roles when the stored access is undefined', () => {
+
+            const settings = stage({ access: { user: 'viewer', agent: false } });
+            const config = effectiveConfig({ name: 'ci', access: undefined, connection }, settings);
+
+            expect(config.access).toEqual({ user: 'viewer', agent: false });
+
+        });
+
+        it('should treat an undefined form user and password as absent', () => {
+
+            const form: Config['connection'] = { ...connection, host: 'form-host', user: undefined, password: undefined };
+            const config = effectiveConfig({ name: 'ci', connection: form }, tlsStage());
+
+            expect(config.connection.user).toBe('stage-user');
+            expect(config.connection.password).toBe('stage-pw');
+
+        });
+
+        it('should throw on an unknown role when roles are validated and bind it when they are not', () => {
+
+            const config = stored({ access: { user: 'ghost', agent: 'viewer' } });
+
+            expect(() => effectiveConfig(config, tlsStage())).toThrow(UnknownAccessRoleError);
+
+            const bound = effectiveConfig(config, tlsStage(), false);
+
+            expect(bound.access.user).toBe('ghost');
+            expect(getPolicyContext(bound.access)).toBeDefined();
 
         });
 

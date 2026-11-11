@@ -107,6 +107,10 @@ noorm config sync --stage staging --name review --yes
 
 Use the [config command reference](https://noorm.dev/headless#config-create) for connection overrides, password omission, fixed destination names, overwrite authorization, and sync previews. These commands change encrypted state without connecting; neither persists a stage link.
 
+### config export and import
+
+`config export` writes the config as JSON with its password, to stdout or `--output`. `config import <path>` creates a config from that JSON. File-form settings in `connection.ssl` (`caFile`, `certFile`, `keyFile`) export as their paths and the files are not read, so the files must exist at those paths on the importing machine. Inline `ca`, `cert` and `key` export as the stored PEM. Import saves a path without checking the file; `config validate <name>` reports an unreadable one.
+
 ### config use
 
 Set the active configuration. It connects to the config's database when it can, to register your identity; a role that cannot write registers nothing and creates no tables. On the agent channel a config with `agent: false` exits 1 with `Config "<name>" is not accessible on the agent channel.`

@@ -3,13 +3,29 @@ import { attempt } from '@logosdx/utils';
 import { defineCommand } from 'citty';
 import { parseConfig } from '../../core/config/schema.js';
 import { SettingsProvider, validateAccessRoles, withConfigPolicy } from '../../core/config/resolver.js';
+import { combineSsl } from '../../core/config/ssl-combine.js';
 import { stageFields } from '../../core/config/stage.js';
+import { SSL_FIELD_PAIRS } from '../../core/connection/types.js';
 import { checkConfigPolicy, compareCells, getConfigPermission, MATRIX, resolveChannel } from '../../core/policy/index.js';
 import type { Channel, Permission } from '../../core/policy/index.js';
 import { getSettingsManager } from '../../core/settings/index.js';
 import { initState } from '../../core/state/index.js';
 import { outputError, outputResult, sharedArgs } from '../_utils.js';
 import { EXIT } from '../_exit.js';
+
+const INLINE_PEM_FIELDS: readonly string[] = SSL_FIELD_PAIRS.map(([inline]) => inline);
+
+/** The preview prints behind `config:write`, which is not `secret:read`, so a stored PEM never reaches it. */
+function redactInlinePem(value: unknown): unknown {
+
+    if (typeof value !== 'object' || value === null) return value;
+
+    return Object.fromEntries(
+        Object.entries(value).map(([key, field]) =>
+            [key, INLINE_PEM_FIELDS.includes(key) && field !== undefined ? '[inline PEM]' : field]),
+    );
+
+}
 
 export default defineCommand({
     meta: { name: 'sync', description: 'Preview and reapply stage defaults to a stored config' },
@@ -95,12 +111,12 @@ export default defineCommand({
 
             }
 
-            const updated = parseConfig({
-                ...existing,
-                ...fields,
-                access,
-                connection: { ...existing.connection, ...fields.connection },
-            });
+            const connection = { ...existing.connection, ...fields.connection };
+            const ssl = combineSsl(existing.connection.ssl, fields.connection?.ssl);
+
+            if (ssl !== undefined) connection.ssl = ssl;
+
+            const updated = parseConfig({ ...existing, ...fields, access, connection });
 
             const changes: { field: string; before: unknown; after: unknown }[] = [];
 
@@ -120,8 +136,8 @@ export default defineCommand({
 
                     changes.push({
                         field: `connection.${key}`,
-                        before: existing.connection[key],
-                        after: updated.connection[key],
+                        before: redactInlinePem(existing.connection[key]),
+                        after: redactInlinePem(updated.connection[key]),
                     });
 
                 }

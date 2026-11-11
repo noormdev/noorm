@@ -59,7 +59,15 @@ export interface StageDefaults {
     database?: string;
     user?: string;
     password?: string;
-    ssl?: boolean;
+    /** Inline PEM is not allowed here: `settings.yml` is committed. */
+    ssl?:
+        | boolean
+        | {
+              rejectUnauthorized?: boolean;
+              caFile?: string;
+              certFile?: string;
+              keyFile?: string;
+          };
     type?: 'local' | 'remote';
     access?: ConfigAccess;
     isTest?: boolean;

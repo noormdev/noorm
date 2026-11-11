@@ -25,10 +25,14 @@ Domain: core-db. Database lifecycle, connections, exploration, teardown, and tra
 
 Map:
   - docs/wiki/core-db.md
+Contracts:
+  - docs/spec/connection-cert-files.md
 Guides:
   - docs/guide/database/create.md
   - docs/guide/database/explore.md
   - docs/guide/database/teardown.md
   - docs/guide/database/transfer.md
+Designs:
+  - docs/design/enterprise-connectivity.md
 
 Consult the map before changing behavior here. Behavior changes stale the pages above. Renames or removals stale mentions beyond them: grep the old name across docs/ before shipping.

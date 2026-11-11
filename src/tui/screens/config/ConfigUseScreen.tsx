@@ -21,7 +21,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
-import { SettingsProvider, withConfigPolicy } from '../../../core/config/resolver.js';
+import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
 
 /**
@@ -83,7 +83,7 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
             const [_, err] = await attempt(async () => {
 
                 if (!settingsManager) throw new Error('Settings are not available');
-                const bound = withConfigPolicy(config, new SettingsProvider(settingsManager));
+                const bound = effectiveConfig(config, new SettingsProvider(settingsManager));
 
                 await stateManager.setActiveConfig(configName);
 
