@@ -1,5 +1,5 @@
 /** Opening a screen must not create noorm's tracking tables for a role that cannot write. */
-import { describe, it, expect, vi, mock, beforeEach, afterEach, afterAll } from 'bun:test';
+import { describe, it, expect, vi, mock, spyOn, beforeEach, afterEach, afterAll } from 'bun:test';
 import { render } from 'ink-testing-library';
 import React from 'react';
 import { Database } from 'bun:sqlite';
@@ -28,6 +28,8 @@ import { resetLifecycleManager } from '../../../src/core/lifecycle/index.js';
 import { createConnection } from '../../../src/core/connection/factory.js';
 import { ensureSchemaVersion } from '../../../src/core/version/index.js';
 import { CURRENT_VERSIONS } from '../../../src/core/version/types.js';
+import { LockManager } from '../../../src/core/lock/index.js';
+import { ChangeHistory } from '../../../src/core/change/history.js';
 
 const actualCore = await import('../../../src/core/index.js');
 const actualIdentity = await import('../../../src/core/identity/index.js');
@@ -114,6 +116,19 @@ async function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void
 
 }
 
+/**
+ * Resolves once the first call to a spied read has settled.
+ *
+ * Mounted into a context that is still loading, these screens paint their empty
+ * state before they connect, so a frame alone does not show that anything was read.
+ */
+async function settled(read: { mock: { results: { value?: unknown }[] } }): Promise<void> {
+
+    await waitFor(() => read.mock.results.length > 0);
+    await read.mock.results[0]?.value;
+
+}
+
 // eslint-disable-next-line no-control-regex
 const plain = (frame: string | undefined) => (frame ?? '').replace(/\x1B\[[0-9;]*m/g, '');
 
@@ -170,10 +185,18 @@ describe('cli: screens and tracking tables', () => {
 
     }
 
+    const reads = {
+        status: spyOn(LockManager.prototype, 'status'),
+        getAllStatuses: spyOn(ChangeHistory.prototype, 'getAllStatuses'),
+        getUnifiedHistory: spyOn(ChangeHistory.prototype, 'getUnifiedHistory'),
+    };
+
     beforeEach(() => {
 
         dir = mkdtempSync(join(tmpdir(), 'noorm-screen-tracking-'));
         database = join(dir, 'fresh.db');
+
+        for (const read of Object.values(reads)) read.mockClear();
 
     });
 
@@ -186,6 +209,8 @@ describe('cli: screens and tracking tables', () => {
     });
 
     afterAll(() => {
+
+        for (const read of Object.values(reads)) read.mockRestore();
 
         mock.module('../../../src/core/index.js', () => ({ ...actualCore, ...realCore }));
         mock.module('../../../src/core/identity/index.js', () => ({ ...actualIdentity, loadExistingIdentity: realLoadExistingIdentity }));
@@ -225,11 +250,13 @@ describe('cli: screens and tracking tables', () => {
 
         const { lastFrame, unmount } = open(Screen, 'viewer');
 
+        await settled(reads.status);
         await waitFor(() => plain(lastFrame()).includes('UNLOCKED'));
         const frame = plain(lastFrame());
         unmount();
 
         expect(frame).toContain('UNLOCKED');
+        expect(existsSync(database)).toBe(true);
         expect(tableNames(database)).toEqual([]);
 
     }, 20_000);
@@ -243,21 +270,24 @@ describe('cli: screens and tracking tables', () => {
 
         await waitFor(() => plain(lastFrame()).includes('is not allowed'));
         const frame = plain(lastFrame());
+        // A connection would be requested by an effect that runs after the refusal is painted.
+        const opened = await waitFor(() => existsSync(database), 200).then(() => true, () => false);
         unmount();
 
         expect(frame).toContain('"vault:read" is not allowed');
         expect(frame).toContain('(role: viewer)');
-        expect(existsSync(database)).toBe(false);
+        expect(opened).toBe(false);
 
     }, 20_000);
 
     it.each([
-        ['list', ChangeListScreen, 'No changes found.'],
-        ['history', ChangeHistoryScreen, 'No execution history found.'],
-    ])('should show a viewer an empty change %s without creating tracking tables', async (_name, Screen, empty) => {
+        ['list', ChangeListScreen, 'No changes found.', 'getAllStatuses'],
+        ['history', ChangeHistoryScreen, 'No execution history found.', 'getUnifiedHistory'],
+    ] as const)('should show a viewer an empty change %s without creating tracking tables', async (_name, Screen, empty, read) => {
 
         const { lastFrame, unmount } = open(Screen, 'viewer');
 
+        await settled(reads[read]);
         await waitFor(() => plain(lastFrame()).includes(empty));
         const frame = plain(lastFrame());
         unmount();
