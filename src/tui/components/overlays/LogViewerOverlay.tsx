@@ -26,6 +26,7 @@ import { readLogFile } from '../../../core/logger/reader.js';
 import { Spinner } from '../feedback/index.js';
 
 import type { LogEntry } from '../../../core/logger/types.js';
+import { oneLine } from '../../utils/string.js';
 
 /**
  * Props for LogViewerOverlay.
@@ -414,7 +415,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                                     <Box width={25}>
                                         <Text color="cyan">{entry.type.slice(0, 24)}</Text>
                                     </Box>
-                                    <Text>{entry.message.slice(0, 45)}</Text>
+                                    <Text wrap="truncate">{oneLine(entry.message)}</Text>
                                 </Box>
                             );
 

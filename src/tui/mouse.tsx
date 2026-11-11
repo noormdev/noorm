@@ -523,6 +523,9 @@ export interface RowMouseOptions {
     /** A wheel notch: -1 for up, 1 for down. */
     onWheel: (delta: -1 | 1) => void;
 
+    /** Also require the click inside the box's columns. For targets that share a line, such as buttons. */
+    matchColumn?: boolean;
+
 }
 
 /**
@@ -544,21 +547,21 @@ export interface RowMouse {
 /**
  * Which registered row, if any, contains a given live-region row.
  *
- * The column is deliberately ignored. A row's box is only as wide as its
- * content, so requiring a horizontal hit would make a click past the end of a
- * short label miss a row the reader is plainly pointing at.
+ * The column is ignored unless `column` is given. A list row's box is only as
+ * wide as its content, so requiring a horizontal hit would make a click past
+ * the end of a short label miss a row the reader is plainly pointing at.
  */
-function hitTest(nodes: Map<number, DOMElement>, row: number): number | null {
+function hitTest(nodes: Map<number, DOMElement>, row: number, column?: number): number | null {
 
     for (const [index, node] of nodes) {
 
         const box = measureElement(node);
 
-        if (box.height > 0 && row >= box.y && row < box.y + box.height) {
+        if (box.height === 0 || row < box.y || row >= box.y + box.height) continue;
 
-            return index;
+        if (column !== undefined && (column < box.x || column >= box.x + box.width)) continue;
 
-        }
+        return index;
 
     }
 
@@ -586,7 +589,7 @@ function hitTest(nodes: Map<number, DOMElement>, row: number): number | null {
  * <Box ref={rowRef(index)}>…</Box>
  * ```
  */
-export function useRowMouse({ isActive, onClick, onActivate, onWheel }: RowMouseOptions): RowMouse {
+export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColumn = false }: RowMouseOptions): RowMouse {
 
     const { enabled, subscribe } = useMouseTransport();
 
@@ -628,7 +631,7 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel }: RowMouse
 
             if (event.button !== 'left') return;
 
-            const index = hitTest(nodes.current, event.row);
+            const index = hitTest(nodes.current, event.row, matchColumn ? event.column : undefined);
 
             if (index === null) return;
 
@@ -647,7 +650,7 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel }: RowMouse
 
         });
 
-    }, [enabled, subscribe]);
+    }, [enabled, subscribe, matchColumn]);
 
     const rowRef = useCallback(
         (index: number) => {

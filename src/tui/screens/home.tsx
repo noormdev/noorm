@@ -358,7 +358,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             return (
                 <Box gap={1}>
                     <Text color="yellow">LOCKED</Text>
-                    <Text dimColor>by {status.lockStatus.lock.lockedBy}</Text>
+                    <Text dimColor wrap="truncate">by {status.lockStatus.lock.lockedBy}</Text>
                 </Box>
             );
 
@@ -497,7 +497,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             {/* Welcome / Config Summary */}
             <Box marginBottom={1} gap={2}>
                 <Text>Active Config: </Text>
-                <Text color="cyan" bold>
+                <Text color="cyan" bold wrap="truncate">
                     {activeConfigName ?? 'none'}
                 </Text>
                 <Text dimColor>|</Text>
@@ -551,7 +551,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                                     </Box>
                                     {setupStatus.map((s) => (
                                         <Box key={s.configName} marginLeft={2}>
-                                            <Text>
+                                            <Text wrap="truncate">
                                                 <Text color="green">✓</Text>
                                                 {' '}{s.configName}
                                             </Text>
@@ -632,10 +632,12 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                                 <Box key={record.id} gap={1}>
                                     <Text color={statusColor}>{statusIcon}</Text>
                                     <Text color={typeColor}>{typeLabel}</Text>
-                                    <Text>{record.name}</Text>
-                                    <Text dimColor>
-                                        {relativeTimeAgo(record.executedAt)} {duration}
-                                    </Text>
+                                    <Text wrap="truncate">{record.name}</Text>
+                                    <Box flexShrink={0}>
+                                        <Text dimColor>
+                                            {relativeTimeAgo(record.executedAt)} {duration}
+                                        </Text>
+                                    </Box>
                                 </Box>
                             );
 

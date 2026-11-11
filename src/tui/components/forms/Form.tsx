@@ -40,6 +40,7 @@ import type { ReactElement } from 'react';
 import type { DOMElement } from 'ink';
 
 import { useFocusScope } from '../../focus.js';
+import { useRowMouse } from '../../mouse.js';
 
 /** Options an expanded select shows before it starts scrolling. */
 const SELECT_VISIBLE_OPTIONS = 4;
@@ -126,6 +127,17 @@ function SelectField({
 
     }, [currentIndex]);
 
+    const chooseAt = (index: number) => {
+
+        const picked = options[index];
+
+        if (!picked) return;
+
+        onChange(picked.value);
+        onConfirm();
+
+    };
+
     // Handle keyboard navigation for select
     useInput((input, key) => {
 
@@ -152,14 +164,7 @@ function SelectField({
         // Enter - confirm selection
         if (key.return) {
 
-            const selected = options[highlightedIndex];
-
-            if (selected) {
-
-                onChange(selected.value);
-                onConfirm();
-
-            }
+            chooseAt(highlightedIndex);
 
         }
 
@@ -187,6 +192,15 @@ function SelectField({
     const hasMoreAbove = startIndex > 0;
     const hasMoreBelow = startIndex + SELECT_VISIBLE_OPTIONS < options.length;
 
+    // Taking the option on the first press would collapse the list under the
+    // pointer, and the second press of a double-click would land on what moved up.
+    const { rowRef } = useRowMouse({
+        isActive,
+        onClick: setHighlightedIndex,
+        onActivate: chooseAt,
+        onWheel: (delta) => setHighlightedIndex((i) => Math.min(options.length - 1, Math.max(0, i + delta))),
+    });
+
     return (
         <Box flexDirection="column">
             {hasMoreAbove && <Text dimColor>↑ more</Text>}
@@ -198,10 +212,11 @@ function SelectField({
                 const isSelected = option.value === value;
 
                 return (
-                    <Box key={option.value}>
+                    <Box key={option.value} ref={rowRef(actualIndex)}>
                         <Text
                             color={isHighlighted && isActive ? 'cyan' : undefined}
                             bold={isHighlighted && isActive}
+                            wrap="truncate"
                         >
                             {isHighlighted ? '❯ ' : '  '}
                             {option.label}
@@ -448,6 +463,7 @@ export function Form({
     const activeAction = activeIndex >= fields.length ? actions[activeIndex - fields.length] : undefined;
     const currentField = activeIndex < fields.length ? fields[activeIndex] : undefined;
     const isEditing = editingKey !== null;
+    const isClearable = currentField?.type === 'password' && Boolean(values[currentField.key]);
 
     // A field list that shrinks (SecretValueForm swaps fields by mode) must not
     // leave the cursor pointing past the end.
@@ -562,9 +578,9 @@ export function Form({
 
     }, [busy, submitting, collectErrors, fields, values, onSubmit]);
 
-    const beginEdit = useCallback(() => {
+    const beginEdit = useCallback((index = activeIndex) => {
 
-        const field = fields[activeIndex];
+        const field = fields[index];
 
         if (!field) return;
 
@@ -607,9 +623,9 @@ export function Form({
 
     }, [editingKey, editSnapshot]);
 
-    const activateStop = useCallback(() => {
+    const runAction = useCallback((action: FormAction) => {
 
-        if (activeAction === 'submit') {
+        if (action === 'submit') {
 
             handleSubmit();
 
@@ -617,9 +633,15 @@ export function Form({
 
         }
 
-        if (activeAction === 'cancel') {
+        onCancel?.();
 
-            onCancel?.();
+    }, [handleSubmit, onCancel]);
+
+    const activateStop = useCallback(() => {
+
+        if (activeAction) {
+
+            runAction(activeAction);
 
             return;
 
@@ -627,7 +649,55 @@ export function Form({
 
         beginEdit();
 
-    }, [activeAction, handleSubmit, onCancel, beginEdit]);
+    }, [activeAction, runAction, beginEdit]);
+
+    // Stops are fields, then buttons, matching `activeIndex`.
+    const clickStop = useCallback((index: number) => {
+
+        const field = fields[index];
+
+        if (field && editingKey === field.key) return;
+
+        if (isEditing) commitEdit();
+
+        setActiveIndex(index);
+
+        if (!field) {
+
+            const action = actions[index - fields.length];
+
+            if (action) runAction(action);
+
+            return;
+
+        }
+
+        if (field.type === 'checkbox') beginEdit(index);
+
+    }, [fields, actions, editingKey, isEditing, commitEdit, runAction, beginEdit]);
+
+    const openStop = useCallback((index: number) => {
+
+        const field = fields[index];
+
+        if (!field || field.type === 'checkbox' || editingKey === field.key) return;
+
+        setActiveIndex(index);
+        beginEdit(index);
+
+    }, [fields, editingKey, beginEdit]);
+
+    const { rowRef } = useRowMouse({
+        isActive: isFocused,
+        matchColumn: true,
+        onClick: clickStop,
+        onActivate: openStop,
+        onWheel: (delta) => {
+
+            if (!isEditing) moveBy(delta);
+
+        },
+    });
 
     // Note: the guard is inside the handler, not useInput's `isActive` option -
     // isFocused is false on the first render and `isActive` would skip
@@ -743,6 +813,16 @@ export function Form({
 
             updateValue(currentField.key, !values[currentField.key]);
 
+            return;
+
+        }
+
+        // Entering a password field opens on the current value, so replacing it
+        // otherwise means backspacing the whole thing first.
+        if (input.toLowerCase() === 'x' && !key.ctrl && !key.meta && currentField && isClearable) {
+
+            updateValue(currentField.key, '');
+
         }
 
     });
@@ -841,9 +921,15 @@ export function Form({
 
         }
 
+        if (isClearable) {
+
+            return `↑↓ field   ↵ edit   x clear   esc cancel${alt}`;
+
+        }
+
         return `↑↓ field   ↵ edit   esc cancel${alt}`;
 
-    }, [isEditing, fields, editingKey, activeAction, currentField, altSubmit]);
+    }, [isEditing, fields, editingKey, activeAction, currentField, isClearable, altSubmit]);
 
     return (
         <Box flexDirection="column">
@@ -859,8 +945,8 @@ export function Form({
                 const starWidth = field.required ? 1 : 0;
 
                 return (
-                    <Box key={field.key}>
-                        <Box width={labelColumnWidth}>
+                    <Box key={field.key} ref={rowRef(index)}>
+                        <Box width={labelColumnWidth} flexShrink={0}>
                             <Text
                                 color={isActive ? 'cyan' : undefined}
                                 dimColor={!isActive}
@@ -872,7 +958,7 @@ export function Form({
                             {field.required && <Text color="red">*</Text>}
                         </Box>
 
-                        <Box flexDirection="column">
+                        <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
                             {isFieldEditing && (field.type === 'text' || field.type === 'password') && (
                                 <TextInput
                                     placeholder={field.placeholder ?? ''}
@@ -894,15 +980,19 @@ export function Form({
 
                             {!isFieldEditing && (
                                 <Box>
-                                    {displayValue(field, value) === '' && field.placeholder ? (
-                                        <Text dimColor>{field.placeholder}</Text>
-                                    ) : (
-                                        <Text>{displayValue(field, value)}</Text>
+                                    <Box flexShrink={1} minWidth={0}>
+                                        {displayValue(field, value) === '' && field.placeholder ? (
+                                            <Text dimColor wrap="truncate">{field.placeholder}</Text>
+                                        ) : (
+                                            <Text wrap="truncate">{displayValue(field, value)}</Text>
+                                        )}
+                                    </Box>
+
+                                    {field.hint && <Box flexShrink={0}><Text dimColor>{'  '}{field.hint}</Text></Box>}
+
+                                    {error && submitted && (
+                                        <Box flexShrink={0}><Text color="red">{'  '}✘ {error}</Text></Box>
                                     )}
-
-                                    {field.hint && <Text dimColor>{'  '}{field.hint}</Text>}
-
-                                    {error && submitted && <Text color="red">{'  '}✘ {error}</Text>}
                                 </Box>
                             )}
                         </Box>
@@ -922,20 +1012,21 @@ export function Form({
                         {onCancelBusy && <Text dimColor>[Esc] Cancel</Text>}
                     </>
                 ) : (
-                    actions.map((action) => {
+                    actions.map((action, actionIndex) => {
 
                         const focused = activeAction === action && isFocused;
                         const label = action === 'submit' ? submitLabel : 'Cancel';
 
                         return (
-                            <Text
-                                key={action}
-                                color={focused ? 'cyan' : undefined}
-                                bold={focused}
-                                dimColor={!focused}
-                            >
-                                {focused ? '❯ ' : '  '}[ {label} ]
-                            </Text>
+                            <Box key={action} ref={rowRef(fields.length + actionIndex)}>
+                                <Text
+                                    color={focused ? 'cyan' : undefined}
+                                    bold={focused}
+                                    dimColor={!focused}
+                                >
+                                    {focused ? '❯ ' : '  '}[ {label} ]
+                                </Text>
+                            </Box>
                         );
 
                     })

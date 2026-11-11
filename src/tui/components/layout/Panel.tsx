@@ -77,7 +77,7 @@ export function Panel({
         >
             {title && (
                 <Box marginBottom={1}>
-                    <Text bold color={titleColor}>
+                    <Text bold color={titleColor} wrap="truncate">
                         {title}
                     </Text>
                 </Box>

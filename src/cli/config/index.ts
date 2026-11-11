@@ -12,6 +12,7 @@ import importCmd from './import.js';
 import list from './list.js';
 import repairAccess from './repair-access.js';
 import rm from './rm.js';
+import setPassword from './set-password.js';
 import sync from './sync.js';
 import use from './use.js';
 import validate from './validate.js';
@@ -23,6 +24,6 @@ export default defineCommand({
     },
     subCommands: {
         add, cp, create, edit, export: exportCmd, import: importCmd, list,
-        'repair-access': repairAccess, rm, sync, use, validate,
+        'repair-access': repairAccess, rm, 'set-password': setPassword, sync, use, validate,
     },
 });

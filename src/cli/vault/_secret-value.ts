@@ -1,11 +1,11 @@
 /**
- * Secret value input for `vault set` and `secret set`.
+ * Secret value input for `vault set`, `secret set` and `config set-password`.
  *
  * A secret passed as a positional argument is visible in the process table
  * (`ps -ww -eo args`), in shell history, and in `set -x` CI traces. `--stdin`
  * is the way to set one without it appearing in any of those.
  *
- * Lives here rather than in `cli/_utils.ts` so both secret writers share one
+ * Lives here rather than in `cli/_utils.ts` so the writers share one
  * implementation; it is a candidate to move to `_utils.ts` alongside the
  * other shared CLI input helpers.
  */

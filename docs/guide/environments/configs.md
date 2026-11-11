@@ -52,7 +52,7 @@ noorm config validate review
 
 `create` saves the stage's defaults with one-time connection overrides. To update an existing config from changed defaults, use `noorm config sync --stage staging --name review`; it previews changes and asks before saving. Neither command stores a stage link. The [CLI reference](/headless#config-create) lists flags, password rules, and overwrite authorization.
 
-`noorm config add` and `config edit` exit 1 and point you at the TUI. For a complete config object, import JSON instead. This `staging.json` is hidden from agents:
+`noorm config add` and `config edit` exit 1 and point you at the TUI. To change only a stored password, for example after a rotation, use `noorm config set-password <name> --stdin --yes`. For a complete config object, import JSON instead. This `staging.json` is hidden from agents:
 
 ```json
 {

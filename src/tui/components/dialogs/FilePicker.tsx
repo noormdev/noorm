@@ -386,11 +386,13 @@ export function FilePicker({
 
                         return (
                             <Box key={filepath}>
-                                <Text color={isHighlighted ? 'cyan' : undefined}>
-                                    {isHighlighted ? '› ' : '  '}
-                                    {isSelected ? '☑ ' : '☐ '}
-                                    {filepath}
-                                </Text>
+                                <Box flexShrink={0}>
+                                    <Text color={isHighlighted ? 'cyan' : undefined}>
+                                        {isHighlighted ? '› ' : '  '}
+                                        {isSelected ? '☑ ' : '☐ '}
+                                    </Text>
+                                </Box>
+                                <Text color={isHighlighted ? 'cyan' : undefined} wrap="truncate-start">{filepath}</Text>
                             </Box>
                         );
 

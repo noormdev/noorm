@@ -181,13 +181,13 @@ function StatusBar(): ReactElement {
     return (
         <Box paddingX={1} width="100%">
             <Box marginRight={1}>
-                <Text bold color="cyan">
+                <Text bold color="cyan" wrap="truncate">
                     {projectName}
                 </Text>
             </Box>
             <Box>
                 <Text dimColor> │ </Text>
-                <Text dimColor>{configName}</Text>
+                <Text dimColor wrap="truncate">{configName}</Text>
                 <Text dimColor> │ </Text>
                 <Text color={isConnected ? 'green' : 'gray'}>{isConnected ? '●' : '○'}</Text>
                 <Text dimColor> │ </Text>

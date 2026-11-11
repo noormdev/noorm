@@ -95,7 +95,7 @@ export function ConnectionStatus({
         return (
             <Box gap={1}>
                 <Badge color={config.color}>{config.label}</Badge>
-                {configName && status === 'connected' && <Text dimColor>({configName})</Text>}
+                {configName && status === 'connected' && <Text dimColor wrap="truncate">({configName})</Text>}
             </Box>
         );
 

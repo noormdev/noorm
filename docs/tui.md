@@ -105,6 +105,7 @@ stateDiagram-v2
 |------|-----|--------|
 | Browse | `↑` `↓`, `Tab`, `Shift+Tab` | Move between fields, wrapping through the action row |
 | Browse | `Enter` | Open the field for editing |
+| Browse | `x` | On a password field with a value, empty it. Opening a password field starts from its current value, so this replaces it without backspacing |
 | Browse | `Esc` | Cancel the form |
 | Edit | `Enter` | Commit and return to browse |
 | Edit | `Esc` | Restore the value the field held when edit opened |
@@ -113,17 +114,32 @@ stateDiagram-v2
 
 A checkbox toggles in place on `Enter` or `Space`. A select expands on `Enter`, moves with `↑` `↓`, and takes the highlighted option on a second `Enter`. A red `*` marks a required field. Most forms reject an empty required field and put the cursor on it with an error. Pipeline input forms instead require presence: explicitly saving an empty string is valid.
 
+A value longer than the row ends in `…` instead of wrapping, and an open text field scrolls to keep the cursor in view. On the config edit form, an empty password keeps the stored one, as its placeholder says: clear the field with `x` and type the replacement.
+
 
 ### Mouse
 
 
-On by default, in lists and result grids:
+On by default. In lists and result grids:
 
 | Action | Effect |
 |--------|--------|
 | Click a row | Move the cursor to it |
 | Double-click a row | Same as `Enter` on that row |
 | Wheel | Move the cursor one row, or scroll a document |
+
+In a form:
+
+| Action | Effect |
+|--------|--------|
+| Click a field | Move the cursor to it. Another field being edited is committed first |
+| Double-click a text, password, or select field | Open it for editing |
+| Click a checkbox | Toggle it |
+| Click `[ Submit ]` or `[ Cancel ]` | Activate that button |
+| Click an option in an open select | Highlight it. Double-click takes it |
+| Wheel | Move between fields, or the highlight in an open select |
+
+In a confirm dialog, clicking `Yes (y)` confirms and clicking `No (n)` cancels. The `[a] Add`-style key hints at the bottom of a screen are labels, not buttons.
 
 A click acts on whatever already has focus. Clicking an unfocused list does nothing.
 

@@ -1,11 +1,11 @@
 /**
- * Config resolution and policy gating for the `secret` commands.
+ * Config resolution and policy gating for the `secret` commands and `config set-password`.
  *
  * Config-scoped secrets are written through `StateManager`, which takes no
  * config object and so cannot consult `access` itself. Until that seam
  * carries the gate, these commands resolve the config and check it here —
  * which is why the check lives in one helper rather than being re-typed in
- * three command files.
+ * each command file.
  */
 import { checkConfigPolicy, resolveChannel } from '../../core/policy/index.js';
 import type { Permission, PolicyCheck } from '../../core/policy/index.js';

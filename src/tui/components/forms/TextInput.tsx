@@ -1,10 +1,12 @@
 /**
  * Single-line text input.
  *
- * A copy of `@inkjs/ui`'s `TextInput` (MIT) with two behavioural changes, a
- * mouse report and the letter of a Ctrl chord are dropped instead of typed
- * into the field, plus a `useTextEntry` call so `GlobalKeyboard` leaves its
- * keystrokes alone.
+ * A copy of `@inkjs/ui`'s `TextInput` (MIT) with these changes:
+ *
+ * - A mouse report is dropped instead of typed into the field.
+ * - The letter of a Ctrl chord is dropped too.
+ * - A value wider than its box scrolls around the cursor instead of wrapping (`windowValue`).
+ * - `useTextEntry` keeps `GlobalKeyboard` from taking its keystrokes.
  *
  * **Why a copy and not a wrapper.** Upstream's handler ends in an
  * unconditional `state.insert(input)`, and Ink's `useInput` is subscriber-based
@@ -34,10 +36,11 @@
  * />
  * ```
  */
-import { useEffect, useMemo, useReducer } from 'react';
-import { Text, useInput } from 'ink';
+import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { Box, Text, useBoxMetrics, useInput } from 'ink';
 
 import type { ReactElement, ReactNode } from 'react';
+import type { DOMElement } from 'ink';
 
 import { isMouseReport } from '../../mouse.js';
 import { useTextEntry } from '../../focus.js';
@@ -105,6 +108,27 @@ function reducer(state: TextInputState, action: TextInputAction): TextInputState
 }
 
 /**
+ * Cell range of the value that fits in `width` columns with the cursor in view.
+ * A cell is a character, plus one for the cursor past the end; two columns are
+ * held for the `…` markers.
+ *
+ * @example
+ * windowValue(100, 100, 20); // { start: 83, end: 101 }
+ */
+export function windowValue(length: number, cursor: number, width: number): { start: number; end: number } {
+
+    const cells = length + 1;
+
+    if (width <= 0 || cells <= width) return { start: 0, end: cells };
+
+    const body = Math.max(1, width - 2);
+    const start = Math.min(Math.max(0, cursor - Math.floor(body / 2)), cells - body);
+
+    return { start, end: start + body };
+
+}
+
+/**
  * Props for TextInput.
  *
  * Identical to `@inkjs/ui`'s `TextInputProps`, so a call site swaps the import
@@ -154,6 +178,10 @@ export function TextInput({
     });
 
     useTextEntry(!isDisabled);
+
+    const boxRef = useRef<DOMElement>(null);
+    const { width: boxWidth, hasMeasured } = useBoxMetrics(boxRef);
+    const view = windowValue(state.value.length, state.cursorOffset, hasMeasured ? boxWidth : 0);
 
     const suggestion = useMemo(() => {
 
@@ -237,7 +265,11 @@ export function TextInput({
 
     }, { isActive: !isDisabled });
 
-    return <Text>{render({ isDisabled, placeholder, state, suggestion })}</Text>;
+    return (
+        <Box ref={boxRef} flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text wrap="truncate">{render({ isDisabled, placeholder, state, suggestion, view })}</Text>
+        </Box>
+    );
 
 }
 
@@ -246,6 +278,7 @@ interface RenderOptions {
     placeholder: string;
     state: TextInputState;
     suggestion: string | undefined;
+    view: { start: number; end: number };
 }
 
 /**
@@ -256,7 +289,7 @@ interface RenderOptions {
  * props, so the emitted string matches upstream's while `chalk` stays out of
  * this package's dependencies.
  */
-function render({ isDisabled, placeholder, state, suggestion }: RenderOptions): ReactNode {
+function render({ isDisabled, placeholder, state, suggestion, view }: RenderOptions): ReactNode {
 
     const { value, cursorOffset } = state;
 
@@ -281,9 +314,11 @@ function render({ isDisabled, placeholder, state, suggestion }: RenderOptions): 
 
     return (
         <>
-            {value.slice(0, cursorOffset)}
+            {view.start > 0 && <Text dimColor>…</Text>}
+            {value.slice(view.start, cursorOffset)}
             {atCursor.length > 0 && <Text inverse>{atCursor}</Text>}
-            {value.slice(cursorOffset + 1)}
+            {value.slice(cursorOffset + 1, view.end)}
+            {view.end < value.length + 1 && <Text dimColor>…</Text>}
             {suggestion && atCursor.length === 0 && (
                 <>
                     <Text inverse>{suggestion.slice(0, 1)}</Text>

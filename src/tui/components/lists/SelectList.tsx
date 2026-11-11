@@ -547,6 +547,7 @@ export function SelectList<T = unknown>({
                                 <Text
                                     color={isHighlighted && isFocused ? 'cyan' : undefined}
                                     bold={isHighlighted && isFocused}
+                                    wrap="truncate"
                                 >
                                     {isHighlighted ? '❯ ' : '  '}
                                     {item.icon ? `${item.icon} ` : ''}
@@ -560,7 +561,7 @@ export function SelectList<T = unknown>({
                         </Box>
                         {/* Description below (when showDescriptionBelow is true) */}
                         {showDescriptionBelow && item.description && (
-                            <Text dimColor> {item.description}</Text>
+                            <Text dimColor wrap="truncate"> {item.description}</Text>
                         )}
                     </Box>
                 );
