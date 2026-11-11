@@ -363,11 +363,12 @@ The rejection exists because a trusted `isTest` config's access is bound to the 
 | `NOORM_CONNECTION_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_SSL` | Override the matching `connection` field of the resolved config |
 | `NOORM_CONNECTION_POOL_<option>` | Set a [pool option](#pool-options) |
 | `NOORM_CONNECTION_keepAliveInitialDelayMs` | Set `connection.keepAliveInitialDelayMs`; see [Session and keepalive controls](#session-and-keepalive-controls) |
+| `NOORM_ACCESS_USER`, `NOORM_ACCESS_AGENT` | Access roles of a config that has no stored record. Ignored when a stored config is selected, so the environment cannot change its roles |
 | `NOORM_PATHS_SQL`, `NOORM_PATHS_CHANGES` | Override `paths.sql` and `paths.changes` from `settings.yml` |
 | `NOORM_IDENTITY_PRIVATE_KEY`, `_NAME`, `_EMAIL` | CI identity. All three are required, otherwise they are ignored. They let the context decrypt state and vault keys with no key file on disk |
 | `NOORM_YES` | Any value except empty, `0`, or `false` confirms `confirm` cells on the `user` channel, like `yes: true` |
 
-An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }`.
+An env-only config takes the default access, `{ user: 'admin', agent: 'viewer' }`, unless `NOORM_ACCESS_USER` and `NOORM_ACCESS_AGENT` set it.
 
 | Throws | When |
 |---|---|
@@ -565,7 +566,9 @@ await scope.revert();
 |---|---|
 | Scope members | `kysely`, `proc`, `func`, `tvf`, `transaction`, `revert`. No `noorm` and no lifecycle methods; management operations stay on `ctx.noorm`, running as the context's own principal |
 | Explicit mode holds a pooled connection | Until `revert()` or `ctx.disconnect()`. `disconnect()` releases an unreverted scope without running the revert SQL, because it destroys the pool |
-| `revert()` | Idempotent after it succeeds. After a failure the scope stays revertible, so a retry re-runs the revert |
+| `revert()` | Idempotent after it succeeds. After a failure it rejects with the error and the scope is over: a later call does nothing |
+| A failed switch or revert statement | The connection is closed instead of returned to the pool, in both modes, because its identity is then unknown. The error is thrown, and the next query opens a new connection. In callback mode a revert failure replaces an error `fn` threw |
+| `disconnect()` during callback mode | The call rejects with `DisconnectedError`, as [`withConnection`](#pinned-connections) does |
 
 
 ### Schema scoping

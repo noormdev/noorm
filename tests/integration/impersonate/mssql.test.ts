@@ -7,11 +7,14 @@
  *
  * Requires docker-compose.test.yml containers to be running.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from 'bun:test';
+import { attempt } from '@logosdx/utils';
 import { sql } from 'kysely';
 
+import type { ConnectionResult } from '../../../src/core/connection/types.js';
 import { Context } from '../../../src/sdk/context.js';
 import {
+    createTestConnection,
     skipIfNoContainer,
     makeTestConfig,
     TEST_CONNECTIONS,
@@ -108,6 +111,77 @@ describe('integration: impersonate mssql', () => {
 
         // sa maps to dbo in MSSQL
         expect(row!.username).toBe('dbo');
+
+    });
+
+    // REVERT cannot be made to fail on a live session here, so a second
+    // connection kills the session while the pool still has it checked out.
+    describe('when the revert statement fails', () => {
+
+        let single: Context;
+        let witness: ConnectionResult;
+
+        const session = async (db: Context['kysely']) =>
+            (await sql<{ spid: number; username: string }>`SELECT @@SPID AS spid, USER_NAME() AS username`.execute(db)).rows[0]!;
+
+        const kill = (spid: number) => sql.raw(`KILL ${spid}`).execute(witness.db);
+
+        const nextSession = () => Promise.race([
+            session(single.kysely),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('the pool slot was never freed')), 10_000).unref()),
+        ]);
+
+        beforeAll(async () => {
+
+            witness = await createTestConnection('mssql');
+
+        });
+
+        afterAll(() => witness.destroy());
+
+        beforeEach(async () => {
+
+            single = new Context(
+                makeTestConfig('mssql_impersonate_discard', { ...TEST_CONNECTIONS.mssql, pool: { max: 1 } }),
+                {}, { name: 'tester', source: 'system' }, {}, '/tmp/test',
+            );
+            await single.connect();
+
+        });
+
+        afterEach(() => single.disconnect());
+
+        it('should reject in callback mode and run the next query as the login', async () => {
+
+            const [, err] = await attempt(() => single.impersonate(TEST_USER, async (scope) => {
+
+                await kill((await session(scope.kysely)).spid);
+
+            }));
+
+            expect(err).toBeInstanceOf(Error);
+
+            const next = await nextSession();
+
+            expect(next.username).toBe('dbo');
+
+        }, 30_000);
+
+        it('should free the pool slot in explicit mode, so the next query runs as the login', async () => {
+
+            const scope = await single.impersonate(TEST_USER);
+
+            await kill((await session(scope.kysely)).spid);
+
+            const [, err] = await attempt(() => scope.revert());
+
+            expect(err).toBeInstanceOf(Error);
+
+            const next = await nextSession();
+
+            expect(next.username).toBe('dbo');
+
+        }, 30_000);
 
     });
 

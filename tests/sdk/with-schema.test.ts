@@ -392,9 +392,8 @@ describe('sdk: Context.withSchema shared #heldConnections', () => {
         const ctx = createCtx('sqlite');
 
         // Real, in-process connection — needed so disconnect() proceeds past
-        // its #state.connection guard. dialect/kysely are overridden below
-        // on the derived context so impersonate() borrows a fake
-        // postgres-shaped connection instead of the real sqlite one.
+        // its #state.connection guard. Its executor is stubbed below so
+        // impersonate() pins a fake connection that accepts postgres SQL.
         await ctx.connect();
 
         const derived = ctx.withSchema('acct');
@@ -415,37 +414,30 @@ describe('sdk: Context.withSchema shared #heldConnections', () => {
 
         });
 
-        const mockDb = new Kysely<unknown>({
-            dialect: {
-                createAdapter: () => new PostgresAdapter(),
-                createDriver: () => new DummyDriver(),
-                createIntrospector: (db) => new PostgresIntrospector(db),
-                createQueryCompiler: () => new PostgresQueryCompiler(),
-            },
-        });
+        vi.spyOn(ctx.kysely.getExecutor(), 'provideConnection').mockImplementation(async (consumer) => {
 
-        vi.spyOn(mockDb.getExecutor(), 'provideConnection').mockImplementation(async (consumer) => {
+            // Settles only once impersonate() gives up its pinned connection,
+            // which before a revert only a drained, shared #heldConnections does.
+            try {
 
-            // Resolves only once Context's impersonate-explicit callback
-            // finishes awaiting its held-connection promise — i.e. only
-            // after something calls release(). Proves #heldConnections
-            // actually drained, not just that disconnect() ran.
-            const result = await consumer({
-                executeQuery: executeQueryMock,
-                streamQuery: () => {
+                return await consumer({
+                    executeQuery: executeQueryMock,
+                    streamQuery: () => {
 
-                    throw new Error('not implemented');
+                        throw new Error('not implemented');
 
-                },
-            });
+                    },
+                });
 
-            markReleased();
+            }
+            finally {
 
-            return result;
+                markReleased();
+
+            }
 
         });
 
-        Object.defineProperty(derived, 'kysely', { value: mockDb, configurable: true });
         Object.defineProperty(derived, 'dialect', { value: 'postgres', configurable: true });
 
         await derived.impersonate('bob');

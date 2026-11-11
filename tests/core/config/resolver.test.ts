@@ -890,6 +890,66 @@ describe('config: resolver', () => {
     // `parseConfig`'s legacy mapping (tests/core/config/schema.test.ts) are
     // the only remaining places raw `protected` boolean input is resolved.
 
+    describe('NOORM_ACCESS_* environment variables', () => {
+
+        function prodSettings(): SettingsProvider {
+
+            const settings = createMockSettings({ prod: { defaults: { protected: true } } });
+
+            settings.getRoles = () => ({
+                prod_operator: { extends: 'operator', permissions: { 'run:build': 'deny' } },
+            });
+
+            return settings;
+
+        }
+
+        it('should not raise the access roles of a stored config', () => {
+
+            // The stored role is the guardrail; one exported variable must not lift it.
+            const stored = createConfig({ name: 'prod', isTest: false, access: { user: 'prod_operator', agent: false } });
+            const state = createMockState({ configs: { prod: stored } });
+
+            process.env['NOORM_ACCESS_USER'] = 'admin';
+            process.env['NOORM_ACCESS_AGENT'] = 'admin';
+
+            const config = resolveConfig(state, { name: 'prod', settings: prodSettings() })!;
+
+            expect(config.access).toEqual({ user: 'prod_operator', agent: false });
+            expect(getConfigPermission('user', config, 'run:build')).toBe('deny');
+            expect(getConfigPermission('agent', config, 'sql:read')).toBe('deny');
+
+        });
+
+        it('should not replace one channel of a stored config', () => {
+
+            const stored = createConfig({ name: 'prod', isTest: false, access: { user: 'viewer', agent: false } });
+            const state = createMockState({ configs: { prod: stored }, activeConfig: 'prod' });
+
+            process.env['NOORM_ACCESS_AGENT'] = 'operator';
+
+            const config = resolveConfig(state, { settings: prodSettings() })!;
+
+            expect(config.access).toEqual({ user: 'viewer', agent: false });
+
+        });
+
+        it('should set the access roles of a config resolved from the environment alone', () => {
+
+            // The documented way to narrow a runtime that has no stored config.
+            process.env['NOORM_CONNECTION_DIALECT'] = 'sqlite';
+            process.env['NOORM_CONNECTION_DATABASE'] = ':memory:';
+            process.env['NOORM_ACCESS_USER'] = 'viewer';
+            process.env['NOORM_ACCESS_AGENT'] = 'false';
+
+            const config = resolveConfig(createMockState())!;
+
+            expect(config.access).toEqual({ user: 'viewer', agent: false });
+
+        });
+
+    });
+
     describe('stage access ceiling', () => {
 
         function resolveWithStageProtected(
