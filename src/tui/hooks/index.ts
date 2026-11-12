@@ -5,7 +5,6 @@ export {
     useOnEvent,
     useOnceEvent,
     useEmit,
-    useOnScreenPopped,
 } from './useObserver.js';
 
 export {

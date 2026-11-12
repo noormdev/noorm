@@ -34,6 +34,7 @@ import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { ChangeHistory } from '../../../core/change/history.js';
 import { relativeTimeAgo } from '../../utils/date.js';
 import { getErrorMessage, oneLine } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Records fetched for the list.
@@ -328,9 +329,9 @@ export function ChangeHistoryScreen({ params: _params }: ScreenProps): ReactElem
                 {/* Keyboard hints */}
                 <Box marginTop={1} gap={2}>
                     <Text dimColor>[↑↓] Navigate</Text>
-                    <Text dimColor>[Enter] View Files</Text>
-                    {failureText && <Text dimColor>[e] Full Error</Text>}
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">View Files</Hotkey>
+                    {failureText && <Hotkey keys="e">Full Error</Hotkey>}
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         </Panel>

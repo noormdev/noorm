@@ -42,6 +42,7 @@ import type { PathConfig } from '../../../core/settings/types.js';
 import { scaffoldDbLayout } from '../../../core/project-init.js';
 import { StateManager, getStateManager } from '../../../core/state/index.js';
 import { observer } from '../../../core/observer.js';
+import { KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Init step in the flow.
@@ -481,17 +482,21 @@ export function InitScreen({ params }: ScreenProps): ReactElement {
                         </Box>
                         {shouldAddConfig && (
                             <Box marginTop={1}>
-                                <Text>
+                                <KeyTarget keys="Enter">
+                                    <Text>
                                         Press <Text color="cyan">Enter</Text> to add your first
                                         database config.
-                                </Text>
+                                    </Text>
+                                </KeyTarget>
                             </Box>
                         )}
                         {!shouldAddConfig && (
                             <Box marginTop={1}>
-                                <Text>
+                                <KeyTarget keys="Enter">
+                                    <Text>
                                         Press <Text color="cyan">Enter</Text> to go to home screen.
-                                </Text>
+                                    </Text>
+                                </KeyTarget>
                             </Box>
                         )}
                     </Box>

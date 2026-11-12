@@ -14,6 +14,7 @@ import type { NoormPipelineRun } from '../../../core/shared/tables.js';
 import { isPipelineSlug, parseHistoryLimit } from '../../../core/pipeline/parse.js';
 import { oneLine } from '../../utils/string.js';
 import { PipelineHeading } from './helpers.js';
+import { HotkeyLine } from '../../components/layout/Hotkey.js';
 
 /**
  * Recorded runs for one slug on the active config. It takes a slug with no local definition,
@@ -120,7 +121,7 @@ export function PipelineHistoryScreen({ params }: ScreenProps): ReactElement {
                         </Box>}
                         onSelect={(item) => navigate('pipeline/history/detail', { pipelineRunId: item.value.id })}
                         isFocused={isFocused} reserveRows={3} emptyLabel="No pipeline runs in this configuration" />}
-            <Text dimColor>[Enter] Run · [d] Details · [h] Lookup · [i] ID · [r] Refresh · [Esc] Back</Text>
+            <HotkeyLine>[Enter] Run · [d] Details · [h] Lookup · [i] ID · [r] Refresh · [Esc] Back</HotkeyLine>
         </Box>
     </Panel>;
 

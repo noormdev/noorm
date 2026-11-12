@@ -14,7 +14,7 @@ import type { ScreenProps } from '../../types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useBusy } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SmartConfirm, useToast, TextInput } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
@@ -22,6 +22,7 @@ import { loadPrivateKey } from '../../../core/identity/storage.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { vaultEditConfirmation, vaultEditRefusal, VaultEditRefused, type VaultEditPermission } from './edit-policy.js';
 import { getVaultKey, setVaultSecret } from '../../../core/vault/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 type Phase = 'connecting' | 'ready' | 'saving' | 'error';
@@ -41,6 +42,8 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
 
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection({ enabled: !denied });
     const phase = basePhase as Phase;
+
+    useBusy(phase === 'saving');
     const setPhase = setBasePhase as (p: Phase) => void;
 
     const [keyValue, setKeyValue] = useState(params.name ?? '');
@@ -240,7 +243,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">{error ?? 'Identity not available'}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -269,7 +272,7 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -354,9 +357,9 @@ export function VaultSetScreen({ params }: ScreenProps): ReactElement {
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Tab] Next Field</Text>
-                <Text dimColor>[Enter] Save</Text>
-                <Text dimColor>[Esc] Cancel</Text>
+                <Hotkey keys="Tab">Next Field</Hotkey>
+                <Hotkey keys="Enter">Save</Hotkey>
+                <Hotkey keys="Esc">Cancel</Hotkey>
             </Box>
         </Box>
     );

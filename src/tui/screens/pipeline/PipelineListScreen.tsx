@@ -12,6 +12,7 @@ import { DEFAULT_PIPELINES_PATH } from '../../../core/settings/defaults.js';
 import { oneLine } from '../../utils/string.js';
 import { discoverPipelineDefinitions } from './helpers.js';
 import type { PipelineEntry } from './helpers.js';
+import { HotkeyLine } from '../../components/layout/Hotkey.js';
 
 /**
  * Entry point for pipelines in the TUI. Lists invalid definitions with their failed rule but refuses to open them,
@@ -81,7 +82,7 @@ export function PipelineListScreen({ params: _params }: ScreenProps): ReactEleme
                     </Text>
                 </Box>}
                 onCancel={back} isFocused={isFocused} emptyLabel="No pipelines found" reserveRows={2} />}
-            <Text dimColor>[Enter] Review · [h] History / slug lookup · [i] Run ID lookup · [Esc] Back</Text>
+            <HotkeyLine>[Enter] Review · [h] History / slug lookup · [i] Run ID lookup · [Esc] Back</HotkeyLine>
         </Box>
     </Panel>;
 

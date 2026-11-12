@@ -27,7 +27,7 @@ import type { Config } from '../../../core/config/types.js';
 import type { Permission } from '../../../core/policy/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast, ProtectedConfirm } from '../../components/index.js';
 import { SqlInput, ResultBrowser } from '../../components/terminal/index.js';
@@ -41,6 +41,7 @@ import {
     abortMessageFor,
     hasServerSideCancel,
 } from '../../../core/sql-terminal/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Focus areas within the terminal.
@@ -101,6 +102,8 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
     // Database connection ref
     const dbRef = useRef<Kysely<unknown> | null>(null);
     const destroyRef = useRef<(() => Promise<void>) | null>(null);
+
+    useBusy(isExecuting);
 
     // One in-flight operation at a time: the initial connect, then each query.
     const task = useAbortableTask();
@@ -511,7 +514,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -528,7 +531,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -548,7 +551,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -627,7 +630,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                     {isExecuting && (
                         <Box gap={2}>
                             <Spinner label="Running query..." />
-                            <Text dimColor>[Esc] Cancel</Text>
+                            <Hotkey keys="Esc">Cancel</Hotkey>
                         </Box>
                     )}
 
@@ -656,18 +659,16 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                 reach this screen at all until it closes. */}
             {!rowOpen && (
                 <Box flexWrap="wrap" columnGap={2}>
-                    {focusArea === 'input' && <Text dimColor>[h] History</Text>}
+                    {focusArea === 'input' && <Hotkey keys="h">History</Hotkey>}
                     {result?.rows && result.rows.length > 0 && (
-                        <Text dimColor>[Tab] {focusArea === 'input' ? 'View Results' : 'Edit Query'}</Text>
+                        <Hotkey keys="Tab">{focusArea === 'input' ? 'View Results' : 'Edit Query'}</Hotkey>
                     )}
                     {/* While a query runs the spinner row carries the cancel
                         hint, right next to the thing being cancelled. Repeating
                         it here would be two hints for one key, and leaving the
                         idle label would name the wrong action. */}
                     {!isExecuting && (
-                        <Text dimColor>
-                            [Esc] {focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}
-                        </Text>
+                        <Hotkey keys="Esc">{focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}</Hotkey>
                     )}
                 </Box>
             )}

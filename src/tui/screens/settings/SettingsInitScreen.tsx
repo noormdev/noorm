@@ -22,6 +22,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
 import { getErrorMessage } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type InitStep =
     | 'checking'
@@ -203,7 +204,7 @@ export function SettingsInitScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

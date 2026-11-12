@@ -186,7 +186,7 @@ Registered: `TextInput` (while not `isDisabled`, which also covers `SearchableLi
 
 | Component | Use it? | Reason |
 |-----------|---------|--------|
-| `TextInput` | No — use ours | `src/tui/components/forms/TextInput.tsx` is upstream's, plus the mouse-report guard and the Ctrl-chord guard. Still display-only when `isDisabled`, so the focus stack stays authoritative |
+| `TextInput` | No — use ours | `src/tui/components/forms/TextInput.tsx` is upstream's, plus the mouse-report guard, the Ctrl-chord guard, and a measured single-line scroll window (`windowValue`) so a long value never wraps. Still display-only when `isDisabled`, so the focus stack stays authoritative |
 | `Spinner`, `Badge`, `ProgressBar`, `Alert`, `StatusMessage` | Yes | Display-only, no input handling |
 | `Select`, `MultiSelect`, `ConfirmInput` | No | Drive Ink's internal focus, which our stack never sees |
 
@@ -231,7 +231,7 @@ Write no `?? 24` fallback. `useWindowSize` already falls back to the `terminal-s
 Use the hooks in `src/tui/hooks/useObserver.ts` for event subscriptions. They handle unsubscribe on unmount.
 
 ```tsx
-import { useOnEvent, useOnceEvent, useEmit, useOnScreenPopped } from '../hooks/index.js';
+import { useOnEvent, useOnceEvent, useEmit } from '../hooks/index.js';
 
 useOnEvent('changeset:complete', (data) => {
 
@@ -243,10 +243,9 @@ useOnceEvent('build:complete', (data) => setFinalResult(data), []);
 
 const emitStart = useEmit('build:start');
 emitStart({ schemaPath, fileCount });
-
-// Reset local state when a screen is popped off the router stack
-useOnScreenPopped('db/explore', () => clearExploreFilters());
 ```
+
+State that must clear when a screen is popped belongs to something that stays mounted (`AppContextProvider` clears the explore filters on `router:popped`), not to the screen: a breadcrumb jump (`backBy`) skips the screens it passes, and a skipped screen never mounts to hear the event.
 
 
 ## Feedback patterns
@@ -378,6 +377,7 @@ There is no `k` on Home. Secrets belong to a config, so `k` opens them from the 
 | `s` | Lock List | status |
 | `c` | Home | config |
 | `c` | config list | copy |
+| `x` | Form, password field with a value (browse mode) | empty it |
 | `c` | DB list | create |
 
 **Global (every screen, via `GlobalKeyboard`; all but `Ctrl+C` inactive while typing in a field):**
@@ -410,9 +410,10 @@ There is no mouse support in Ink 7.1.1 — no hook, no parsing. `src/tui/mouse.t
 
 It is **on** unless `ui.mouse` is false in `.noorm/settings.yml`. Off means inert: no escape sequence, no `useInput` registration, no `process` listener, no refs on rows. What an absent flag means is decided once, by `isMouseEnabled` in `src/core/settings/defaults.ts`; never read `settings?.ui?.mouse` directly.
 
-- **Never write `?1000h` / `?1006h` anywhere else.** A second writer means a second thing that has to disable on exit, and a terminal left in mouse mode outlives the process — click-drag selection stays broken in every shell in that window.
-- **Answer clicks with `useRowMouse`**, not by parsing in a component. It takes the same `isActive` guard the keyboard handler uses, because a click acts on whatever already has focus.
-- **A handler with a catch-all character branch needs `isMouseReport(input)`.** Reports reach every `useInput` as a plain string, so `ResultTable`'s filter box and `SqlInput` would otherwise type `[<0;12;5M` into themselves. A handler that only tests named keys and exact characters needs no guard — `SelectList` has none, and the mutation harness is why.
+- **Never write `?1000h` / `?1003h` / `?1006h` anywhere else.** A second writer means a second thing that has to disable on exit, and a terminal left in mouse mode outlives the process — click-drag selection stays broken in every shell in that window.
+- **Answer clicks with `useRowMouse`**, not by parsing in a component. It takes the same `isActive` guard the keyboard handler uses, because a click acts on whatever already has focus. It also returns `hovered`, the row under the pointer, which is null unless `isActive`; shade it with `backgroundColor={hoverBackground()}` on the row's Box, and never on the cursor row. A motion report decodes to `kind: 'move'`, never a press, so a handler that tests `press` ignores it. Pass `matchColumn: true` when targets share a line (`Form`'s Submit/Cancel, `Confirm`'s Yes/No); list rows leave it off so a click past the end of a short label still hits the row. Pass `ignoreRepeats: true` where a double click means nothing extra (buttons, hints, crumbs): the second press otherwise lands on whatever the first brought under the pointer.
+- **A handler with a catch-all character branch, or one that acts on any key, needs `isMouseReport(input)`.** Reports reach every `useInput` as a plain string, so `ResultTable`'s filter box and `SqlInput` would otherwise type `[<0;12;5M` into themselves. Motion reports arrive on every pointer move, so an "any key closes this" handler (help, the "press any key to continue" screens) would otherwise close on a mouse move. A handler that only tests named keys and exact characters needs no guard — `SelectList` has none, and the mutation harness is why.
+- **Draw a `[key] Label` hint with `Hotkey`, `HotkeyLine` or `KeyTarget`** (`src/tui/components/layout/Hotkey.tsx`), never a bare `<Text dimColor>[a] Add</Text>`. A click emits the key through Ink's input emitter, so the focused component handles it exactly as the keyboard would; the screen needs no second code path. A hint naming no single key (`↑↓`, `any`, `Esc Esc`, `Ctrl+U/D`) stays plain text: `resolveHotkey` resolves a compound label only if every part is a key, because `Ctrl+U/D` must not become a bare `D`. A hint is a `Box`, so it cannot sit inside a `Text`. A hint must not stay drawn while a component that gives its key another meaning has focus (a footer `[Enter] Edit` under an open delete confirmation): draw it only in the view where the key means that. `Confirm` and `ProtectedConfirm` hold the `modal` guard (`useModal`), which makes every hint inert as a backstop, and a running screen holds `busy` (`useBusy(step === 'running')`), which stops a breadcrumb click from leaving it. The one read of an Ink internal is the `internal_eventEmitter` lookup in `Hotkey.tsx`, which `hotkey.test.tsx` pins.
 - **Use `TextInput` from `src/tui/components/forms/`, never from `@inkjs/ui`.** Upstream's handler ends in an unconditional `state.insert(input)`, so a click while a field is in edit mode types the report into the field — and where that field feeds a derived value, such as `ChangeAddScreen`'s change-folder name, the report reaches disk. `forms/TextInput.tsx` is upstream's component with that one guard added; the exports map publishes only the package root, so wrapping it was not possible and copying it was.
 
 `measureElement`'s `x`/`y` are live-region coordinates and SGR's are 1-based terminal coordinates; the conversion is one constant in `mouse.tsx`. It holds because the TUI renders in the alternate screen with no `<Static>` in the tree, so the frame starts at the home position. Add a `<Static>` and that constant stops being a constant.
@@ -425,9 +426,11 @@ It is **on** unless `ui.mouse` is false in `.noorm/settings.yml`. Off means iner
 | API | What it covers |
 |-----|----------------|
 | `usePaste` | Bracketed paste delivered as a single string. `SqlInput` currently submits only the first line of a multi-line paste. |
-| `useBoxMetrics` | Used once, for the height of `Form`'s status error. Still unused for measured box width/height/left/top instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
+| `useBoxMetrics` | Used for the height of `Form`'s status error and the width `TextInput` scrolls within. Still unused for measured box width/height/left/top instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
 | `useAnimation`, `suspendTerminal()`, `interactive` | No current need. |
 
-`<Text>` no longer accepts `wrap="end"` or `wrap="middle"`. Both were undocumented no-ops on 6.8.0 and were dropped from the type in 7.0.0. This codebase uses only `wrap="wrap"` and `wrap="truncate"`, so nothing changed.
+`<Text>` no longer accepts `wrap="end"` or `wrap="middle"`. Both were undocumented no-ops on 6.8.0 and were dropped from the type in 7.0.0. This codebase uses `wrap="wrap"`, `wrap="truncate"`, and `wrap="truncate-start"` (`FilePicker` paths, where the end is what identifies a file), so nothing changed.
+
+Text drawn into a row the layout counts (list rows, form values, panel titles) takes `wrap="truncate"`; a long value otherwise wraps and the rows below it are pushed off screen. Text that carries an instruction in its tail, such as the `repair-access` hint in an error toast or the Home access warning, stays wrapped.
 
 `useFocusManager` gained `activeId` in Ink 7. It reports Ink's own focus registry, which `useFocusScope` never writes to, so it does not tell you what this codebase considers focused. The focus rules above stand unchanged.

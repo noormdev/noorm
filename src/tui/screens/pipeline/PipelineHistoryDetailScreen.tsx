@@ -14,6 +14,7 @@ import type { PipelineHistoryRecord } from '../../../core/pipeline/history.js';
 import { parseRunId } from '../../../core/pipeline/parse.js';
 import { oneLine } from '../../utils/string.js';
 import { PipelineEvidence } from './helpers.js';
+import { HotkeyLine } from '../../components/layout/Hotkey.js';
 
 function dependencies(raw: string): number[] {
 
@@ -132,8 +133,8 @@ export function PipelineHistoryDetailScreen({ params }: ScreenProps): ReactEleme
                                 steps={current.steps.map((step) => ({ stepNo: step.step_no, name: step.name, needs: dependencies(step.needs),
                                     status: step.status, outcome: step.transaction_outcome }))} />
                         </>}
-            <Text dimColor>[Enter] Step details · [d] Evidence · [i] ID lookup</Text>
-            <Text dimColor>[r] Refresh · [Esc] Back</Text>
+            <HotkeyLine>[Enter] Step details · [d] Evidence · [i] ID lookup</HotkeyLine>
+            <HotkeyLine>[r] Refresh · [Esc] Back</HotkeyLine>
         </Box>
     </Panel>;
 

@@ -23,6 +23,7 @@ import { useAppContext } from '../../app-context.js';
 import { useVaultSecretKeys } from '../../hooks/index.js';
 import { Panel, SmartConfirm, Spinner, useToast } from '../../components/index.js';
 import { checkConfigPolicy, getPolicyFingerprint } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * SecretRemoveScreen component.
@@ -171,7 +172,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -198,7 +199,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                 <Panel title="Delete Secret" paddingX={2} paddingY={1} borderColor="red">
                     <Text color="red">{writeCheck.blockedReason ?? 'Secret write is not allowed'}</Text>
                 </Panel>
-                <Text dimColor>[Enter/Esc] Back</Text>
+                <Hotkey keys="Enter/Esc">Back</Hotkey>
             </Box>
         );
 
@@ -217,7 +218,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -234,7 +235,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -263,7 +264,7 @@ export function SecretRemoveScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

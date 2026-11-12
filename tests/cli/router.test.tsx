@@ -8,6 +8,7 @@ import { render } from 'ink-testing-library';
 import React, { useEffect } from 'react';
 import { Text } from 'ink';
 
+import { observer } from '../../src/core/index.js';
 import { RouterProvider, useRouter, useRoute, useNavigation } from '../../src/tui/router.js';
 import type { Route } from '../../src/tui/types.js';
 
@@ -312,6 +313,89 @@ describe('cli: router', () => {
 
             expect(lastFrame()).toContain('route:home');
             expect(lastFrame()).toContain('canGoBack:false');
+
+        });
+
+    });
+
+    describe('backBy', () => {
+
+        function BackByOnMount({ steps }: { steps: number }) {
+
+            const { backBy } = useRouter();
+
+            // Once, on mount: `backBy` changes with the history it just popped.
+            useEffect(() => {
+
+                backBy(steps);
+
+            }, []);
+
+            return <RouteDisplay />;
+
+        }
+
+        it('should pop several entries at once and land on the one that many steps back', async () => {
+
+            const { lastFrame } = render(
+                <RouterProvider initialRoute="config/add">
+                    <BackByOnMount steps={2} />
+                </RouterProvider>,
+            );
+
+            await waitFor(() => Boolean(lastFrame()?.includes('route:home')));
+
+            expect(lastFrame()).toContain('route:home');
+            expect(lastFrame()).toContain('canGoBack:false');
+
+        });
+
+        it('should stop at the start of history instead of running past it', async () => {
+
+            const { lastFrame } = render(
+                <RouterProvider initialRoute="config/add">
+                    <BackByOnMount steps={9} />
+                </RouterProvider>,
+            );
+
+            await waitFor(() => Boolean(lastFrame()?.includes('route:home')));
+
+            expect(lastFrame()).toContain('route:home');
+
+        });
+
+        it('should do nothing for fewer than one step', async () => {
+
+            const { lastFrame } = render(
+                <RouterProvider initialRoute="config/add">
+                    <BackByOnMount steps={0} />
+                </RouterProvider>,
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            expect(lastFrame()).toContain('route:config/add');
+
+        });
+
+        it('should announce every screen it leaves, so each can clear its state', async () => {
+
+            const popped: string[] = [];
+            const listener = (data: { popped: string; to: string }) => popped.push(`${data.popped}>${data.to}`);
+
+            observer.on('router:popped', listener);
+
+            const { lastFrame } = render(
+                <RouterProvider initialRoute="config/add">
+                    <BackByOnMount steps={2} />
+                </RouterProvider>,
+            );
+
+            await waitFor(() => Boolean(lastFrame()?.includes('route:home')));
+
+            observer.off('router:popped', listener);
+
+            expect(popped).toEqual(['config/add>config', 'config>home']);
 
         });
 

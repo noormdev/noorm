@@ -36,6 +36,7 @@ import {
 } from '../../components/index.js';
 import { maskValue } from '../../../core/logger/redact.js';
 import { SecretReadGate } from './SecretReadGate.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * SecretListScreen component.
@@ -230,7 +231,7 @@ function SecretListContent({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

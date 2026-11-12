@@ -27,7 +27,7 @@ bun run typecheck               # Type check
 
 ## Running Tests
 
-A single `bun test` (whole suite, one process) does **not** reflect CI. CI splits the suite into five
+A single `bun test` (whole suite, one process) does **not** reflect CI. CI splits the suite into six
 independent `bun test --serial` invocations, each in a fresh process — see `.github/workflows/ci.yml`
 for the split and [`docs/wiki/index.md`](docs/wiki/index.md) for the exact per-group commands.
 

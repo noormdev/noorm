@@ -23,7 +23,7 @@ import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import {
     Panel,
@@ -45,6 +45,8 @@ import {
     progressPercentage,
 } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Rewind steps.
@@ -77,6 +79,8 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
     const [changesToRevert, setChangesToRevert] = useState<ChangeListItem[]>([]);
     const [targetInput, setTargetInput] = useState(target);
     const [error, setError] = useState<string | null>(null);
+
+    useBusy(step === 'running');
 
 
     // Load applied changes
@@ -271,6 +275,8 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
+        if (isMouseReport(input)) return;
+
         if (step === 'input') {
 
             if (key.return) {
@@ -358,8 +364,8 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                     </Box>
 
                     <Box marginTop={1} gap={2}>
-                        <Text dimColor>[Enter] Continue</Text>
-                        <Text dimColor>[Esc] Cancel</Text>
+                        <Hotkey keys="Enter">Continue</Hotkey>
+                        <Hotkey keys="Esc">Cancel</Hotkey>
                     </Box>
                 </Box>
             </Panel>

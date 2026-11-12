@@ -22,6 +22,7 @@ import type { ReactElement } from 'react';
 import { useFocusScope } from '../../focus.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { SelectList } from './SelectList.js';
+import { Hotkey, KeyTarget } from '../layout/Hotkey.js';
 
 import type { SelectListItem, SelectListProps } from './SelectList.js';
 
@@ -306,30 +307,34 @@ export function SearchableList<T = unknown>({
     const hasResults = filteredItems.length > 0;
     const isFiltering = searchTerm.trim().length > 0;
 
-    return (
-        <Box flexDirection="column" gap={1}>
-            {/* Search input row */}
-            <Box>
-                <Text dimColor={!searchMode}>/</Text>
-                <Box marginLeft={1} flexGrow={1}>
-                    {searchMode ? (
-                        <TextInput
-                            key={inputKey}
-                            placeholder={searchPlaceholder}
-                            defaultValue={searchTerm}
-                            onChange={handleSearchChange}
-                            onSubmit={handleSearchSubmit}
-                        />
-                    ) : (
-                        <Text dimColor>
-                            {searchTerm || searchPlaceholder}
-                        </Text>
-                    )}
-                </Box>
-                {isFiltering && (
-                    <Text dimColor> ({filteredItems.length} matches)</Text>
+    const searchRow = (
+        <Box>
+            <Text dimColor={!searchMode}>/</Text>
+            <Box marginLeft={1} flexGrow={1}>
+                {searchMode ? (
+                    <TextInput
+                        key={inputKey}
+                        placeholder={searchPlaceholder}
+                        defaultValue={searchTerm}
+                        onChange={handleSearchChange}
+                        onSubmit={handleSearchSubmit}
+                    />
+                ) : (
+                    <Text dimColor>
+                        {searchTerm || searchPlaceholder}
+                    </Text>
                 )}
             </Box>
+            {isFiltering && (
+                <Text dimColor> ({filteredItems.length} matches)</Text>
+            )}
+        </Box>
+    );
+
+    return (
+        <Box flexDirection="column" gap={1}>
+            {/* Search input row; a click on the idle row presses `/` */}
+            {searchMode || !isFocused ? searchRow : <KeyTarget keys="/" block>{searchRow}</KeyTarget>}
 
             {/* List or empty state */}
             {!hasItems ? (
@@ -351,12 +356,10 @@ export function SearchableList<T = unknown>({
 
             {/* Hint */}
             <Box>
-                <Text dimColor>
-                    {searchMode
-                        ? '[Esc] ' + (searchTerm ? 'Clear' : 'Exit search')
-                        : '[/] Search'
-                    }
-                </Text>
+                {searchMode
+                    ? <Hotkey keys="Esc">{searchTerm ? 'Clear' : 'Exit search'}</Hotkey>
+                    : <Hotkey keys="/">Search</Hotkey>
+                }
             </Box>
         </Box>
     );

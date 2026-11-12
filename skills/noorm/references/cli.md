@@ -111,6 +111,16 @@ Use the [config command reference](https://noorm.dev/headless#config-create) for
 
 `config export` writes the config as JSON with its password, to stdout or `--output`. `config import <path>` creates a config from that JSON. File-form settings in `connection.ssl` (`caFile`, `certFile`, `keyFile`) export as their paths and the files are not read, so the files must exist at those paths on the importing machine. Inline `ca`, `cert` and `key` export as the stored PEM. Import saves a path without checking the file; `config validate <name>` reports an unreadable one.
 
+### config set-password
+
+Replace the database password of a stored config, for rotation jobs. Only `connection.password` changes; it does not connect, so run `config validate <name>` afterwards.
+
+```bash
+echo "$NEW_PASSWORD" | noorm config set-password prod --stdin --yes
+```
+
+Prefer `--stdin` over a positional value, which shows in the process table and shell history. It needs the config's `config:write` permission and `--yes` (or `NOORM_YES`) where the policy asks for confirmation; the agent channel and viewer configs are refused. Unknown names and malformed access exit 2; an empty value, a SQLite config, or a denial exits 1. The password is never printed, in text or `--json` output.
+
 ### config use
 
 Set the active configuration. It connects to the config's database when it can, to register your identity; a role that cannot write registers nothing and creates no tables. On the agent channel a config with `agent: false` exits 1 with `Config "<name>" is not accessible on the agent channel.`

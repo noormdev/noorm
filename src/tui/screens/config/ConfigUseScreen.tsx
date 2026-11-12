@@ -23,6 +23,7 @@ import { Panel, Spinner, StatusMessage } from '../../components/index.js';
 import { syncIdentityWithConfig } from '../../../core/identity/index.js';
 import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Use steps.
@@ -117,9 +118,11 @@ export function ConfigUseScreen({ params }: ScreenProps): ReactElement {
     }, [stateManager, settingsManager, configName, config, isAlreadyActive, refresh]);
 
     // Keyboard handling
-    useInput((_input, _key) => {
+    useInput((input) => {
 
         if (!isFocused) return;
+
+        if (isMouseReport(input)) return;
 
         if (step === 'complete' || step === 'error') {
 

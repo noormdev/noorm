@@ -289,6 +289,12 @@ export interface RouterContextValue extends RouterState {
     back: () => void;
 
     /**
+     * Go back several entries at once, as a click on an earlier breadcrumb does.
+     * Clamped to the history length; fewer than one step does nothing.
+     */
+    backBy: (steps: number) => void;
+
+    /**
      * Replace current route without adding to history.
      * Useful for redirects.
      */
@@ -366,7 +372,26 @@ export interface FocusContextValue {
      * called. Use `useTextEntry` rather than calling this directly.
      */
     beginTextEntry: () => () => void;
+
+    /**
+     * Whether something on screen has asked not to be walked away from or
+     * answered from the side. Read at event time, like `isTyping`.
+     */
+    isGuarded: (kind: GuardKind) => boolean;
+
+    /**
+     * Count a guard until the returned function is called. Use `useBusy` and
+     * `useModal` rather than calling this directly.
+     */
+    beginGuard: (kind: GuardKind) => () => void;
 }
+
+/**
+ * `busy`: an operation is running, so a pointer click must not leave the screen.
+ * `modal`: a confirmation has focus, so a click on the screen behind it must
+ * not press keys the confirmation would take.
+ */
+export type GuardKind = 'busy' | 'modal';
 
 /**
  * Key event from Ink's useInput hook.

@@ -22,6 +22,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast, MissingParamPanel, NotFoundPanel, TextInput } from '../../components/index.js';
 import { SettingsProvider } from '../../../core/config/resolver.js';
 import { getErrorMessage, validateConfigName } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * ConfigCopyScreen component.
@@ -198,8 +199,8 @@ export function ConfigCopyScreen({ params }: ScreenProps): ReactElement {
                 {validationError && <Text color="red">{validationError}</Text>}
 
                 <Box marginTop={1} gap={2}>
-                    <Text dimColor>[Enter] Copy</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Enter">Copy</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         </Panel>

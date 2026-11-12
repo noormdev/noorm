@@ -2,8 +2,9 @@
  * TextInput parity and mouse-report tests.
  *
  * `src/tui/components/forms/TextInput.tsx` is a copy of `@inkjs/ui`'s
- * `TextInput` with two deliberate differences: a mouse report and the letter of
- * a Ctrl chord are dropped rather than typed into the field. Everything else has to match, because the swap
+ * `TextInput` with three deliberate differences: a mouse report and the letter of
+ * a Ctrl chord are dropped rather than typed into the field, and a value wider
+ * than its box scrolls on one row. Everything else has to match, because the swap
  * reached 11 files and 21 call sites and none of them asked for a keyboard
  * change.
  *
@@ -22,7 +23,9 @@ import React from 'react';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { TextInput } from '../../../src/tui/components/forms/TextInput.js';
+import { Box } from 'ink';
+
+import { TextInput, windowValue } from '../../../src/tui/components/forms/TextInput.js';
 import type { TextInputProps } from '../../../src/tui/components/forms/TextInput.js';
 
 const ESC = String.fromCharCode(27);
@@ -287,6 +290,53 @@ describe('cli: components/TextInput', () => {
 
             expect(ours.changes).toEqual(['localhostX']);
             expect(upstream.changes).toEqual(['localhosts']);
+
+        });
+
+        it('should scroll a value wider than its box on one row, with the cursor in view', async () => {
+
+            const value = `${'a'.repeat(40)}TAIL`;
+            const { lastFrame, unmount } = render(
+                <Box width={20}>
+                    <TextInput defaultValue={value} />
+                </Box>,
+            );
+
+            await new Promise((resolve) => setTimeout(resolve, 80));
+
+            const frame = (lastFrame() ?? '').replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
+
+            expect(frame.split('\n')).toHaveLength(1);
+            expect(frame.length).toBeLessThanOrEqual(20);
+            expect(frame.startsWith('…')).toBe(true);
+            expect(frame).toContain('TAIL');
+
+            unmount();
+
+        });
+
+    });
+
+    describe('windowValue', () => {
+
+        it('should show everything when it fits or the width is unknown', () => {
+
+            expect(windowValue(5, 5, 6)).toEqual({ start: 0, end: 6 });
+            expect(windowValue(500, 500, 0)).toEqual({ start: 0, end: 501 });
+
+        });
+
+        it('should hold two columns for the markers and keep the cursor in view', () => {
+
+            for (const cursor of [0, 50, 100]) {
+
+                const { start, end } = windowValue(100, cursor, 20);
+
+                expect(end - start).toBeLessThanOrEqual(18);
+                expect(start).toBeLessThanOrEqual(cursor);
+                expect(end).toBeGreaterThan(cursor);
+
+            }
 
         });
 

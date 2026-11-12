@@ -30,6 +30,7 @@ import type { ReactElement } from 'react';
 import { useFocusScope } from '../../../focus.js';
 import { useWheelScroll } from '../../../mouse.js';
 import { rowBudget, rowWindow, scrollTarget, wrapText } from './layout.js';
+import { Hotkey } from '../../../components/layout/Hotkey.js';
 
 /**
  * Props for the full-text overlay.
@@ -122,7 +123,10 @@ export function FullTextOverlay({ text, startRow, height, onClose }: FullTextOve
 
     return (
         <Box flexDirection="column">
-            <Text dimColor>Full text · [Esc] Close</Text>
+            <Box>
+                <Text dimColor>Full text · </Text>
+                <Hotkey keys="Esc">Close</Hotkey>
+            </Box>
             {view.above > 0 && <Text dimColor> ↑ {view.above} more</Text>}
             {lines.slice(view.start, view.start + view.count).map((line, index) => (
                 <Text key={`full:${view.start + index}`}>{line}</Text>

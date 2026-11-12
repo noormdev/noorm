@@ -18,7 +18,8 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useModal } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { Panel } from '../layout/Panel.js';
 
 /**
@@ -80,6 +81,8 @@ export function Confirm({
         skip: hasExternalFocus,
     });
     const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
+
+    useModal(isFocused);
     const [selected, setSelected] = useState<'yes' | 'no'>(
         defaultChoice === 'confirm' ? 'yes' : 'no',
     );
@@ -151,23 +154,37 @@ export function Confirm({
 
     });
 
+    // A click is the whole answer, so double-click does nothing extra.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused,
+        matchColumn: true,
+        ignoreRepeats: true,
+        onClick: (index) => (index === 0 ? onConfirm() : onCancel()),
+        onActivate: () => undefined,
+        onWheel: () => undefined,
+    });
+
     return (
         <Panel title={title} borderColor={borderColors[variant]} paddingX={2} paddingY={1}>
             <Box flexDirection="column" gap={1}>
                 <Text>{message}</Text>
 
                 <Box gap={2}>
-                    <Text
-                        color={selected === 'yes' ? 'green' : undefined}
-                        bold={selected === 'yes'}
-                    >
-                        {selected === 'yes' ? '❯ ' : '  '}
-                        Yes (y)
-                    </Text>
-                    <Text color={selected === 'no' ? 'red' : undefined} bold={selected === 'no'}>
-                        {selected === 'no' ? '❯ ' : '  '}
-                        No (n)
-                    </Text>
+                    <Box ref={rowRef(0)} backgroundColor={hovered === 0 && selected !== 'yes' ? hoverBackground() : undefined}>
+                        <Text
+                            color={selected === 'yes' ? 'green' : undefined}
+                            bold={selected === 'yes'}
+                        >
+                            {selected === 'yes' ? '❯ ' : '  '}
+                            Yes (y)
+                        </Text>
+                    </Box>
+                    <Box ref={rowRef(1)} backgroundColor={hovered === 1 && selected !== 'no' ? hoverBackground() : undefined}>
+                        <Text color={selected === 'no' ? 'red' : undefined} bold={selected === 'no'}>
+                            {selected === 'no' ? '❯ ' : '  '}
+                            No (n)
+                        </Text>
+                    </Box>
                 </Box>
             </Box>
         </Panel>

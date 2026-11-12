@@ -22,8 +22,10 @@ import { TextInput } from '../forms/TextInput.js';
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { Panel } from '../layout/Panel.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 /**
  * Rows this component costs a screen beyond the shared screen reserve.
@@ -342,6 +344,36 @@ export function FilePicker({
 
     });
 
+    // A click picks the row and moves to select mode; a double click toggles it, as Space does.
+    const pickRow = (index: number) => {
+
+        setMode('select');
+        setHighlightIndex(index);
+
+    };
+
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused,
+        onClick: pickRow,
+        onActivate: (index) => {
+
+            pickRow(index);
+
+            const file = filteredFiles[index];
+
+            if (file) toggleFile(file);
+
+        },
+        onWheel: (delta) => {
+
+            const next = Math.min(Math.max(highlightIndex + delta, 0), Math.max(filteredFiles.length - 1, 0));
+
+            setHighlightIndex(next);
+            setScrollOffset((offset) => (next < offset ? next : next >= offset + visibleCount ? next - visibleCount + 1 : offset));
+
+        },
+    });
+
     // Handle search input change
     const handleSearchChange = useCallback((value: string) => {
 
@@ -385,12 +417,18 @@ export function FilePicker({
                         const isSelected = selectedSet.has(filepath);
 
                         return (
-                            <Box key={filepath}>
-                                <Text color={isHighlighted ? 'cyan' : undefined}>
-                                    {isHighlighted ? '› ' : '  '}
-                                    {isSelected ? '☑ ' : '☐ '}
-                                    {filepath}
-                                </Text>
+                            <Box
+                                key={filepath}
+                                ref={rowRef(actualIndex)}
+                                backgroundColor={hovered === actualIndex && !isHighlighted ? hoverBackground() : undefined}
+                            >
+                                <Box flexShrink={0}>
+                                    <Text color={isHighlighted ? 'cyan' : undefined}>
+                                        {isHighlighted ? '› ' : '  '}
+                                        {isSelected ? '☑ ' : '☐ '}
+                                    </Text>
+                                </Box>
+                                <Text color={isHighlighted ? 'cyan' : undefined} wrap="truncate-start">{filepath}</Text>
                             </Box>
                         );
 
@@ -415,10 +453,10 @@ export function FilePicker({
 
                 {/* Help */}
                 <Box gap={2}>
-                    <Text dimColor>[Tab] switch mode</Text>
-                    {mode === 'select' && <Text dimColor>[Space] toggle</Text>}
-                    {mode === 'accept' && <Text dimColor>[Enter] accept</Text>}
-                    <Text dimColor>[Esc] cancel</Text>
+                    <Hotkey keys="Tab">switch mode</Hotkey>
+                    {mode === 'select' && <Hotkey keys="Space">toggle</Hotkey>}
+                    {mode === 'accept' && <Hotkey keys="Enter">accept</Hotkey>}
+                    <Hotkey keys="Esc">cancel</Hotkey>
                 </Box>
             </Box>
         </Panel>

@@ -234,6 +234,23 @@ describe('cli: components/dialogs', () => {
 
         });
 
+        it('should keep the checkbox and cursor visible when a path is wider than the panel', () => {
+
+            const long = `sql/${'region_'.repeat(30)}reconciliation.sql`;
+
+            const { lastFrame } = render(
+                <TestWrapper>
+                    <FilePicker files={[long]} selected={[long]} onSelect={() => {}} onCancel={() => {}} />
+                </TestWrapper>,
+            );
+
+            const row = (lastFrame() ?? '').split('\n').find((line) => line.includes('reconciliation')) ?? '';
+
+            expect(row).toContain('☑');
+            expect(row).toContain('reconciliation.sql');
+
+        });
+
         it('should show file count', () => {
 
             const files = ['file1.sql', 'file2.sql', 'file3.sql'];

@@ -20,6 +20,7 @@ import { useRouter } from '../../router.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, SearchableList, KeyHandler, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, modeBannerRows } from '../../hooks/index.js';
+import { useBusy } from '../../focus.js';
 import { buildRunContext, discoverFiles, runFile, checkFilesStatus } from '../../../core/runner/index.js';
 import type { FilesStatusResult } from '../../../core/runner/index.js';
 import { getErrorMessage, resolveScreenIdentity, withScreenConnection } from '../../utils/index.js';
@@ -28,6 +29,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { SelectListItem } from '../../components/index.js';
 import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'checking' | 'rerun-confirm' | 'running' | 'complete' | 'error';
 
@@ -52,6 +54,8 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
     const [error, setError] = useState<string | null>(null);
     const [_fileStatus, setFileStatus] = useState<FilesStatusResult | null>(null);
     const [forceRerun, setForceRerun] = useState(false);
+
+    useBusy(phase === 'running');
 
     // Refs for cancellation support
     const activeConnectionRef = useRef<{ destroy: () => Promise<void> } | null>(null);
@@ -340,7 +344,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -377,8 +381,8 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -438,11 +442,11 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     {hasFiles && (
                         <>
-                            <Text dimColor>[/] Search</Text>
-                            <Text dimColor>[Enter] Select</Text>
+                            <Hotkey keys="/">Search</Hotkey>
+                            <Hotkey keys="Enter">Select</Hotkey>
                         </>
                     )}
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -550,7 +554,7 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -613,8 +617,8 @@ export function RunFileScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

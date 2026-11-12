@@ -28,6 +28,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, LockStatus, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * LockListScreen component.
@@ -158,7 +159,7 @@ export function LockListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -191,7 +192,7 @@ export function LockListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -240,29 +241,37 @@ export function LockListScreen({ params: _params }: ScreenProps): ReactElement {
 
             <Panel title="Available Actions" paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>
-                        <Text color="cyan">[s]</Text> Status - View detailed lock information
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[a]</Text> Acquire - Obtain exclusive lock
-                    </Text>
-                    <Text color={isOurLock ? undefined : 'gray'}>
-                        <Text color={isOurLock ? 'cyan' : 'gray'}>[r]</Text> Release - Release your
+                    <KeyTarget keys="s" block>
+                        <Text>
+                            <Text color="cyan">[s]</Text> Status - View detailed lock information
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="a" block>
+                        <Text>
+                            <Text color="cyan">[a]</Text> Acquire - Obtain exclusive lock
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="r" block>
+                        <Text color={isOurLock ? undefined : 'gray'}>
+                            <Text color={isOurLock ? 'cyan' : 'gray'}>[r]</Text> Release - Release your
                         lock
-                    </Text>
-                    <Text color={lockStatus?.isLocked ? undefined : 'gray'}>
-                        <Text color={lockStatus?.isLocked ? 'cyan' : 'gray'}>[f]</Text> Force -
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="f" block>
+                        <Text color={lockStatus?.isLocked ? undefined : 'gray'}>
+                            <Text color={lockStatus?.isLocked ? 'cyan' : 'gray'}>[f]</Text> Force -
                         Admin force-release
-                    </Text>
+                        </Text>
+                    </KeyTarget>
                 </Box>
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[s] Status</Text>
-                <Text dimColor>[a] Acquire</Text>
-                <Text dimColor>[r] Release</Text>
-                <Text dimColor>[f] Force</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="s">Status</Hotkey>
+                <Hotkey keys="a">Acquire</Hotkey>
+                <Hotkey keys="r">Release</Hotkey>
+                <Hotkey keys="f">Force</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

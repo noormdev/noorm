@@ -27,6 +27,7 @@ import { useRouter } from '../../router.js';
 import { useAppContext, useSettings } from '../../app-context.js';
 import { Panel, Form, useToast } from '../../components/index.js';
 import { useAbortableTask } from '../../hooks/index.js';
+import { useBusy } from '../../focus.js';
 import { testConnection } from '../../../core/connection/factory.js';
 import { DEFAULT_ACCESS, GUARDED_ACCESS } from '../../../core/policy/index.js';
 import { validateAccessRoles } from '../../../core/config/resolver.js';
@@ -66,6 +67,8 @@ export function ConfigAddScreen({ params }: ScreenProps): ReactElement {
     // local write, and offering a hatch over it would let the screen report
     // "nothing was saved" about a config that had just been written.
     const [cancellable, setCancellable] = useState(false);
+
+    useBusy(busy);
 
     const task = useAbortableTask();
 

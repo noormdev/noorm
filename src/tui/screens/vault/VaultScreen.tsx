@@ -38,6 +38,7 @@ import {
     type VaultSecret,
     type PendingVaultUser,
 } from '../../../core/vault/index.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /** Recipients of a propagation, as `getUsersWithoutVaultAccess` returns them. */
 type PropagationRecipient = PendingVaultUser;
@@ -389,7 +390,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -401,8 +402,8 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
             <Panel title="Vault" borderColor="yellow">
                 <Box flexDirection="column">
                     <Text color="yellow">{readCheck.blockedReason ?? 'Vault read is not allowed'}</Text>
-                    {writeCheck?.allowed && <Text>[i] Initialize vault</Text>}
-                    <Text dimColor>[Esc] Back</Text>
+                    {writeCheck?.allowed && <Hotkey keys="i" dim={false}>Initialize vault</Hotkey>}
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Panel>
         );
@@ -472,7 +473,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -488,12 +489,12 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                 <Panel title="Vault" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         <Text color="yellow">Vault not initialized.</Text>
-                        <Text>Press [i] to initialize the vault for this database.</Text>
+                        <KeyTarget keys="i"><Text>Press [i] to initialize the vault for this database.</Text></KeyTarget>
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[i] Initialize</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="i">Initialize</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -515,7 +516,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -595,7 +596,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     {listItems.length === 0 ? (
                         <Box flexDirection="column" paddingY={1}>
                             <Text dimColor>No vault secrets yet.</Text>
-                            <Text dimColor>Press [a] to add the first secret.</Text>
+                            <KeyTarget keys="a"><Text dimColor>Press [a] to add the first secret.</Text></KeyTarget>
                         </Box>
                     ) : (
                         <SelectList
@@ -611,12 +612,12 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
 
             {/* Help */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[a] Add</Text>
-                {listItems.length > 0 && <Text dimColor>[Enter] Select</Text>}
+                <Hotkey keys="a">Add</Hotkey>
+                {listItems.length > 0 && <Hotkey keys="Enter">Select</Hotkey>}
                 {status.usersWithoutAccess > 0 && (
-                    <Text dimColor>{propagating ? 'Propagating...' : '[p] Propagate'}</Text>
+                    propagating ? <Text dimColor>Propagating...</Text> : <Hotkey keys="p">Propagate</Hotkey>
                 )}
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

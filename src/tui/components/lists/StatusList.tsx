@@ -17,6 +17,8 @@
  */
 import { Box, Text } from 'ink';
 
+import { oneLine } from '../../utils/string.js';
+
 import type { ReactElement } from 'react';
 
 /**
@@ -86,8 +88,8 @@ export function StatusList({ items, showIcons = true, maxVisible }: StatusListPr
                 return (
                     <Box key={key} gap={1}>
                         {showIcons && <Text color={config.color}>{config.icon}</Text>}
-                        <Text>{item.label}</Text>
-                        {item.detail && <Text dimColor>({item.detail})</Text>}
+                        <Text wrap="truncate">{item.label}</Text>
+                        {item.detail && <Text dimColor wrap="truncate">({oneLine(item.detail)})</Text>}
                     </Box>
                 );
 
