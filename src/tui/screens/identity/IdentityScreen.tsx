@@ -26,6 +26,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel } from '../../components/index.js';
 import { truncateHash } from '../../../core/identity/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 /**
@@ -128,7 +129,7 @@ export function IdentityScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -210,11 +211,11 @@ export function IdentityScreen({ params: _params }: ScreenProps): ReactElement {
 
             {/* Keyboard shortcuts */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[e] Edit</Text>
-                <Text dimColor>[x] Export Key</Text>
-                <Text dimColor>[r] Regenerate</Text>
-                <Text dimColor>[u] Known Users</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="e">Edit</Hotkey>
+                <Hotkey keys="x">Export Key</Hotkey>
+                <Hotkey keys="r">Regenerate</Hotkey>
+                <Hotkey keys="u">Known Users</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

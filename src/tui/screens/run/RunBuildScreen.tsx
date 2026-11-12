@@ -23,7 +23,7 @@ import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useSettings, useGlobalModes, useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SmartConfirm, StatementProgress, useToast } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS } from '../../hooks/index.js';
@@ -40,6 +40,7 @@ import {
 } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -65,6 +66,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
     const [sqlPath, setSqlPath] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
     const [unmatchedInclude, setUnmatchedInclude] = useState<string[]>([]);
+
+    useBusy(phase === 'running');
 
     // Load settings and discover files
     useAsyncEffect(async (isCancelled) => {
@@ -242,7 +245,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -259,7 +262,7 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -292,8 +295,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -558,8 +561,8 @@ export function RunBuildScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

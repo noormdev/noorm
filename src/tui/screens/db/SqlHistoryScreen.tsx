@@ -23,6 +23,7 @@ import type { SqlHistoryEntry, SqlExecutionResult } from '../../../core/sql-term
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast } from '../../components/index.js';
 import { ResultBrowser } from '../../components/terminal/index.js';
@@ -31,6 +32,7 @@ import { SqlHistoryManager } from '../../../core/sql-terminal/index.js';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime.js';
 import v from 'voca';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 dayjs.extend(relativeTime);
 
@@ -122,6 +124,33 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
     };
 
+    /** What Enter does on an entry: open its stored result, or say why there is none. */
+    const viewEntry = (entry: SqlHistoryEntry | undefined) => {
+
+        if (entry?.resultsFile) {
+
+            loadResult(entry);
+
+        }
+        else if (entry && !entry.success) {
+
+            showToast({
+                message: entry.errorMessage ?? 'Query failed',
+                variant: 'error',
+            });
+
+        }
+        else {
+
+            showToast({
+                message: 'No results stored for this query',
+                variant: 'info',
+            });
+
+        }
+
+    };
+
     /** Whether the open result has a grid, which decides who owns Escape. */
     const hasResultGrid = Boolean(selectedResult?.columns && selectedResult.rows);
 
@@ -204,29 +233,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
         // Enter: View result
         if (key.return) {
 
-            const entry = history[highlightedIndex];
-
-            if (entry?.resultsFile) {
-
-                loadResult(entry);
-
-            }
-            else if (entry && !entry.success) {
-
-                showToast({
-                    message: entry.errorMessage ?? 'Query failed',
-                    variant: 'error',
-                });
-
-            }
-            else {
-
-                showToast({
-                    message: 'No results stored for this query',
-                    variant: 'info',
-                });
-
-            }
+            viewEntry(history[highlightedIndex]);
 
             return;
 
@@ -252,6 +259,31 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
     });
 
+    // Inactive while a result is open: the keyboard handler hands everything to
+    // the grid then, and a click on a list row that is not drawn must not land.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused && !selectedResult,
+        onClick: setHighlightedIndex,
+        onActivate: (index) => {
+
+            setHighlightedIndex(index);
+            viewEntry(history[index]);
+
+        },
+        onWheel: (delta) => {
+
+            const next = Math.min(Math.max(highlightedIndex + delta, 0), Math.max(0, history.length - 1));
+
+            if (next === highlightedIndex) return;
+
+            setHighlightedIndex(next);
+
+            if (next < scrollOffset) setScrollOffset(next);
+            else if (next >= scrollOffset + maxVisibleRows) setScrollOffset(next - maxVisibleRows + 1);
+
+        },
+    });
+
     // No config
     if (!activeConfigName || !projectRoot) {
 
@@ -262,7 +294,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -305,7 +337,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
                 {!rowOpen && (
                     <Box flexWrap="wrap" columnGap={2}>
-                        <Text dimColor>[Esc] Close</Text>
+                        <Hotkey keys="Esc">Close</Hotkey>
                     </Box>
                 )}
             </Box>
@@ -336,7 +368,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -366,12 +398,15 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
                         const actualIndex = scrollOffset + index;
                         const isHighlighted = actualIndex === highlightedIndex;
+                        const isHovered = hovered === actualIndex && !isHighlighted;
 
                         return (
                             <Box
                                 key={entry.id}
                                 flexDirection="column"
                                 paddingY={0}
+                                ref={rowRef(actualIndex)}
+                                backgroundColor={isHovered ? hoverBackground() : undefined}
                             >
                                 <Box>
                                     <Text inverse={isHighlighted}>
@@ -426,11 +461,11 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
 
             {/* Footer hints */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[r] Re-run</Text>
-                <Text dimColor>[Enter] View result</Text>
-                <Text dimColor>[c] Clear</Text>
+                <Hotkey keys="r">Re-run</Hotkey>
+                <Hotkey keys="Enter">View result</Hotkey>
+                <Hotkey keys="c">Clear</Hotkey>
                 <Text dimColor>[↑/↓] Navigate</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

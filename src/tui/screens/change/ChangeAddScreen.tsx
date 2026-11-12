@@ -32,6 +32,8 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusMessage, TextInput } from '../../components/index.js';
 import { createChange, addFile } from '../../../core/change/scaffold.js';
 import { getErrorMessage, toKebabCase, resolveChangesDir } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Add steps.
@@ -174,6 +176,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
+        if (isMouseReport(input)) return;
+
         if (step === 'input') {
 
             if (key.return) {
@@ -274,8 +278,8 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                     )}
 
                     <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                        <Text dimColor>[Enter] Create</Text>
-                        <Text dimColor>[Esc] Cancel</Text>
+                        <Hotkey keys="Enter">Create</Hotkey>
+                        <Hotkey keys="Esc">Cancel</Hotkey>
                     </Box>
                 </Box>
             </Panel>
@@ -307,7 +311,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                     <Text dimColor>Created folder structure with template files.</Text>
 
                     <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                        <Text dimColor>[e] Edit in editor</Text>
+                        <Hotkey keys="e">Edit in editor</Hotkey>
                         <Text dimColor>[any] Back to list</Text>
                     </Box>
                 </Box>
@@ -323,7 +327,7 @@ export function ChangeAddScreen({ params }: ScreenProps): ReactElement {
                 <StatusMessage variant="error">{error}</StatusMessage>
 
                 <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
                     <Text dimColor>[any] Back</Text>
                 </Box>
             </Box>

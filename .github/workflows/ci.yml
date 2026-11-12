@@ -144,7 +144,7 @@ jobs:
                   FORCE_COLOR: 'true'
               run: |
                   bun test --serial $(find tests/cli \( -name '*.test.ts' -o -name '*.test.tsx' \) \
-                      ! -name 'cli-logger-settings.test.ts' | sort | tr '\n' ' ')
+                      ! -name 'cli-logger-settings.test.ts' ! -name 'mouse-rows.test.tsx' | sort | tr '\n' ' ')
             # Isolated: other CLI test files leave `getSettingsManager` mocked for the rest
             # of their process, and bun picks the file order. See "Running Tests" in CLAUDE.md.
             - name: Run CLI logger settings tests (isolated)
@@ -152,6 +152,13 @@ jobs:
                   CI: 'false'
                   FORCE_COLOR: 'true'
               run: bun test --serial tests/cli/cli-logger-settings.test.ts
+            # Isolated for the same reason, from the other side: this file mocks
+            # `getStateManager`/`getSettingsManager` itself and would poison the group above.
+            - name: Run mouse rows tests (isolated)
+              env:
+                  CI: 'false'
+                  FORCE_COLOR: 'true'
+              run: bun test --serial tests/cli/mouse-rows.test.tsx
             # ca.pem is the public CA; the private keys beside it stay in the container.
             - name: Export the MySQL server CA for the live TLS test
               run: |

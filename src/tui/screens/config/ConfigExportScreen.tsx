@@ -38,6 +38,8 @@ import type { ConnectionConfig } from '../../../core/connection/types.js';
 import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint, guarded } from '../../../core/policy/index.js';
 import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
 import { getErrorMessage } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Export steps.
@@ -242,6 +244,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
+        if (isMouseReport(input)) return;
+
         if (step === 'recipient-email') {
 
             if (key.return) {
@@ -353,8 +357,8 @@ export function ConfigExportScreen({ params }: ScreenProps): ReactElement {
                     </Box>
 
                     <Box marginTop={1} gap={2}>
-                        <Text dimColor>[Enter] Continue</Text>
-                        <Text dimColor>[Esc] Cancel</Text>
+                        <Hotkey keys="Enter">Continue</Hotkey>
+                        <Hotkey keys="Esc">Cancel</Hotkey>
                     </Box>
                 </Box>
             </Panel>

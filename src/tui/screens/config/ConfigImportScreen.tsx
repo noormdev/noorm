@@ -37,6 +37,8 @@ import { resolveLegacyAccess } from '../../../core/policy/index.js';
 import { parseConfig } from '../../../core/config/schema.js';
 import { validateAccessRoles } from '../../../core/config/resolver.js';
 import { getErrorMessage, skipsVerification } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Import steps.
@@ -268,7 +270,9 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
 
     // Keyboard handling for complete/error states only
     // Note: file-select and preview steps have their own focusable components
-    useInput((_input, _key) => {
+    useInput((input) => {
+
+        if (isMouseReport(input)) return;
 
         back();
 
@@ -317,7 +321,7 @@ export function ConfigImportScreen({ params }: ScreenProps): ReactElement {
                         <Text color="yellow">No .noorm.enc files found in current directory.</Text>
                         <Text dimColor>Use: noorm config:import &lt;file&gt;</Text>
                         <Box marginTop={1}>
-                            <Text dimColor>[Esc] Go back</Text>
+                            <Hotkey keys="Esc">Go back</Hotkey>
                         </Box>
                     </Box>
                 </Panel>

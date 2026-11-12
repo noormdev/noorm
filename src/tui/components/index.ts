@@ -10,8 +10,8 @@
  */
 
 // Layout
-export { Panel, Divider, MissingParamPanel, NotFoundPanel } from './layout/index.js';
-export type { PanelProps, DividerProps, MissingParamPanelProps, NotFoundPanelProps } from './layout/index.js';
+export { Panel, Divider, MissingParamPanel, NotFoundPanel, Hotkey, HotkeyLine, KeyTarget, resolveHotkey } from './layout/index.js';
+export type { PanelProps, DividerProps, MissingParamPanelProps, NotFoundPanelProps, HotkeyProps, KeyTargetProps } from './layout/index.js';
 
 // Lists
 export { SelectList, SearchableList, ActionList, StatusList } from './lists/index.js';
@@ -69,7 +69,6 @@ export type {
 export {
     SecretDefinitionForm,
     SecretDefinitionList,
-    SecretDefinitionListHelp,
     SecretValueForm,
     SecretValueList,
     SecretValueListHelp,

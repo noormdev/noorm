@@ -44,6 +44,7 @@ import { useFocusScope } from '../../focus.js';
 import { useWheelScroll } from '../../mouse.js';
 import { preferredRowFormat, rememberRowFormat, renderRowDocument } from './rowDocument.js';
 import { rowBudget, rowWindow, scrollTarget, wrapText } from './viewport.js';
+import { HotkeyLine } from '../layout/Hotkey.js';
 
 /**
  * Props for the row view overlay.
@@ -188,9 +189,7 @@ export function RowViewOverlay({
             <Text dimColor wrap="truncate">
                 Row · {setLabel} · row {index + 1} of {rows.length}
             </Text>
-            <Text dimColor wrap="truncate">
-                [←/→] Row  [↑/↓] Scroll  [f] {other}  [Esc] Back
-            </Text>
+            <HotkeyLine>{`[←/→] Row  [↑/↓] Scroll  [f] ${other}  [Esc] Back`}</HotkeyLine>
             {view.above > 0 && <Text dimColor> ↑ {view.above} more</Text>}
             {lines.slice(view.start, view.start + view.count).map((line, position) => (
                 <Text key={`row:${view.start + position}`} wrap="truncate">{line}</Text>

@@ -40,6 +40,7 @@ import type { Dialect } from '../../../core/connection/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { StateManager } from '../../../core/state/index.js';
 import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'picker' | 'inspecting' | 'expanded' | 'preview' | 'error';
 
@@ -845,7 +846,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[↑↓] Scroll</Text>
                     <Text dimColor>[^U/^D] Half</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -893,11 +894,11 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     {hasFiles && (
                         <>
-                            <Text dimColor>[/] Search</Text>
-                            <Text dimColor>[Enter] Select</Text>
+                            <Hotkey keys="/">Search</Hotkey>
+                            <Hotkey keys="Enter">Select</Hotkey>
                         </>
                     )}
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -922,10 +923,10 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[↑↓] Scroll</Text>
                     <Text dimColor>[^U/^D] Half</Text>
-                    <Text dimColor>[e] Expand</Text>
-                    <Text dimColor>[p] Preview SQL</Text>
-                    <Text dimColor>[r] Refresh</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="e">Expand</Hotkey>
+                    <Hotkey keys="p">Preview SQL</Hotkey>
+                    <Hotkey keys="r">Refresh</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -950,7 +951,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[↑↓] Scroll</Text>
                     <Text dimColor>[^U/^D] Half</Text>
-                    <Text dimColor>[Esc] Back to summary</Text>
+                    <Hotkey keys="Esc">Back to summary</Hotkey>
                 </Box>
             </Box>
         );
@@ -984,7 +985,7 @@ export function RunInspectScreen({ params }: ScreenProps): ReactElement {
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[↑↓] Scroll</Text>
                     <Text dimColor>[^U/^D] Half</Text>
-                    <Text dimColor>[Esc] Back to summary</Text>
+                    <Hotkey keys="Esc">Back to summary</Hotkey>
                 </Box>
             </Box>
         );

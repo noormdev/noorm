@@ -19,6 +19,8 @@ import { Box, Text } from 'ink';
 
 import type { ReactElement } from 'react';
 
+import { KeyTarget } from '../layout/Hotkey.js';
+
 /**
  * Action item.
  */
@@ -82,10 +84,12 @@ export function ActionList({
                 const labelColor = variantColors[action.variant ?? 'default'] ?? 'white';
 
                 return (
-                    <Box key={index} gap={1}>
-                        <Text color={keyColor}>[{action.key}]</Text>
-                        <Text color={labelColor}>{action.label}</Text>
-                    </Box>
+                    <KeyTarget key={index} keys={action.key}>
+                        <Box gap={1}>
+                            <Text color={keyColor}>[{action.key}]</Text>
+                            <Text color={labelColor}>{action.label}</Text>
+                        </Box>
+                    </KeyTarget>
                 );
 
             })}

@@ -565,6 +565,18 @@ export function AppContextProvider({
             }),
         );
 
+        // Here rather than in a screen: a breadcrumb jump skips the screens it passes,
+        // and the filters belong to this context. Only leaving explore clears them.
+        cleanups.push(
+            observer.on('router:popped', (data) => {
+
+                const isExplore = (route: string) => route === 'db/explore' || route.startsWith('db/explore/');
+
+                if (isExplore(data.popped) && !isExplore(data.to)) clearExploreFilters();
+
+            }),
+        );
+
         cleanups.push(
             observer.on('config:created', () => {
 

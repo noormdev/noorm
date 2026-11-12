@@ -30,6 +30,7 @@ import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { tablesExist } from '../../../core/version/index.js';
 import { getNoormTables, noormDb } from '../../../core/shared/index.js';
 import { attempt } from '@logosdx/utils';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Database status information.
@@ -250,7 +251,7 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -322,24 +323,36 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
 
             <Panel title="Available Actions" paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>
-                        <Text color="cyan">[c]</Text> Create - Create database and tracking tables
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[d]</Text> Destroy - Drop all managed objects
-                    </Text>
-                    <Text color={status?.connected ? undefined : 'gray'}>
-                        <Text color={status?.connected ? 'cyan' : 'gray'}>[x]</Text> Explore - Browse database schema
-                    </Text>
-                    <Text color={status?.connected ? undefined : 'gray'}>
-                        <Text color={status?.connected ? 'cyan' : 'gray'}>[w]</Text> Wipe - Truncate table data (keep schema)
-                    </Text>
-                    <Text color={status?.connected ? undefined : 'gray'}>
-                        <Text color={status?.connected ? 'cyan' : 'gray'}>[t]</Text> Teardown - Drop user objects (keep noorm)
-                    </Text>
-                    <Text color={status?.connected ? undefined : 'gray'}>
-                        <Text color={status?.connected ? 'cyan' : 'gray'}>[r]</Text> Transfer - Copy data to another database
-                    </Text>
+                    <KeyTarget keys="c" block>
+                        <Text>
+                            <Text color="cyan">[c]</Text> Create - Create database and tracking tables
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="d" block>
+                        <Text>
+                            <Text color="cyan">[d]</Text> Destroy - Drop all managed objects
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="x" block>
+                        <Text color={status?.connected ? undefined : 'gray'}>
+                            <Text color={status?.connected ? 'cyan' : 'gray'}>[x]</Text> Explore - Browse database schema
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="w" block>
+                        <Text color={status?.connected ? undefined : 'gray'}>
+                            <Text color={status?.connected ? 'cyan' : 'gray'}>[w]</Text> Wipe - Truncate table data (keep schema)
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="t" block>
+                        <Text color={status?.connected ? undefined : 'gray'}>
+                            <Text color={status?.connected ? 'cyan' : 'gray'}>[t]</Text> Teardown - Drop user objects (keep noorm)
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="r" block>
+                        <Text color={status?.connected ? undefined : 'gray'}>
+                            <Text color={status?.connected ? 'cyan' : 'gray'}>[r]</Text> Transfer - Copy data to another database
+                        </Text>
+                    </KeyTarget>
                 </Box>
             </Panel>
 
@@ -350,13 +363,13 @@ export function DbListScreen({ params: _params }: ScreenProps): ReactElement {
             </Box>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[c] Create</Text>
-                <Text dimColor>[d] Destroy</Text>
-                <Text dimColor>[x] Explore</Text>
-                <Text dimColor>[w] Wipe</Text>
-                <Text dimColor>[t] Teardown</Text>
-                <Text dimColor>[r] Transfer</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="c">Create</Hotkey>
+                <Hotkey keys="d">Destroy</Hotkey>
+                <Hotkey keys="x">Explore</Hotkey>
+                <Hotkey keys="w">Wipe</Hotkey>
+                <Hotkey keys="t">Teardown</Hotkey>
+                <Hotkey keys="r">Transfer</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

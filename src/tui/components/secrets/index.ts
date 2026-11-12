@@ -10,7 +10,7 @@
 export { SecretDefinitionForm } from './SecretDefinitionForm.js';
 export type { SecretDefinitionFormProps } from './SecretDefinitionForm.js';
 
-export { SecretDefinitionList, SecretDefinitionListHelp } from './SecretDefinitionList.js';
+export { SecretDefinitionList } from './SecretDefinitionList.js';
 export type { SecretDefinitionListProps } from './SecretDefinitionList.js';
 
 // Value components (for actual secrets)

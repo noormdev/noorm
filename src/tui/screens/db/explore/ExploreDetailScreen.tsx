@@ -70,6 +70,7 @@ import type {
     IndexSummary,
     ForeignKeySummary,
 } from '../../../../core/explore/index.js';
+import { Hotkey, HotkeyLine } from '../../../components/layout/Hotkey.js';
 
 /**
  * Route to category mapping.
@@ -864,7 +865,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -881,7 +882,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -914,7 +915,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -968,7 +969,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
             <Box flexWrap="wrap" columnGap={2}>
                 {detailFooterHints({ scrolls, overlay, canPeek: peekable }).map((hint) => (
-                    <Text key={hint} dimColor>{hint}</Text>
+                    <HotkeyLine key={hint}>{hint}</HotkeyLine>
                 ))}
             </Box>
         </Box>

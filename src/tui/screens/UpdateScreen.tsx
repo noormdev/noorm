@@ -13,6 +13,7 @@ import { useFocusScope } from '../focus.js';
 import { useRouter } from '../router.js';
 import { useToast, Spinner, ProgressBar } from '../components/index.js';
 import { useUpdateChecker, useUpdateProgress } from '../hooks/index.js';
+import { Hotkey, HotkeyLine } from '../components/layout/Hotkey.js';
 
 /**
  * Update screen showing current version, update availability, and install action.
@@ -149,7 +150,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
                 <Text color="green" bold>Update complete!</Text>
                 <Text dimColor>Restart noorm to use the new version.</Text>
                 <Box marginTop={1}>
-                    <Text dimColor>[esc] back</Text>
+                    <Hotkey keys="esc">back</Hotkey>
                 </Box>
             </Box>
         );
@@ -164,7 +165,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
                 <Text color="red" bold>Update failed</Text>
                 <Text>{error}</Text>
                 <Box marginTop={1}>
-                    <Text dimColor>[r] retry  [esc] back</Text>
+                    <HotkeyLine>[r] retry  [esc] back</HotkeyLine>
                 </Box>
             </Box>
         );
@@ -178,7 +179,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
             <Box flexDirection="column" paddingX={2} paddingY={1}>
                 <Text dimColor>Could not check for updates. You may be offline.</Text>
                 <Box marginTop={1}>
-                    <Text dimColor>[r] retry  [esc] back</Text>
+                    <HotkeyLine>[r] retry  [esc] back</HotkeyLine>
                 </Box>
             </Box>
         );
@@ -193,7 +194,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
                 <Text>Current version: <Text bold>{updateInfo.currentVersion}</Text></Text>
                 <Text color="green">Already up to date.</Text>
                 <Box marginTop={1}>
-                    <Text dimColor>[r] check again  [esc] back</Text>
+                    <HotkeyLine>[r] check again  [esc] back</HotkeyLine>
                 </Box>
             </Box>
         );
@@ -209,7 +210,7 @@ export function UpdateScreen(_props: ScreenProps): ReactElement {
                 <Text color="yellow">This is a major version update.</Text>
             )}
             <Box marginTop={1}>
-                <Text dimColor>[i] install  [esc] back</Text>
+                <HotkeyLine>[i] install  [esc] back</HotkeyLine>
             </Box>
         </Box>
     );

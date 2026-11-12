@@ -36,6 +36,7 @@ import {
     useToast,
 } from '../../components/index.js';
 import { useRunProgress, useAsyncEffect, useDoublePress, DOUBLE_PRESS_WINDOW_MS, modeBannerRows } from '../../hooks/index.js';
+import { useBusy } from '../../focus.js';
 import { buildRunContext, discoverFiles, runFiles } from '../../../core/runner/index.js';
 import {
     getErrorMessage,
@@ -46,6 +47,7 @@ import {
 } from '../../utils/index.js';
 import { attempt } from '@logosdx/utils';
 import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'picker' | 'confirm' | 'running' | 'complete' | 'error';
 
@@ -70,6 +72,8 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
     const projectRoot = process.cwd();
+
+    useBusy(phase === 'running');
 
     // Load files
     useAsyncEffect(async (isCancelled) => {
@@ -244,7 +248,7 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text color="yellow">No active configuration selected.</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -283,8 +287,8 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -325,9 +329,9 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Space] Toggle</Text>
-                    <Text dimColor>[Enter] Confirm</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Space">Toggle</Hotkey>
+                    <Hotkey keys="Enter">Confirm</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -419,8 +423,8 @@ export function RunExecScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[r] Retry</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="r">Retry</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

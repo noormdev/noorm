@@ -22,7 +22,7 @@ import { attempt, attemptSync } from '@logosdx/utils';
 import { modifyDtFile, transformSchema, buildRowProxy } from '../../../core/dt/modify.js';
 import { DtReader } from '../../../core/dt/reader.js';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 import {
@@ -36,6 +36,7 @@ import {
     useToast,
     type SelectListItem,
 } from '../../components/index.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 // ---------------------------------------------------------------------------
 // Phase type
@@ -87,6 +88,8 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
     const { showToast } = useToast();
 
     const [phase, setPhase] = useState<Phase>('select-file');
+
+    useBusy(phase === 'running');
     const [error, setError] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [passphrase, setPassphrase] = useState('');
@@ -819,7 +822,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -851,7 +854,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text color="yellow">No .dt, .dtz, or .dtzx files found in the project.</Text>
                     </Panel>
                     <Box>
-                        <Text dimColor>[Esc] Back</Text>
+                        <Hotkey keys="Esc">Back</Hotkey>
                     </Box>
                 </Box>
             );
@@ -891,8 +894,8 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Continue</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">Continue</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -975,8 +978,8 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Modify</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">Modify</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -1107,10 +1110,10 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[v] {showingSchema ? 'Hide' : 'View'} schema</Text>
-                    {recipe.length > 0 && <Text dimColor>[u] Undo last</Text>}
-                    {recipe.length > 0 && <Text dimColor>[Enter] Done — proceed to output</Text>}
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="v">{showingSchema ? 'Hide' : 'View'} schema</Hotkey>
+                    {recipe.length > 0 && <Hotkey keys="u">Undo last</Hotkey>}
+                    {recipe.length > 0 && <Hotkey keys="Enter">Done — proceed to output</Hotkey>}
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -1187,9 +1190,9 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Space] Toggle</Text>
-                    <Text dimColor>[Enter] Drop selected</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Space">Toggle</Hotkey>
+                    <Hotkey keys="Enter">Drop selected</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -1260,9 +1263,9 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Tab] Next field</Text>
-                    {addFieldIndex === 3 && addName.trim() && <Text dimColor>[Enter] Add column</Text>}
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Tab">Next field</Hotkey>
+                    {addFieldIndex === 3 && addName.trim() && <Hotkey keys="Enter">Add column</Hotkey>}
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -1307,7 +1310,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                         </Box>
                     </Panel>
                     <Box>
-                        <Text dimColor>[Esc] Back to operations</Text>
+                        <Hotkey keys="Esc">Back to operations</Hotkey>
                     </Box>
                 </Box>
             );
@@ -1333,8 +1336,8 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    {renameTo.trim() && <Text dimColor>[Enter] Rename</Text>}
-                    <Text dimColor>[Esc] Back to column list</Text>
+                    {renameTo.trim() && <Hotkey keys="Enter">Rename</Hotkey>}
+                    <Hotkey keys="Esc">Back to column list</Hotkey>
                 </Box>
             </Box>
         );
@@ -1427,9 +1430,9 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Space] Toggle</Text>
-                    <Text dimColor>[Enter] Apply</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Space">Toggle</Hotkey>
+                    <Hotkey keys="Enter">Apply</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -1469,8 +1472,8 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    {filterPredicate.trim() && <Text dimColor>[Enter] Add filter</Text>}
-                    <Text dimColor>[Esc] Cancel</Text>
+                    {filterPredicate.trim() && <Hotkey keys="Enter">Add filter</Hotkey>}
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -1504,15 +1507,17 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                                 )
                             }
                         </Box>
-                        <Box gap={1}>
-                            <Text dimColor>[Space]</Text>
-                            <Text>{overwriteOriginal ? '[x]' : '[ ]'} Overwrite original</Text>
-                        </Box>
+                        <KeyTarget keys="Space" block>
+                            <Box gap={1}>
+                                <Text dimColor>[Space]</Text>
+                                <Text>{overwriteOriginal ? '[x]' : '[ ]'} Overwrite original</Text>
+                            </Box>
+                        </KeyTarget>
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    {outputPath.trim() && <Text dimColor>[Enter] Confirm</Text>}
-                    <Text dimColor>[Esc] Back</Text>
+                    {outputPath.trim() && <Hotkey keys="Enter">Confirm</Hotkey>}
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -1673,7 +1678,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                     </Box>
                 </Panel>
                 <Box>
-                    <Text dimColor>[Esc] Done</Text>
+                    <Hotkey keys="Esc">Done</Hotkey>
                 </Box>
             </Box>
         );
@@ -1691,7 +1696,7 @@ export function DtModifyScreen({ params: _params }: ScreenProps): ReactElement {
                 <Text>Phase: {phase}</Text>
             </Panel>
             <Box>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

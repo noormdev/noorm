@@ -10,6 +10,7 @@ import { Confirm, Panel, SelectList, useToast, type SelectListItem } from '../..
 import { getErrorMessage } from '../../utils/index.js';
 
 import { BUILTIN_ROLES, isBuiltinRole } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 export function SettingsAccessListScreen(_props: ScreenProps): ReactElement {
 
@@ -159,10 +160,10 @@ export function SettingsAccessListScreen(_props: ScreenProps): ReactElement {
                 />
             </Panel>
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[a] Add</Text>
-                <Text dimColor>[Enter/e] Edit</Text>
-                <Text dimColor>[d] Delete/reset</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="a">Add</Hotkey>
+                <Hotkey keys="Enter/e">Edit</Hotkey>
+                <Hotkey keys="d">Delete/reset</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

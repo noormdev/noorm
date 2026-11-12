@@ -25,6 +25,7 @@ import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
 import { ScrollPane, rowBudget, wrapText } from '../terminal/index.js';
+import { HotkeyLine } from '../layout/Hotkey.js';
 
 /**
  * Props for the text overlay.
@@ -78,7 +79,7 @@ export function TextOverlay({ title, text, onClose }: TextOverlayProps): ReactEl
             <Text bold color="red">{title}</Text>
             <Text dimColor>{'─'.repeat(width)}</Text>
             <ScrollPane lines={lines} height={height} isFocused={isFocused} />
-            <Text dimColor>[↑↓] Scroll  [Ctrl+U/D] Page  [Esc] Back</Text>
+            <HotkeyLine>[↑↓] Scroll  [Ctrl+U/D] Page  [Esc] Back</HotkeyLine>
         </Box>
     );
 
