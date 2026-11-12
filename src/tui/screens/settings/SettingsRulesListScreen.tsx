@@ -30,6 +30,7 @@ import {
     useToast,
     type SelectListItem,
 } from '../../components/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Rule list item value.
@@ -316,11 +317,11 @@ export function SettingsRulesListScreen({ params: _params }: ScreenProps): React
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[a] Add</Text>
-                <Text dimColor>[e] Edit</Text>
-                <Text dimColor>[d] Delete</Text>
-                <Text dimColor>[Enter] Edit</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="a">Add</Hotkey>
+                <Hotkey keys="e">Edit</Hotkey>
+                <Hotkey keys="d">Delete</Hotkey>
+                <Hotkey keys="Enter">Edit</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

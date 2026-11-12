@@ -14,6 +14,7 @@ import { Box, Text } from 'ink';
 import type { ReactElement } from 'react';
 
 import { Panel } from './Panel.js';
+import { Hotkey } from './Hotkey.js';
 
 
 /**
@@ -44,7 +45,7 @@ export function NotFoundPanel({ title, type, name }: NotFoundPanelProps): ReactE
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

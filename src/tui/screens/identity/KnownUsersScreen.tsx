@@ -23,10 +23,12 @@ import type { KnownUser } from '../../../core/identity/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
+import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel } from '../../components/index.js';
 import { truncateHash } from '../../../core/identity/index.js';
 import { relativeTimeAgo } from '../../utils/date.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 /**
@@ -135,6 +137,27 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
 
     });
 
+    // Above the empty-state return, or the hook count changes with it.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused,
+        onClick: setHighlightedIndex,
+        onActivate: (index) => {
+
+            const group = userGroups[index];
+
+            if (!group) return;
+
+            setHighlightedIndex(index);
+            setExpandedEmail((current) => (current === group.email ? null : group.email));
+
+        },
+        onWheel: (delta) => {
+
+            setHighlightedIndex((i) => Math.min(Math.max(i + delta, 0), Math.max(0, userGroups.length - 1)));
+
+        },
+    });
+
     // Empty state
     if (userGroups.length === 0) {
 
@@ -150,7 +173,7 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -164,13 +187,18 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
                     {userGroups.map((group, index) => {
 
                         const isHighlighted = index === highlightedIndex;
+                        const isHovered = hovered === index && !isHighlighted;
                         const isExpanded = group.email === expandedEmail;
                         const machineCount = group.users.length;
 
                         return (
                             <Box key={group.email} flexDirection="column">
-                                {/* Group header */}
-                                <Box>
+                                {/* Group header. Only this line takes the click, so the
+                                    expanded details under it are not a target. */}
+                                <Box
+                                    ref={rowRef(index)}
+                                    backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                >
                                     <Text color={isHighlighted ? 'cyan' : undefined}>
                                         {isHighlighted ? '>' : ' '}
                                     </Text>
@@ -257,9 +285,9 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
 
             {/* Keyboard shortcuts */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Expand/Collapse</Text>
+                <Hotkey keys="Enter">Expand/Collapse</Hotkey>
                 <Text dimColor>[Up/Down] Navigate</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

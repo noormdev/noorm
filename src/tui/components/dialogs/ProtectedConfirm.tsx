@@ -21,7 +21,7 @@ import { TextInput } from '../forms/TextInput.js';
 
 import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useModal } from '../../focus.js';
 import { Panel } from '../layout/Panel.js';
 
 /**
@@ -76,6 +76,8 @@ export function ProtectedConfirm({
         skip: hasExternalFocus,
     });
     const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
+
+    useModal(isFocused);
 
     const [input, setInput] = useState('');
     const [error, setError] = useState<string | null>(null);

@@ -9,6 +9,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useSettingsOperation } from '../../hooks/index.js';
 import { attachPolicyContext, BUILTIN_ROLES, getConfigPermission, isBuiltinRole, MATRIX, USER_ALWAYS_ALLOWED, type ConfigAccess, type Permission, type PolicyCell, type RoleDefinition } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 const CELLS: (PolicyCell | undefined)[] = [undefined, 'allow', 'confirm', 'deny'];
 
 export function SettingsAccessEditScreen({ params }: ScreenProps): ReactElement {
@@ -198,10 +199,10 @@ export function SettingsAccessEditScreen({ params }: ScreenProps): ReactElement 
             </Panel>
             {error && <Text color="red">{error}</Text>}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Cycle default/allow/confirm/deny</Text>
-                {!builtin && <Text dimColor>[m] Metadata</Text>}
-                <Text dimColor>[s] Save</Text>
-                <Text dimColor>[Esc] Cancel</Text>
+                <Hotkey keys="Enter">Cycle default/allow/confirm/deny</Hotkey>
+                {!builtin && <Hotkey keys="m">Metadata</Hotkey>}
+                <Hotkey keys="s">Save</Hotkey>
+                <Hotkey keys="Esc">Cancel</Hotkey>
             </Box>
         </Box>
     );

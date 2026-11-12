@@ -40,7 +40,8 @@ import type { ReactElement } from 'react';
 import type { DOMElement } from 'ink';
 
 import { useFocusScope } from '../../focus.js';
-import { useRowMouse } from '../../mouse.js';
+import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 /** Options an expanded select shows before it starts scrolling. */
 const SELECT_VISIBLE_OPTIONS = 4;
@@ -194,7 +195,7 @@ function SelectField({
 
     // Taking the option on the first press would collapse the list under the
     // pointer, and the second press of a double-click would land on what moved up.
-    const { rowRef } = useRowMouse({
+    const { rowRef, hovered: hoveredOption } = useRowMouse({
         isActive,
         onClick: setHighlightedIndex,
         onActivate: chooseAt,
@@ -210,9 +211,10 @@ function SelectField({
                 const actualIndex = startIndex + visibleIdx;
                 const isHighlighted = actualIndex === highlightedIndex;
                 const isSelected = option.value === value;
+                const isHovered = hoveredOption === actualIndex && !isHighlighted;
 
                 return (
-                    <Box key={option.value} ref={rowRef(actualIndex)}>
+                    <Box key={option.value} ref={rowRef(actualIndex)} backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}>
                         <Text
                             color={isHighlighted && isActive ? 'cyan' : undefined}
                             bold={isHighlighted && isActive}
@@ -687,7 +689,7 @@ export function Form({
 
     }, [fields, editingKey, beginEdit]);
 
-    const { rowRef } = useRowMouse({
+    const { rowRef, hovered } = useRowMouse({
         isActive: isFocused,
         matchColumn: true,
         onClick: clickStop,
@@ -939,17 +941,18 @@ export function Form({
 
                 const index = startIndex + visibleIndex;
                 const isActive = index === activeIndex && isFocused;
+                const isHovered = hovered === index && !isActive;
                 const isFieldEditing = editingKey === field.key;
                 const error = errors[field.key];
                 const value = values[field.key];
                 const starWidth = field.required ? 1 : 0;
 
                 return (
-                    <Box key={field.key} ref={rowRef(index)}>
+                    <Box key={field.key} ref={rowRef(index)} backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}>
                         <Box width={labelColumnWidth} flexShrink={0}>
                             <Text
                                 color={isActive ? 'cyan' : undefined}
-                                dimColor={!isActive}
+                                dimColor={!isActive && !isHovered}
                                 bold={isActive}
                             >
                                 {isActive ? '› ' : '  '}
@@ -1009,20 +1012,25 @@ export function Form({
                 {busy ? (
                     <>
                         <Text dimColor>{busyLabel}</Text>
-                        {onCancelBusy && <Text dimColor>[Esc] Cancel</Text>}
+                        {onCancelBusy && <Hotkey keys="Esc">Cancel</Hotkey>}
                     </>
                 ) : (
                     actions.map((action, actionIndex) => {
 
                         const focused = activeAction === action && isFocused;
+                        const isHovered = hovered === fields.length + actionIndex && !focused;
                         const label = action === 'submit' ? submitLabel : 'Cancel';
 
                         return (
-                            <Box key={action} ref={rowRef(fields.length + actionIndex)}>
+                            <Box
+                                key={action}
+                                ref={rowRef(fields.length + actionIndex)}
+                                backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                            >
                                 <Text
                                     color={focused ? 'cyan' : undefined}
                                     bold={focused}
-                                    dimColor={!focused}
+                                    dimColor={!focused && !isHovered}
                                 >
                                     {focused ? '❯ ' : '  '}[ {label} ]
                                 </Text>

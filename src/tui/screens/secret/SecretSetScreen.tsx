@@ -27,6 +27,7 @@ import { useAppContext } from '../../app-context.js';
 import { useVaultSecretKeys } from '../../hooks/index.js';
 import { Panel, ProtectedConfirm, SecretValueForm, SmartConfirm, useToast } from '../../components/index.js';
 import { checkConfigPolicy, confirmationPhraseFor, getPolicyFingerprint } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Simple error screen for when no active config exists.
@@ -58,9 +59,7 @@ function NoConfigError({ title, message }: { title: string; message: string }): 
             </Panel>
 
             <Box gap={2}>
-                <Text color={isFocused ? 'cyan' : undefined} dimColor={!isFocused}>
-                    [Esc] Back
-                </Text>
+                <Hotkey keys="Esc" dim={!isFocused} keyColor={isFocused ? 'cyan' : undefined}>Back</Hotkey>
             </Box>
         </Box>
     );

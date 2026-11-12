@@ -31,6 +31,7 @@ import { useActiveConfig, useSettings, useGlobalModes } from '../../app-context.
 import { Panel, Spinner } from '../../components/index.js';
 import { getEffectiveBuildPaths } from '../../../core/settings/rules.js';
 import { DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * RunListScreen component.
@@ -152,7 +153,7 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -233,31 +234,41 @@ export function RunListScreen({ params: _params }: ScreenProps): ReactElement {
 
             <Panel title="Available Actions" paddingX={1} paddingY={1}>
                 <Box flexDirection="column" gap={1}>
-                    <Text>
-                        <Text color="cyan">[b]</Text> Build - Execute full schema build
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[e]</Text> Exec - Pick files to execute
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[f]</Text> File - Execute a single file
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[d]</Text> Dir - Execute all files in a directory
-                    </Text>
-                    <Text>
-                        <Text color="cyan">[i]</Text> Inspect - View template context
-                    </Text>
+                    <KeyTarget keys="b" block>
+                        <Text>
+                            <Text color="cyan">[b]</Text> Build - Execute full schema build
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="e" block>
+                        <Text>
+                            <Text color="cyan">[e]</Text> Exec - Pick files to execute
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="f" block>
+                        <Text>
+                            <Text color="cyan">[f]</Text> File - Execute a single file
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="d" block>
+                        <Text>
+                            <Text color="cyan">[d]</Text> Dir - Execute all files in a directory
+                        </Text>
+                    </KeyTarget>
+                    <KeyTarget keys="i" block>
+                        <Text>
+                            <Text color="cyan">[i]</Text> Inspect - View template context
+                        </Text>
+                    </KeyTarget>
                 </Box>
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[b] Build</Text>
-                <Text dimColor>[e] Exec</Text>
-                <Text dimColor>[f] File</Text>
-                <Text dimColor>[d] Dir</Text>
-                <Text dimColor>[i] Inspect</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="b">Build</Hotkey>
+                <Hotkey keys="e">Exec</Hotkey>
+                <Hotkey keys="f">File</Hotkey>
+                <Hotkey keys="d">Dir</Hotkey>
+                <Hotkey keys="i">Inspect</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

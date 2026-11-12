@@ -32,6 +32,7 @@ import {
     NOORM_TABLE_INFO,
     type TableCountResult,
 } from '../../../core/debug/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * DebugOverviewScreen component.
@@ -137,7 +138,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -170,7 +171,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -256,7 +257,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[1-5] Select table</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

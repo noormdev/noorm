@@ -18,12 +18,13 @@ import type { ScreenProps } from '../../types.js';
 import type { DbStatus } from '../../../core/db/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useToast, Panel, Spinner, SmartConfirm } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, createDb } from '../../../core/db/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Screen phase state.
@@ -49,6 +50,8 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
 
     // Status info
     const [status, setStatus] = useState<DbStatus | null>(null);
+
+    useBusy(phase === 'running');
 
     // Check database status
     useAsyncEffect(async (isCancelled) => {
@@ -210,7 +213,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -283,7 +286,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Done</Text>
+                    <Hotkey keys="Enter/Esc">Done</Hotkey>
                 </Box>
             </Box>
         );
@@ -300,7 +303,7 @@ export function DbCreateScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

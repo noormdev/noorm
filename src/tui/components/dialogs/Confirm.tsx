@@ -18,8 +18,8 @@ import { Box, Text, useInput } from 'ink';
 
 import type { ReactElement } from 'react';
 
-import { useFocusScope } from '../../focus.js';
-import { useRowMouse } from '../../mouse.js';
+import { useFocusScope, useModal } from '../../focus.js';
+import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
 import { Panel } from '../layout/Panel.js';
 
 /**
@@ -81,6 +81,8 @@ export function Confirm({
         skip: hasExternalFocus,
     });
     const isFocused = hasExternalFocus ? externalFocused : internalFocus.isFocused;
+
+    useModal(isFocused);
     const [selected, setSelected] = useState<'yes' | 'no'>(
         defaultChoice === 'confirm' ? 'yes' : 'no',
     );
@@ -153,9 +155,10 @@ export function Confirm({
     });
 
     // A click is the whole answer, so double-click does nothing extra.
-    const { rowRef } = useRowMouse({
+    const { rowRef, hovered } = useRowMouse({
         isActive: isFocused,
         matchColumn: true,
+        ignoreRepeats: true,
         onClick: (index) => (index === 0 ? onConfirm() : onCancel()),
         onActivate: () => undefined,
         onWheel: () => undefined,
@@ -167,7 +170,7 @@ export function Confirm({
                 <Text>{message}</Text>
 
                 <Box gap={2}>
-                    <Box ref={rowRef(0)}>
+                    <Box ref={rowRef(0)} backgroundColor={hovered === 0 && selected !== 'yes' ? HOVER_BACKGROUND : undefined}>
                         <Text
                             color={selected === 'yes' ? 'green' : undefined}
                             bold={selected === 'yes'}
@@ -176,7 +179,7 @@ export function Confirm({
                             Yes (y)
                         </Text>
                     </Box>
-                    <Box ref={rowRef(1)}>
+                    <Box ref={rowRef(1)} backgroundColor={hovered === 1 && selected !== 'no' ? HOVER_BACKGROUND : undefined}>
                         <Text color={selected === 'no' ? 'red' : undefined} bold={selected === 'no'}>
                             {selected === 'no' ? '❯ ' : '  '}
                             No (n)

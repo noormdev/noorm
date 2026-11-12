@@ -593,7 +593,7 @@ ui:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `mouse` | `true` | Answer clicks and wheel notches in lists and result grids |
+| `mouse` | `true` | Answer clicks, wheel notches and hover (a shade on what a click would act on) in lists, forms, dialogs, hints and result grids |
 
 There is no settings-screen toggle and no accessor on `SettingsManager`. What an
 absent flag means is decided in exactly one place, `isMouseEnabled` in
@@ -629,6 +629,8 @@ terminal mouse-tracking mode takes click-drag text selection away from the
 terminal unless the user holds a modifier (Option on macOS Terminal and iTerm2,
 Shift elsewhere). A user who hits that reports it as "text selection stopped
 working", which is why the help screen (`?`) names `ui.mouse: false` directly.
+Hover adds a second cost: motion tracking (`?1003`) makes the terminal send one
+report per cell the pointer crosses, which is noticeable over a slow SSH link.
 See `docs/tui.md` for what the mouse does.
 
 

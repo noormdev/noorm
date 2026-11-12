@@ -37,10 +37,11 @@ import { Box, Text, useInput, useWindowSize } from 'ink';
 import v from 'voca';
 import type { ReactElement } from 'react';
 
-import { isMouseReport, useRowMouse } from '../../mouse.js';
+import { HOVER_BACKGROUND, isMouseReport, useRowMouse } from '../../mouse.js';
 import { useTextEntry } from '../../focus.js';
 import { fitGridColumns } from './columnFit.js';
 import { documentValue } from './rowDocument.js';
+import { HotkeyLine } from '../layout/Hotkey.js';
 
 /**
  * Props for ResultTable component.
@@ -793,7 +794,7 @@ export function ResultTable({
     // filter box and the sort picker own their own keys, and a click should not
     // reach past whichever one is open. Inert without a MouseProvider above it
     // or with the setting off.
-    const { rowRef } = useRowMouse({
+    const { rowRef, hovered } = useRowMouse({
         isActive: isActive && mode === 'browse',
         onClick: moveCursor,
         onActivate: (index) => {
@@ -818,8 +819,14 @@ export function ResultTable({
     const renderRow = useCallback(
         (row: Record<string, unknown>, index: number, isHighlighted: boolean) => {
 
+            const isHovered = hovered === index && !isHighlighted;
+
             return (
-                <Box key={index} ref={rowRef(index)}>
+                <Box
+                    key={index}
+                    ref={rowRef(index)}
+                    backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                >
                     {drawnColumns.map((col, colIndex) => {
 
                         const colWidth = columnWidths[col] ?? col.length;
@@ -843,7 +850,7 @@ export function ResultTable({
             );
 
         },
-        [drawnColumns, columnWidths, rowRef],
+        [drawnColumns, columnWidths, rowRef, hovered],
     );
 
     // Calculate total width for separator
@@ -888,14 +895,13 @@ export function ResultTable({
                     </Text>
                 )}
                 {mode === 'filter' && (
-                    <Text color="yellow">
-                        [Tab] Column  [Enter] Apply  [Esc] Cancel
-                    </Text>
+                    <HotkeyLine dim={false} color="yellow">[Tab] Column  [Enter] Apply  [Esc] Cancel</HotkeyLine>
                 )}
                 {mode === 'sort' && (
-                    <Text color="yellow">
-                        [←/→] Column: {columns[sortColumnIndex]}  [a] Asc  [d] Desc
-                    </Text>
+                    <Box columnGap={2}>
+                        <Text color="yellow">[←/→] Column: {columns[sortColumnIndex]}</Text>
+                        <HotkeyLine dim={false} color="yellow">[a] Asc  [d] Desc</HotkeyLine>
+                    </Box>
                 )}
             </Box>
 
@@ -996,10 +1002,7 @@ export function ResultTable({
                 the reader pressing keys that go nowhere. */}
             {mode === 'browse' && isActive && (
                 <Box>
-                    <Text dimColor>
-                        [/] Filter  [s] Sort  [c] Clear  [↑/↓] Navigate
-                        {onSelect ? '  [↵] Open row' : ''}
-                    </Text>
+                    <HotkeyLine>{`[/] Filter  [s] Sort  [c] Clear  [↑/↓] Navigate${onSelect ? '  [↵] Open row' : ''}`}</HotkeyLine>
                 </Box>
             )}
         </Box>

@@ -139,12 +139,26 @@ In a form:
 | Click an option in an open select | Highlight it. Double-click takes it |
 | Wheel | Move between fields, or the highlight in an open select |
 
-In a confirm dialog, clicking `Yes (y)` confirms and clicking `No (n)` cancels. The `[a] Add`-style key hints at the bottom of a screen are labels, not buttons.
+In a confirm dialog, clicking `Yes (y)` confirms and clicking `No (n)` cancels.
 
-A click acts on whatever already has focus. Clicking an unfocused list does nothing.
+A `[key] Label` hint is a button: a footer hint such as `[a] Add` or `[Esc] Back`, a Quick Actions entry, a row of Available Actions, or a menu entry on More. A click presses that key, through the same path the keyboard takes, so whatever has focus answers it exactly as it would the key. A double click presses once. Hints that name no single key (`[↑↓] Scroll`, `[any] Back`) and sentences that only mention a key ("Press [a] to add one") are plain text; the Home prompts "Press [c] to ..." are the exception and are buttons.
+
+A hint does nothing while a confirmation holds the screen, since the key would answer the confirmation. It never types its letter into a text field that is taking input; `Esc` and `Enter` hints still work there.
+
+| Also clickable | Effect |
+|----------------|--------|
+| Earlier breadcrumb crumbs | Go back to that screen. Inactive while an overlay is open, a confirmation holds the screen, or an operation is running |
+| The idle `/ Filter...` row of a searchable list | Enter search mode |
+| Rows of the file picker | Click moves the cursor and enters select mode; double-click toggles the checkbox |
+| Rows of the log viewer, SQL history and clear lists, known users, result grids | Click moves the cursor; double-click does what `Enter` does |
+
+Moving the pointer over anything a click would act on shades it with a gray background, so you can see what is clickable. The cursor row keeps its own marker and is not shaded. Nothing shades, or answers a click, in a list that does not hold focus.
+
 
 ::: tip
-Mouse tracking takes click-drag text selection away from the terminal. Hold Option in macOS Terminal and iTerm2, or Shift in most others. To turn the mouse off, set `ui.mouse` in `.noorm/settings.yml`; `?` prints the same hint.
+Mouse tracking takes click-drag text selection away from the terminal. Hold Option in macOS Terminal and iTerm2, or Shift in most others.
+
+Hover makes the terminal send a report for every cell the pointer crosses, which is noticeable over a slow SSH link. To turn the mouse off, set `ui.mouse` in `.noorm/settings.yml`; `?` prints the same hint. If a crashed session leaves the terminal printing characters as the pointer moves, run `reset`.
 
 ```yaml
 # .noorm/settings.yml

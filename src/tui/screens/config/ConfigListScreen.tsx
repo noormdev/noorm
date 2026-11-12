@@ -33,6 +33,7 @@ import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver
 import type { ConfigAccess } from '../../../core/policy/index.js';
 import type { ConnectionConfig } from '../../../core/connection/types.js';
 import { skipsVerification } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Config list item value.
@@ -253,14 +254,14 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[a] Add</Text>
-                <Text dimColor>[e] Edit</Text>
-                <Text dimColor>[d] Delete</Text>
-                <Text dimColor>[c] Copy</Text>
-                <Text dimColor>[k] Secrets</Text>
-                <Text dimColor>[+] More</Text>
-                <Text dimColor>[Enter] Use</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="a">Add</Hotkey>
+                <Hotkey keys="e">Edit</Hotkey>
+                <Hotkey keys="d">Delete</Hotkey>
+                <Hotkey keys="c">Copy</Hotkey>
+                <Hotkey keys="k">Secrets</Hotkey>
+                <Hotkey keys="+">More</Hotkey>
+                <Hotkey keys="Enter">Use</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

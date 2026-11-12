@@ -16,7 +16,7 @@
  * if (canGoBack) back()
  * ```
  */
-import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 
 import type { ReactNode, ReactElement } from 'react';
 
@@ -139,9 +139,15 @@ export function RouterProvider({
         [route, params, history],
     );
 
+    // A completion handler that outlives its screen holds a `back` from when that
+    // screen was current; running it would pop the history a second time.
+    const liveRoute = useRef(route);
+
+    liveRoute.current = route;
+
     const back = useCallback(() => {
 
-        if (history.length === 0) {
+        if (history.length === 0 || liveRoute.current !== route) {
 
             return;
 
@@ -162,6 +168,31 @@ export function RouterProvider({
             popped: poppedRoute,
             to: previous.route,
         });
+
+    }, [history, route]);
+
+    const backBy = useCallback((steps: number) => {
+
+        const count = Math.min(Math.floor(steps), history.length);
+
+        if (count < 1) return;
+
+        const target = history.length - count;
+        const destination = history[target]!;
+
+        setHistory((prev) => prev.slice(0, target));
+        setRoute(destination.route);
+        setParams(destination.params);
+        setArrivedBy('pop');
+
+        let popped = route;
+
+        for (let i = history.length - 1; i >= target; i--) {
+
+            observer.emit('router:popped', { popped, to: history[i]!.route });
+            popped = history[i]!.route;
+
+        }
 
     }, [history, route]);
 
@@ -195,12 +226,13 @@ export function RouterProvider({
             arrivedBy,
             navigate,
             back,
+            backBy,
             replace,
             reset,
             canGoBack: history.length > 0,
             section: getSection(route),
         }),
-        [route, params, history, arrivedBy, navigate, back, replace, reset],
+        [route, params, history, arrivedBy, navigate, back, backBy, replace, reset],
     );
 
     return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;

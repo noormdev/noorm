@@ -25,6 +25,7 @@ import { Panel, Spinner } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, loadChangesWithStatus, buildMergedChangeList } from '../../utils/index.js';
 import { relativeTimeAgo } from '../../utils/date.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Get status indicator for a change.
@@ -384,16 +385,16 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
                 {/* Keyboard hints */}
                 <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[a] Add</Text>
-                    <Text dimColor>[e] Edit</Text>
-                    <Text dimColor>[d] Delete</Text>
-                    <Text dimColor>[r] Run</Text>
-                    <Text dimColor>[v] Revert</Text>
-                    <Text dimColor>[n] Next</Text>
-                    <Text dimColor>[f] FF</Text>
-                    <Text dimColor>[w] Rewind</Text>
-                    <Text dimColor>[h] History</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="a">Add</Hotkey>
+                    <Hotkey keys="e">Edit</Hotkey>
+                    <Hotkey keys="d">Delete</Hotkey>
+                    <Hotkey keys="r">Run</Hotkey>
+                    <Hotkey keys="v">Revert</Hotkey>
+                    <Hotkey keys="n">Next</Hotkey>
+                    <Hotkey keys="f">FF</Hotkey>
+                    <Hotkey keys="w">Rewind</Hotkey>
+                    <Hotkey keys="h">History</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         </Panel>

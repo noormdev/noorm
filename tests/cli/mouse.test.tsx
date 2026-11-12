@@ -26,7 +26,8 @@
  */
 import { describe, it, expect, afterEach } from 'bun:test';
 import { render } from 'ink-testing-library';
-import { Text } from 'ink';
+import { Box, Text } from 'ink';
+import chalk from 'chalk';
 import React from 'react';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -139,6 +140,8 @@ describe('cli: mouse transport', () => {
                 button: 'left',
                 row: 4,
                 column: 11,
+                // Decided by the dispatcher, which sees the previous press; the parser cannot.
+                repeat: false,
                 shift: false,
                 alt: false,
                 ctrl: false,
@@ -185,10 +188,11 @@ describe('cli: mouse transport', () => {
 
         });
 
-        it('should drop motion reports, which press-only tracking never asked for', () => {
+        it('should decode motion as a move and never as a press, so a drag cannot click', () => {
 
-            expect(parseMouseReport(press(1, 1, 32))).toBeNull();
-            expect(parseMouseReport(press(1, 1, 32 + 2))).toBeNull();
+            expect(parseMouseReport(press(3, 7, 35))).toMatchObject({ kind: 'move', button: 'none', row: 2, column: 6 });
+            expect(parseMouseReport(press(1, 1, 32))).toMatchObject({ kind: 'move', button: 'none' });
+            expect(parseMouseReport(press(1, 1, 32 + 2))).toMatchObject({ kind: 'move', button: 'none' });
 
         });
 
@@ -204,8 +208,9 @@ describe('cli: mouse transport', () => {
 
         it('should recognise a report it refuses to decode, so it is swallowed rather than typed', () => {
 
-            expect(isMouseReport(press(1, 1, 32))).toBe(true);
-            expect(parseMouseReport(press(1, 1, 32))).toBeNull();
+            // Legacy "some button came up" code: no button identity to act on.
+            expect(isMouseReport(press(1, 1, 3))).toBe(true);
+            expect(parseMouseReport(press(1, 1, 3))).toBeNull();
 
             expect(isMouseReport('/')).toBe(false);
             expect(isMouseReport(`${ESC}[B`)).toBe(false);
@@ -216,20 +221,18 @@ describe('cli: mouse transport', () => {
 
     describe('escape sequences', () => {
 
-        it('should enable press-and-release tracking with SGR coordinates and nothing stronger', () => {
+        it('should enable press, release and motion tracking with SGR coordinates', () => {
 
-            expect(MOUSE_ENABLE).toBe(`${ESC}[?1000h${ESC}[?1006h`);
+            expect(MOUSE_ENABLE).toBe(`${ESC}[?1000h${ESC}[?1003h${ESC}[?1006h`);
 
-            // ?1002 (drag) and ?1003 (motion) take the mouse away from the
-            // terminal far more completely than this feature needs.
+            // ?1002 (drag only) is redundant: ?1003 already reports every motion.
             expect(MOUSE_ENABLE).not.toContain('1002');
-            expect(MOUSE_ENABLE).not.toContain('1003');
 
         });
 
         it('should disable in the reverse order it enabled', () => {
 
-            expect(MOUSE_DISABLE).toBe(`${ESC}[?1006l${ESC}[?1000l`);
+            expect(MOUSE_DISABLE).toBe(`${ESC}[?1006l${ESC}[?1003l${ESC}[?1000l`);
 
         });
 
@@ -1075,5 +1078,238 @@ describe('cli: mouse transport', () => {
 afterEach(async () => {
 
     await tick();
+
+});
+
+describe('cli: mouse hover', () => {
+
+    // Color is forced on per test; restoring here keeps a failed assertion from leaking it.
+    const originalChalkLevel = chalk.level;
+
+    afterEach(() => {
+
+        chalk.level = originalChalkLevel;
+
+    });
+
+    /** SGR motion report: button bits 3 (none) plus the motion bit, as a pointer with nothing held sends it. */
+    const move = (row: number, column = 1) => press(row, column, 35);
+
+    const HOVER_BG = `${ESC}[100m`;
+
+    function HoverProbe({ active = true, onClick }: { active?: boolean; onClick?: () => void }) {
+
+        const { rowRef, hovered } = useRowMouse({
+            isActive: active,
+            onClick: onClick ?? (() => undefined),
+            onActivate: () => undefined,
+            onWheel: () => undefined,
+        });
+
+        return (
+            <Box flexDirection="column">
+                <Box ref={rowRef(0)}><Text>row-zero</Text></Box>
+                <Box ref={rowRef(1)}><Text>row-one</Text></Box>
+                <Text>hovered:{String(hovered)}</Text>
+            </Box>
+        );
+
+    }
+
+    it('should report the row under the pointer and clear it when the pointer leaves', async () => {
+
+        const { frames, stdin, unmount } = render(<Harness><HoverProbe /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('hovered:null'));
+        await tick();
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'row-one')));
+        await waitFor(() => lastUi(frames).includes('hovered:1'));
+
+        expect(lastUi(frames)).toContain('hovered:1');
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'row-zero')));
+        await waitFor(() => lastUi(frames).includes('hovered:0'));
+
+        expect(lastUi(frames)).toContain('hovered:0');
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'hovered:')));
+        await waitFor(() => lastUi(frames).includes('hovered:null'));
+
+        expect(lastUi(frames)).toContain('hovered:null');
+
+        unmount();
+
+    });
+
+    it('should not report a hover while the component is inactive', async () => {
+
+        const { frames, stdin, unmount } = render(<Harness><HoverProbe active={false} /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('hovered:null'));
+        await tick();
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'row-one')));
+        await tick();
+
+        expect(lastUi(frames)).toContain('hovered:null');
+
+        unmount();
+
+    });
+
+    it('should never treat motion as a click', async () => {
+
+        let clicks = 0;
+
+        const { frames, stdin, unmount } = render(<Harness><HoverProbe onClick={() => clicks++} /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('hovered:null'));
+        await tick();
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'row-one')));
+        stdin.write(press(terminalRowOf(lastUi(frames), 'row-zero'), 1, 32));
+        await tick();
+
+        expect(clicks).toBe(0);
+
+        unmount();
+
+    });
+
+    it('should shade a hovered list row that the cursor is not on, and nothing else', async () => {
+
+        chalk.level = 1;
+
+        const { frames, stdin, unmount } = render(<Harness><SelectList items={ITEMS} /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('alpha'));
+        await tick();
+
+        const rowOf = (name: string) => lastUi(frames).split('\n').find((line) => line.includes(name)) ?? '';
+
+        expect(lastUi(frames)).not.toContain(HOVER_BG);
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'charlie')));
+        await waitFor(() => rowOf('charlie').includes(HOVER_BG));
+
+        expect(rowOf('charlie')).toContain(HOVER_BG);
+        expect(rowOf('bravo')).not.toContain(HOVER_BG);
+
+        // The cursor row keeps its own marker instead of a second highlight.
+        stdin.write(move(terminalRowOf(lastUi(frames), 'alpha')));
+        await waitFor(() => !rowOf('charlie').includes(HOVER_BG));
+
+        expect(rowOf('charlie')).not.toContain(HOVER_BG);
+        expect(rowOf('alpha')).not.toContain(HOVER_BG);
+
+        unmount();
+
+    });
+
+    it('should move the shade to the row that scrolls under a resting pointer', async () => {
+
+        chalk.level = 1;
+
+        const many = Array.from({ length: 12 }, (_, i) => ({ key: `k${i}`, label: `item-${String(i).padStart(2, '0')}`, value: i }));
+
+        const { frames, stdin, unmount } = render(<Harness><SelectList items={many} visibleCount={5} /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('item-00'));
+        await tick();
+
+        const row = terminalRowOf(lastUi(frames), 'item-02');
+        const lineAt = () => lastUi(frames).split('\n')[row - 1] ?? '';
+
+        stdin.write(move(row));
+        await waitFor(() => lineAt().includes(HOVER_BG));
+
+        expect(lineAt()).toContain('item-02');
+        expect(lineAt()).toContain(HOVER_BG);
+
+        // The pointer does not move; four wheel notches scroll the window under it.
+        for (let notch = 0; notch < 4; notch++) stdin.write(press(1, 1, 65));
+
+        await waitFor(() => lineAt().includes('item-03'));
+
+        expect(lineAt()).toContain('item-03');
+        expect(lineAt()).toContain(HOVER_BG);
+
+        unmount();
+
+    });
+
+    it('should shade a hovered result row that the cursor is not on', async () => {
+
+        chalk.level = 1;
+
+        const { frames, stdin, unmount } = render(
+            <Harness>
+                <ResultTable columns={COLUMNS} rows={ROWS} autoSort={false} />
+            </Harness>,
+        );
+
+        await waitFor(() => lastUi(frames).includes('cyd'));
+        await tick();
+
+        const rowOf = (name: string) => lastUi(frames).split('\n').find((line) => line.includes(name)) ?? '';
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'cyd')));
+        await waitFor(() => rowOf('cyd').includes(HOVER_BG));
+
+        expect(rowOf('cyd')).toContain(HOVER_BG);
+        expect(rowOf('bob')).not.toContain(HOVER_BG);
+
+        // The cursor row is drawn inverse, so a second shade on it would hide the cursor.
+        stdin.write(move(terminalRowOf(lastUi(frames), 'ann')));
+        await waitFor(() => !rowOf('cyd').includes(HOVER_BG));
+
+        expect(rowOf('cyd')).not.toContain(HOVER_BG);
+        expect(rowOf('ann')).not.toContain(HOVER_BG);
+
+        unmount();
+
+    });
+
+    it('should shade a hovered form button and field row', async () => {
+
+        chalk.level = 1;
+
+        const { frames, stdin, unmount } = render(
+            <Harness>
+                <Form
+                    fields={[
+                        { key: 'a', label: 'First', type: 'text' },
+                        { key: 'b', label: 'Second', type: 'text' },
+                    ]}
+                    onSubmit={() => undefined}
+                    onCancel={() => undefined}
+                />
+            </Harness>,
+        );
+
+        await waitFor(() => lastUi(frames).includes('›'));
+        await tick();
+
+        const lineOf = (text: string) => lastUi(frames).split('\n').find((line) => line.includes(text)) ?? '';
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'Second')));
+        await waitFor(() => lineOf('Second').includes(HOVER_BG));
+
+        expect(lineOf('Second')).toContain(HOVER_BG);
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'Cancel'), 18));
+        await waitFor(() => lineOf('Cancel').includes(HOVER_BG));
+
+        // Submit and Cancel share a line: the shade has to sit after Submit, not around it.
+        const buttons = lineOf('Cancel');
+
+        expect(buttons.slice(buttons.indexOf('Submit ]'))).toContain(HOVER_BG);
+        expect(buttons.slice(0, buttons.indexOf('Submit'))).not.toContain(HOVER_BG);
+        expect(lineOf('First')).not.toContain(HOVER_BG);
+
+        unmount();
+
+    });
 
 });

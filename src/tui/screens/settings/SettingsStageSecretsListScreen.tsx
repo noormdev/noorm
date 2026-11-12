@@ -28,9 +28,9 @@ import { getErrorMessage } from '../../utils/index.js';
 import {
     Panel,
     SecretDefinitionList,
-    SecretDefinitionListHelp,
     useToast,
 } from '../../components/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * SettingsStageSecretsListScreen component.
@@ -129,7 +129,7 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -146,7 +146,7 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -176,8 +176,6 @@ export function SettingsStageSecretsListScreen({ params }: ScreenProps): ReactEl
                     />
                 </Box>
             </Panel>
-
-            <SecretDefinitionListHelp />
         </Box>
     );
 

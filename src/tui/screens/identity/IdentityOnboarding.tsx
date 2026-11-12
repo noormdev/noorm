@@ -24,6 +24,7 @@ import {
     loadPrivateKey,
 } from '../../../core/identity/index.js';
 import { getErrorMessage } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * - `checking`: reading what is on disk
@@ -52,7 +53,7 @@ function PrivateKeyUnreadable({ reason }: { reason: string }): ReactElement {
         <Panel title="Identity" borderColor="red">
             <Text color="red">✘ {reason}</Text>
             <Text>Your private key was left as it is. Fix the file, then open this screen again.</Text>
-            <Text dimColor>[Esc] Back</Text>
+            <Hotkey keys="Esc">Back</Hotkey>
         </Panel>
     );
 

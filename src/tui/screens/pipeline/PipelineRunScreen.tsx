@@ -5,7 +5,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ScreenProps } from '../../types.js';
 import { useAppContext, useGlobalModes } from '../../app-context.js';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { usePipelineOperations } from '../../hooks/usePipelineOperations.js';
 import type { PipelineOperationTarget } from '../../hooks/usePipelineOperations.js';
@@ -20,6 +20,7 @@ import type { PipelineDefinition, PipelineDryRunResult, PipelineJsonValue, Pipel
 import { oneLine } from '../../utils/string.js';
 import { PipelineInputEditor } from './PipelineInputEditor.js';
 import { inputPresence, PipelineEvidence, PipelineHeading } from './helpers.js';
+import { Hotkey, HotkeyLine } from '../../components/layout/Hotkey.js';
 
 type Confirmation = {
     target: PipelineOperationTarget;
@@ -81,6 +82,9 @@ export function PipelineRunScreen({ params }: ScreenProps): ReactElement {
     const [invocation, setInvocation] = useState<{ configName: string; dryRun: boolean } | null>(null);
     const submitting = useRef(false);
     const mounted = useRef(true);
+
+    useBusy(busy);
+
     useEffect(() => {
 
         mounted.current = true;
@@ -301,7 +305,7 @@ export function PipelineRunScreen({ params }: ScreenProps): ReactElement {
         <Box flexDirection="column">
             {busy ? <Box flexDirection="column">
                 <Spinner label={`${invocation?.dryRun ? 'Validating' : 'Running'} on ${oneLine(invocation?.configName ?? '')} · ${elapsed}s`} />
-                <Text>{stopping ? 'Stop requested. Waiting for running SQL and transaction cleanup to finish.' : '[Esc] Request stop (running SQL must settle)'}</Text>
+                {stopping ? <Text>Stop requested. Waiting for running SQL and transaction cleanup to finish.</Text> : <Hotkey keys="Esc" dim={false}>Request stop (running SQL must settle)</Hotkey>}
             </Box> : result ? <>
                 <Text dimColor wrap="truncate">Target: {oneLine(invocation?.configName ?? '')} · {result.dryRun ? 'Dry run — no workflow SQL or run history written' : 'Execution result'}</Text>
                 <PipelineEvidence runId={result.runId} status={result.status} outcome={result.transactionOutcome}
@@ -311,7 +315,7 @@ export function PipelineRunScreen({ params }: ScreenProps): ReactElement {
                     steps={result.steps.map((step) => ({ stepNo: step.stepNo, name: step.name, needs: step.needs,
                         ...('status' in step ? { status: step.status, outcome: step.transactionOutcome, error: step.error } : {}) }))} />
                 {!result.dryRun && result.primaryError && <Text color="yellow">Error phase: {result.primaryError.phase}{result.primaryError.stepNo === undefined ? '' : ` · Step ${result.primaryError.stepNo}`}</Text>}
-                <Text dimColor>[Enter] Step details · [d] Evidence · [r] Review · [h] History · [Esc] Back</Text>
+                <HotkeyLine>[Enter] Step details · [d] Evidence · [r] Review · [h] History · [Esc] Back</HotkeyLine>
             </> : loading ? <Spinner label="Loading pipeline definition..." /> : definition ? <>
                 <Text>Mode: {definition.mode} · Transaction: {definition.transaction} · Single run: {definition.singleRun ? 'protected' : 'off'}</Text>
                 <Text>Concurrency: configured {definition.concurrency} · effective {activeConfig ? getPipelineConcurrency(definition, activeConfig.connection.dialect, activeConfig.connection.pool?.max) : 'select config'}</Text>
@@ -335,12 +339,12 @@ export function PipelineRunScreen({ params }: ScreenProps): ReactElement {
                         onSelect={(item) => setDescription(`Step ${item.value.stepNo}: ${item.value.id}\nDependencies: ${item.value.needs.join(', ') || 'none'}`)}
                         isFocused={isFocused} reserveRows={8} />}
                 <Text dimColor wrap="truncate">{tab === 'inputs' && selected ? oneLine(definition.inputs[selected]?.description ?? '') : 'Steps in declaration order'}</Text>
-                <Text dimColor>[Enter] {tab === 'inputs' ? 'Edit' : 'Step details'} · [x] Reset · [s] Inputs/steps · [d] Details</Text>
-                <Text dimColor>[r] {modes.dryRun ? 'Dry run' : 'Run'} · [h] History · [Esc] Back</Text>
+                <HotkeyLine>{`[Enter] ${tab === 'inputs' ? 'Edit' : 'Step details'} · [x] Reset · [s] Inputs/steps · [d] Details`}</HotkeyLine>
+                <HotkeyLine>{`[r] ${modes.dryRun ? 'Dry run' : 'Run'} · [h] History · [Esc] Back`}</HotkeyLine>
             </> : null}
             {!busy && error && <Text color="red" wrap="truncate">{oneLine(error)}</Text>}
             {!busy && operations.cleanupFailed && <Text color="yellow" wrap="truncate">Connection cleanup failed. Execution evidence is preserved; exit status is nonzero.</Text>}
-            {!busy && !loading && !definition && <Text dimColor>[d] Details · [h] History · [Esc] Back</Text>}
+            {!busy && !loading && !definition && <HotkeyLine>[d] Details · [h] History · [Esc] Back</HotkeyLine>}
             {!busy && !result && !target && <Text color="yellow">Database not ready. Browsing and input editing remain available.</Text>}
         </Box>
     </Panel>;

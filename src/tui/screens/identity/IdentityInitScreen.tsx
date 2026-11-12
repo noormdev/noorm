@@ -39,6 +39,7 @@ import {
 } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
 import { getErrorMessage } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 const RESTORE_HINT = 'Restore identity.key from that backup to regain access to existing state.';
 
@@ -232,8 +233,8 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Continue</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Enter">Continue</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -257,7 +258,7 @@ export function IdentityInitScreen({ params: _params }: ScreenProps): ReactEleme
                     </Box>
                 </Panel>
 
-                <Text dimColor>[Enter] Back</Text>
+                <Hotkey keys="Enter">Back</Hotkey>
             </Box>
         );
 

@@ -40,6 +40,7 @@ import { isSslFileErrorMessage } from '../../core/connection/ssl-files.js';
 import type { UnifiedHistoryRecord } from '../../core/change/types.js';
 import type { LockStatus } from '../../core/lock/types.js';
 import { relativeTimeAgo } from '../utils/date.js';
+import { Hotkey, HotkeyLine, KeyTarget } from '../components/layout/Hotkey.js';
 
 /**
  * Status for the quick status widget.
@@ -421,11 +422,13 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                             <>
                                 <Text dimColor>No database configurations found.</Text>
                                 <Box marginTop={1}>
-                                    <Text>Press </Text>
-                                    <Text color="cyan" bold>
-                                        [c]
-                                    </Text>
-                                    <Text> to create your first configuration.</Text>
+                                    <KeyTarget keys="c">
+                                        <Text>Press </Text>
+                                        <Text color="cyan" bold>
+                                            [c]
+                                        </Text>
+                                        <Text> to create your first configuration.</Text>
+                                    </KeyTarget>
                                 </Box>
                             </>
                         )}
@@ -433,7 +436,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box marginTop={1}>
-                    <Text dimColor>[c] Config [q] Quit</Text>
+                    <HotkeyLine>[c] Config [q] Quit</HotkeyLine>
                 </Box>
             </Box>
         );
@@ -458,17 +461,19 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                         </Text>
                         {accessWarning}
                         <Box marginTop={1}>
-                            <Text>Press </Text>
-                            <Text color="cyan" bold>
-                                [c]
-                            </Text>
-                            <Text> to select a configuration to use.</Text>
+                            <KeyTarget keys="c">
+                                <Text>Press </Text>
+                                <Text color="cyan" bold>
+                                    [c]
+                                </Text>
+                                <Text> to select a configuration to use.</Text>
+                            </KeyTarget>
                         </Box>
                     </Box>
                 </Panel>
 
                 <Box marginTop={1}>
-                    <Text dimColor>[c] Config [q] Quit</Text>
+                    <HotkeyLine>[c] Config [q] Quit</HotkeyLine>
                 </Box>
             </Box>
         );
@@ -567,15 +572,9 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                 <Box flexDirection="column" flexGrow={1}>
                     <Panel title="Quick Actions" paddingX={2} paddingY={1}>
                         <Box flexDirection="column" gap={0}>
-                            <Text>
-                                <Text color="cyan">[1]</Text> Run Build
-                            </Text>
-                            <Text>
-                                <Text color="cyan">[2]</Text> Apply Changes (ff)
-                            </Text>
-                            <Text>
-                                <Text color="cyan">[3]</Text> View Lock Status
-                            </Text>
+                            <Hotkey keys="1" keyColor="cyan" dim={false}>Run Build</Hotkey>
+                            <Hotkey keys="2" keyColor="cyan" dim={false}>Apply Changes (ff)</Hotkey>
+                            <Hotkey keys="3" keyColor="cyan" dim={false}>View Lock Status</Hotkey>
                         </Box>
                     </Panel>
                 </Box>
@@ -648,13 +647,13 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
 
             {/* Navigation Hints */}
             <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[r] Run</Text>
-                <Text dimColor>[p] Pipelines</Text>
-                <Text dimColor>[c] Config</Text>
-                <Text dimColor>[g] Change</Text>
-                <Text dimColor>[d] DB</Text>
-                <Text dimColor>[q] Quit</Text>
-                <Text dimColor>[+] More</Text>
+                <Hotkey keys="r">Run</Hotkey>
+                <Hotkey keys="p">Pipelines</Hotkey>
+                <Hotkey keys="c">Config</Hotkey>
+                <Hotkey keys="g">Change</Hotkey>
+                <Hotkey keys="d">DB</Hotkey>
+                <Hotkey keys="q">Quit</Hotkey>
+                <Hotkey keys="+">More</Hotkey>
             </Box>
         </Box>
     );

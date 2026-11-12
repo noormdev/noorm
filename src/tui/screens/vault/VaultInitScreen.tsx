@@ -12,13 +12,14 @@ import type { ScreenProps } from '../../types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useBusy } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { initializeVault, getVaultStatus } from '../../../core/vault/index.js';
 import { registerIdentity } from '../../../core/identity/sync.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 type Phase = 'connecting' | 'ready' | 'initializing' | 'error';
@@ -37,6 +38,8 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
     const [initializationRequested, setInitializationRequested] = useState(false);
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection({ enabled: connectionApproved });
     const phase = (connectionApproved ? basePhase : 'ready') as Phase;
+
+    useBusy(phase === 'initializing');
     const setPhase = setBasePhase as (p: Phase) => void;
     const [pendingPolicy, setPendingPolicy] = useState<'vault:write' | null>(null);
     const policyCheck = pendingPolicy && activeConfig ? checkConfigPolicy('user', activeConfig, pendingPolicy) : null;
@@ -174,7 +177,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
                     <Text color="red">{error ?? 'Identity not available'}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -203,7 +206,7 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -263,8 +266,8 @@ export function VaultInitScreen({ params: _params }: ScreenProps): ReactElement 
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Initialize</Text>
-                <Text dimColor>[Esc] Cancel</Text>
+                <Hotkey keys="Enter">Initialize</Hotkey>
+                <Hotkey keys="Esc">Cancel</Hotkey>
             </Box>
         </Box>
     );

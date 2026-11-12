@@ -10,6 +10,7 @@ import type { ScreenProps } from '../types.js';
 import { useRouter } from '../router.js';
 import { useFocusScope } from '../focus.js';
 import { useFocusedInput } from '../keyboard.js';
+import { Hotkey } from '../components/layout/Hotkey.js';
 
 /**
  * Not Found screen component.
@@ -63,8 +64,9 @@ export function NotFoundScreen({ params: _params }: ScreenProps): ReactElement {
             </Box>
 
             {/* Navigation Hints */}
-            <Box marginTop={1}>
-                <Text dimColor>[Enter] go home {canGoBack ? '[Esc] go back' : ''}</Text>
+            <Box marginTop={1} gap={2}>
+                <Hotkey keys="Enter">go home</Hotkey>
+                {canGoBack && <Hotkey keys="Esc">go back</Hotkey>}
             </Box>
         </Box>
     );

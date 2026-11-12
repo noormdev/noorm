@@ -18,7 +18,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, Spacer, useInput, useWindowSize } from 'ink';
 
-import { useFocusScope } from './focus.js';
+import { useFocusContext, useFocusScope } from './focus.js';
 
 import type { Route, RouteParams } from './types.js';
 import { RouterProvider, useRouter } from './router.js';
@@ -35,7 +35,7 @@ import {
     useForceMode,
     useSettings,
 } from './app-context.js';
-import { MouseProvider, useMouseTransport } from './mouse.js';
+import { HOVER_BACKGROUND, MouseProvider, isMouseReport, useMouseTransport, useRowMouse } from './mouse.js';
 import { isMouseEnabled } from '../core/settings/defaults.js';
 import { ToastProvider, ToastRenderer, LogViewerOverlay, useToast } from './components/index.js';
 import { ShutdownProvider } from './shutdown.js';
@@ -58,9 +58,9 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
     const { enabled: mouseEnabled } = useMouseTransport();
 
     // Any key closes help
-    useInput(() => {
+    useInput((input) => {
 
-        if (isFocused) {
+        if (isFocused && !isMouseReport(input)) {
 
             onClose();
 
@@ -139,7 +139,8 @@ function HelpScreen({ onClose }: { onClose: () => void }): ReactElement {
  */
 function Breadcrumb(): ReactElement {
 
-    const { route, history } = useRouter();
+    const { route, history, backBy } = useRouter();
+    const { stack, isGuarded } = useFocusContext();
 
     // Build breadcrumb trail
     const trail: string[] = history
@@ -148,14 +149,41 @@ function Breadcrumb(): ReactElement {
 
     trail.push(getRouteLabel(route));
 
+    // An overlay holds a second focus scope; `busy` and `modal` come from running screens and confirmations.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: stack.length <= 1,
+        matchColumn: true,
+        ignoreRepeats: true,
+        onClick: (index) => {
+
+            if (isGuarded('busy') || isGuarded('modal')) return;
+
+            backBy(trail.length - 1 - index);
+
+        },
+        onActivate: () => undefined,
+        onWheel: () => undefined,
+    });
+
     return (
         <Box>
-            {trail.map((label, index) => (
-                <Text key={index}>
-                    {index > 0 && <Text dimColor> › </Text>}
-                    <Text color={index === trail.length - 1 ? 'white' : 'gray'}>{label}</Text>
-                </Text>
-            ))}
+            {trail.map((label, index) => {
+
+                const isCurrent = index === trail.length - 1;
+
+                return (
+                    <Box key={index}>
+                        {index > 0 && <Text dimColor> › </Text>}
+                        <Box
+                            ref={isCurrent ? undefined : rowRef(index)}
+                            backgroundColor={hovered === index && !isCurrent && !isGuarded('busy') && !isGuarded('modal') ? HOVER_BACKGROUND : undefined}
+                        >
+                            <Text color={isCurrent ? 'white' : 'gray'}>{label}</Text>
+                        </Box>
+                    </Box>
+                );
+
+            })}
         </Box>
     );
 

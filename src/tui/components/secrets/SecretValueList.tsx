@@ -11,6 +11,7 @@ import type { ReactElement } from 'react';
 import type { SecretValueItem, SecretValueSummary } from './types.js';
 
 import { SelectList, type SelectListItem } from '../lists/index.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 /**
  * Props for SecretValueList.
@@ -275,11 +276,11 @@ export function SecretValueListHelp(): ReactElement {
 
     return (
         <Box gap={2} flexWrap="wrap">
-            <Text dimColor>[a] Add</Text>
-            <Text dimColor>[e] Edit</Text>
-            <Text dimColor>[d] Delete</Text>
-            <Text dimColor>[Enter] Edit</Text>
-            <Text dimColor>[Esc] Back</Text>
+            <Hotkey keys="a">Add</Hotkey>
+            <Hotkey keys="e">Edit</Hotkey>
+            <Hotkey keys="d">Delete</Hotkey>
+            <Hotkey keys="Enter">Edit</Hotkey>
+            <Hotkey keys="Esc">Back</Hotkey>
         </Box>
     );
 

@@ -28,7 +28,6 @@ import { getErrorMessage } from '../../utils/index.js';
 import {
     Panel,
     SecretDefinitionList,
-    SecretDefinitionListHelp,
     useToast,
 } from '../../components/index.js';
 
@@ -121,8 +120,6 @@ export function SettingsSecretsListScreen({ params: _params }: ScreenProps): Rea
                     />
                 </Box>
             </Panel>
-
-            <SecretDefinitionListHelp />
         </Box>
     );
 

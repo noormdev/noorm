@@ -36,6 +36,7 @@ import {
     updateDismissablePreference,
 } from '../../../core/update/global-settings.js';
 import type { DismissablePreference } from '../../../core/update/types.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 // =============================================================================
 // Types
@@ -270,9 +271,7 @@ export function DismissableAlert({
 
             {allowPersist && (
                 <Box marginTop={1}>
-                    <Text dimColor>
-                        [p] Don't ask again: {persistChoice ? '[x]' : '[ ]'}
-                    </Text>
+                    <Hotkey keys="p">{`Don't ask again: ${persistChoice ? '[x]' : '[ ]'}`}</Hotkey>
                 </Box>
             )}
 

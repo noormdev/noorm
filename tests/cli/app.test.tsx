@@ -144,6 +144,67 @@ describe('cli: app', () => {
 
         });
 
+        it('should go back to an earlier screen when its breadcrumb is clicked', async () => {
+
+            const { stdin, frames, unmount } = render(<App initialRoute="config" />);
+            const plain = (text: string) => text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '');
+            const crumbLine = () => plain(frames.filter((f) => f.includes('›')).at(-1) ?? '').split('\n').find((line) => line.includes('›')) ?? '';
+
+            await waitFor(() => crumbLine().includes('Home'));
+            // Clicks are answered once the mouse setting has loaded and tracking is on.
+            await waitFor(() => frames.includes(MOUSE_ENABLE));
+
+            const lines = plain(frames.filter((f) => f.includes('›')).at(-1) ?? '').split('\n');
+            const row = lines.findIndex((line) => line.includes('›')) + 1;
+            const column = (lines[row - 1] ?? '').indexOf('Home') + 2;
+
+            const firstLine = () => plain(frames.filter((f) => f.includes('Home')).at(-1) ?? '').split('\n')[0] ?? '';
+
+            expect(firstLine()).toContain('Configurations');
+
+            stdin.write(`${String.fromCharCode(27)}[<0;${column};${row}M`);
+            await waitFor(() => !firstLine().includes('Configurations'));
+
+            // Only Home is left in the trail.
+            expect(firstLine()).toContain('Home');
+            expect(firstLine()).not.toContain('›');
+
+            unmount();
+
+        });
+
+        it('should keep help open while the pointer moves, and still close it on a key', async () => {
+
+            const { stdin, frames, unmount } = render(<App />);
+            const motion = `${String.fromCharCode(27)}[<35;5;5M`;
+            const helpOpen = (frame: string) => frame.includes('go back / cancel');
+            const screens = () => frames.filter((f) => f.includes('noorm') || helpOpen(f));
+
+            // Motion tracking is on once the mouse setting has loaded.
+            await waitFor(() => frames.includes(MOUSE_ENABLE));
+
+            stdin.write('?');
+            await waitFor(() => frames.some(helpOpen));
+
+            const before = frames.length;
+
+            stdin.write(motion);
+            stdin.write(motion);
+            stdin.write(motion);
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            // Any screen drawn after the motion must still be the help screen.
+            expect(frames.slice(before).filter((f) => f.includes('noorm') || helpOpen(f)).every(helpOpen)).toBe(true);
+
+            stdin.write('x');
+            await waitFor(() => !helpOpen(screens().at(-1) ?? ''));
+
+            expect(helpOpen(screens().at(-1) ?? '')).toBe(false);
+
+            unmount();
+
+        });
+
         /**
          * The help screen as it renders for a project with the given settings
          * file, or with none written at all.

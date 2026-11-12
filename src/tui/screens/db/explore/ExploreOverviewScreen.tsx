@@ -22,13 +22,14 @@ import type { ScreenProps, Route } from '../../../types.js';
 
 import { useRouter } from '../../../router.js';
 import { useFocusScope } from '../../../focus.js';
-import { useAppContext, useExploreFilters, useSettings } from '../../../app-context.js';
-import { useOnScreenPopped, useConnection, useAsyncEffect } from '../../../hooks/index.js';
+import { useAppContext, useSettings } from '../../../app-context.js';
+import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { fetchOverview, userGate } from '../../../../core/explore/index.js';
 import { CELL_GAP, LABEL_CAP, cellWidth, fitWidths, rowBudget } from './layout.js';
 
 import type { ExploreOverview } from '../../../../core/explore/index.js';
+import { Hotkey } from '../../../components/layout/Hotkey.js';
 
 /**
  * Category configuration for navigation.
@@ -143,7 +144,6 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     const { navigate, back } = useRouter();
     const { isFocused } = useFocusScope('ExploreOverview');
     const { activeConfig, activeConfigName } = useAppContext();
-    const { clearFilters } = useExploreFilters();
     const { settings } = useSettings();
 
     // useWindowSize, not useStdout: stdout.columns mutates on resize without
@@ -159,12 +159,6 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
     const exploreOptions = {
         includeNoormTables: settings?.logging?.level === 'verbose',
     };
-
-    useOnScreenPopped('db/explore', () => {
-
-        clearFilters();
-
-    });
 
     // Shared connection
     const { db, dialect, loading: connLoading, error: connError } = useConnection();
@@ -255,7 +249,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -288,7 +282,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -331,7 +325,7 @@ export function ExploreOverviewScreen({ params: _params }: ScreenProps): ReactEl
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[1-7] Navigate</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

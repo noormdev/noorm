@@ -22,7 +22,7 @@ import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import {
     Panel,
@@ -44,6 +44,8 @@ import {
     progressPercentage,
 } from '../../utils/index.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Next steps.
@@ -76,6 +78,8 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
     const [count, setCount] = useState(initialCount);
     const [countInput, setCountInput] = useState(String(initialCount));
     const [error, setError] = useState<string | null>(null);
+
+    useBusy(step === 'running');
 
 
     // Load pending changes
@@ -215,6 +219,8 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
 
         if (!isFocused) return;
 
+        if (isMouseReport(input)) return;
+
         if (step === 'input') {
 
             if (key.return) {
@@ -292,8 +298,8 @@ export function ChangeNextScreen({ params }: ScreenProps): ReactElement {
                     </Box>
 
                     <Box marginTop={1} gap={2}>
-                        <Text dimColor>[Enter] Continue</Text>
-                        <Text dimColor>[Esc] Cancel</Text>
+                        <Hotkey keys="Enter">Continue</Hotkey>
+                        <Hotkey keys="Esc">Cancel</Hotkey>
                     </Box>
                 </Box>
             </Panel>

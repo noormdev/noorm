@@ -29,6 +29,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, LockStatus, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Format duration for display.
@@ -197,7 +198,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -230,7 +231,7 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -331,15 +332,15 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
             )}
 
             <Box flexWrap="wrap" columnGap={2}>
-                {!lockStatus?.isLocked && <Text dimColor>[a] Acquire</Text>}
+                {!lockStatus?.isLocked && <Hotkey keys="a">Acquire</Hotkey>}
                 {isOurLock && (
                     <>
-                        <Text dimColor>[r] Release</Text>
-                        <Text dimColor>[x] Extend</Text>
+                        <Hotkey keys="r">Release</Hotkey>
+                        <Hotkey keys="x">Extend</Hotkey>
                     </>
                 )}
-                {lockStatus?.isLocked && <Text dimColor>[f] Force</Text>}
-                <Text dimColor>[Esc] Back</Text>
+                {lockStatus?.isLocked && <Hotkey keys="f">Force</Hotkey>}
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

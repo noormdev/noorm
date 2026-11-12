@@ -7,11 +7,12 @@
  * compared with it. So Ink hands over the hit-testing primitive and assumes the
  * events come from somewhere else. This is that somewhere else.
  *
- * **Press and release only.** `?1000` is the weakest tracking mode a terminal
- * offers, and it is all a click and a wheel notch need. `?1002` (drag) and
- * `?1003` (any motion) take the mouse away from the terminal far more
- * completely, and every extra report is a report some other handler has to be
- * taught to ignore.
+ * **Motion is reported so the row under the pointer can be highlighted.**
+ * `?1003` (any motion) is the only mode that reports a pointer with no button
+ * held. Its cost is one report per cell the pointer crosses, and every one
+ * reaches every `useInput` handler, so a motion report is decoded as `move`
+ * and never as a press: handlers that act on `press` ignore it. A handler that
+ * accumulates characters or acts on any key must drop it with `isMouseReport`.
  *
  * **The reports arrive through `useInput`.** Ink's input parser splits each CSI
  * sequence into its own event and `parse-keypress` leaves an SGR report alone —
@@ -25,7 +26,7 @@
  * </MouseProvider>
  * ```
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { measureElement, useInput, useStdout } from 'ink';
 import { attemptSync } from '@logosdx/utils';
 
@@ -35,13 +36,13 @@ import type { DOMElement } from 'ink';
 const ESC = '\u001b';
 
 /**
- * Turn on press/release tracking with SGR extended coordinates.
+ * Turn on press, release and motion tracking with SGR extended coordinates.
  *
  * SGR (`?1006`) is not optional: the original protocol encodes a coordinate as
  * a single byte, so it cannot report a column past 223, and a maximised
  * terminal is routinely wider than that.
  */
-export const MOUSE_ENABLE = `${ESC}[?1000h${ESC}[?1006h`;
+export const MOUSE_ENABLE = `${ESC}[?1000h${ESC}[?1003h${ESC}[?1006h`;
 
 /**
  * Turn tracking back off, in the reverse order it went on.
@@ -50,7 +51,7 @@ export const MOUSE_ENABLE = `${ESC}[?1000h${ESC}[?1006h`;
  * stays in mouse mode after the process is gone, and click-drag text selection
  * stays broken in every shell in that window until the user resets it by hand.
  */
-export const MOUSE_DISABLE = `${ESC}[?1006l${ESC}[?1000l`;
+export const MOUSE_DISABLE = `${ESC}[?1006l${ESC}[?1003l${ESC}[?1000l`;
 
 /**
  * `ESC [ < button ; column ; row M` for a press, lowercase `m` for a release.
@@ -109,20 +110,25 @@ const LIVE_REGION_ORIGIN_COLUMN = 1;
 export const DOUBLE_CLICK_MS = 400;
 
 /**
- * Which button a report came from.
+ * Background of whatever the pointer is over and a click would act on.
  *
- * Wheel notches arrive even in press-only tracking, which is why they are here
- * rather than behind a stronger mode.
+ * ANSI bright black, so it follows the terminal's palette. A theme that maps
+ * bright black to its own background (Solarized Dark) shows no shade.
  */
-export type MouseButton = 'left' | 'middle' | 'right' | 'wheel-up' | 'wheel-down';
+export const HOVER_BACKGROUND = 'gray';
+
+/**
+ * Which button a report came from. `none` marks a motion report.
+ */
+export type MouseButton = 'left' | 'middle' | 'right' | 'wheel-up' | 'wheel-down' | 'none';
 
 /**
  * A decoded mouse report, in live-region coordinates.
  */
 export interface MouseEvent {
 
-    /** `M` reports a press, `m` a release. A wheel notch only ever presses. */
-    kind: 'press' | 'release';
+    /** `M` reports a press, `m` a release. A wheel notch only ever presses. A motion report is `move`. */
+    kind: 'press' | 'release' | 'move';
 
     button: MouseButton;
 
@@ -131,6 +137,14 @@ export interface MouseEvent {
 
     /** Zero-based column, directly comparable with `measureElement`'s `x`. */
     column: number;
+
+    /**
+     * A left press on the same cell as the previous one, inside the
+     * double-click window: the second press of a double click. Decided once for
+     * every subscriber, because what sits under the pointer may have changed
+     * after the first press.
+     */
+    repeat: boolean;
 
     shift: boolean;
 
@@ -176,10 +190,10 @@ function decodeButton(code: number): MouseButton | null {
  * Is this string an SGR mouse report?
  *
  * Separate from `parseMouseReport` because the two questions differ: a handler
- * that accumulates characters needs to drop anything the terminal sent as a
- * mouse report, including the ones the parser declines to decode. Answering
- * that with `parseMouseReport(input) !== null` would type a stray drag report
- * into a filter box.
+ * that accumulates characters, or acts on any key, needs to drop anything the
+ * terminal sent as a mouse report, including the ones the parser declines to
+ * decode (the legacy "button released" code). Every motion report reaches every
+ * `useInput` handler, so a handler without this guard fires on a mouse move.
  *
  * @example
  * useInput((input, key) => {
@@ -195,10 +209,9 @@ export function isMouseReport(input: string): boolean {
 /**
  * Decode an SGR mouse report into live-region coordinates.
  *
- * Returns `null` for anything that is not a report this module acts on, which
- * includes motion reports: press-only tracking never asks for them, so one
- * arriving is a terminal volunteering more than it was told to, and treating it
- * as a press would make a drag read as a click on every cell it crossed.
+ * Returns `null` for anything that is not a report this module acts on.
+ * Motion is decoded as `move` and never as a press, so a drag cannot read as a
+ * click on every cell it crosses.
  *
  * @example
  * parseMouseReport('[<0;12;5M'); // { kind: 'press', button: 'left', row: 4, column: 11, ... }
@@ -210,15 +223,17 @@ export function parseMouseReport(input: string): MouseEvent | null {
     if (!match) return null;
 
     const code = Number(match[1]);
-    const button = (code & MOTION_BIT) === 0 ? decodeButton(code) : null;
+    const isMotion = (code & MOTION_BIT) !== 0;
+    const button = isMotion ? 'none' : decodeButton(code);
 
     if (button === null) return null;
 
     return {
-        kind: match[4] === 'M' ? 'press' : 'release',
+        kind: isMotion ? 'move' : match[4] === 'M' ? 'press' : 'release',
         button,
         row: Number(match[3]) - LIVE_REGION_ORIGIN_ROW,
         column: Number(match[2]) - LIVE_REGION_ORIGIN_COLUMN,
+        repeat: false,
         shift: (code & SHIFT_BIT) !== 0,
         alt: (code & ALT_BIT) !== 0,
         ctrl: (code & CTRL_BIT) !== 0,
@@ -345,11 +360,29 @@ function MouseTracking({ handlers }: { handlers: Set<MouseHandler> }): null {
 
     }, [stdout]);
 
+    const lastLeftPress = useRef<{ row: number; column: number; at: number } | null>(null);
+
     useInput((input) => {
 
-        const event = parseMouseReport(input);
+        const parsed = parseMouseReport(input);
 
-        if (!event) return;
+        if (!parsed) return;
+
+        let event = parsed;
+
+        if (parsed.kind === 'press' && parsed.button === 'left') {
+
+            const now = Date.now();
+            const previous = lastLeftPress.current;
+            const repeat = previous !== null
+                && previous.row === parsed.row
+                && previous.column === parsed.column
+                && now - previous.at <= DOUBLE_CLICK_MS;
+
+            lastLeftPress.current = { row: parsed.row, column: parsed.column, at: now };
+            event = { ...parsed, repeat };
+
+        }
 
         for (const handler of handlers) {
 
@@ -526,6 +559,13 @@ export interface RowMouseOptions {
     /** Also require the click inside the box's columns. For targets that share a line, such as buttons. */
     matchColumn?: boolean;
 
+    /**
+     * Drop the second press of a double click. For targets where a double click
+     * means nothing extra (a button, a hint): without it, the second press lands
+     * on whatever the first press brought under the pointer.
+     */
+    ignoreRepeats?: boolean;
+
 }
 
 /**
@@ -541,6 +581,9 @@ export interface RowMouse {
      * off so React skips ref handling entirely.
      */
     rowRef: (index: number) => ((node: DOMElement | null) => void) | undefined;
+
+    /** Index of the row under the pointer, or null. Always null while `isActive` is false. */
+    hovered: number | null;
 
 }
 
@@ -570,7 +613,8 @@ function hitTest(nodes: Map<number, DOMElement>, row: number, column?: number): 
 }
 
 /**
- * Click, double-click and wheel handling for a list of rows.
+ * Click, double-click, wheel and hover handling for a list of rows. `hovered`
+ * is the row under the pointer, for the caller to shade.
  *
  * Hit-tests against the rows themselves rather than against arithmetic on a
  * container: a `SelectList` row is one line or two depending on whether that
@@ -579,23 +623,26 @@ function hitTest(nodes: Map<number, DOMElement>, row: number, column?: number): 
  *
  * @example
  * ```tsx
- * const { rowRef } = useRowMouse({
+ * const { rowRef, hovered } = useRowMouse({
  *     isActive: isFocused,
  *     onClick: setHighlightedIndex,
  *     onActivate: selectRow,
  *     onWheel: (delta) => step(delta),
  * });
  *
- * <Box ref={rowRef(index)}>…</Box>
+ * <Box ref={rowRef(index)} backgroundColor={hovered === index ? HOVER_BACKGROUND : undefined}>…</Box>
  * ```
  */
-export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColumn = false }: RowMouseOptions): RowMouse {
+export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColumn = false, ignoreRepeats = false }: RowMouseOptions): RowMouse {
 
     const { enabled, subscribe } = useMouseTransport();
 
     const nodes = useRef<Map<number, DOMElement>>(new Map());
     const setters = useRef<Map<number, (node: DOMElement | null) => void>>(new Map());
     const lastPress = useRef<{ index: number; at: number } | null>(null);
+    const lastSeenPress = useRef<{ index: number; at: number } | null>(null);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    const pointer = useRef<{ row: number; column: number } | null>(null);
 
     // The handler is registered once and reads the latest props through this
     // ref. Listing them as effect dependencies would resubscribe on every
@@ -611,7 +658,25 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColum
 
             const current = latest.current;
 
+            // Setting the index it already holds does not re-render, so a pointer
+            // moving inside one row costs a hit test and nothing else.
+            if (event.kind === 'move') {
+
+                pointer.current = { row: event.row, column: event.column };
+
+                const over = current.isActive
+                    ? hitTest(nodes.current, event.row, matchColumn ? event.column : undefined)
+                    : null;
+
+                setHoveredIndex(over);
+
+                return;
+
+            }
+
             if (!current.isActive || event.kind !== 'press') return;
+
+            if (ignoreRepeats && event.repeat) return;
 
             if (event.button === 'wheel-up') {
 
@@ -636,6 +701,14 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColum
             if (index === null) return;
 
             const now = Date.now();
+            const seen = lastSeenPress.current;
+
+            lastSeenPress.current = { index, at: now };
+
+            // The second press of a double click belongs to whoever took the first. If
+            // the first press changed the screen, it is a stray press on something new.
+            if (event.repeat && !(seen !== null && seen.index === index && now - seen.at <= DOUBLE_CLICK_MS)) return;
+
             const previous = lastPress.current;
             const isDouble = previous !== null
                 && previous.index === index
@@ -650,7 +723,21 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColum
 
         });
 
-    }, [enabled, subscribe, matchColumn]);
+    }, [enabled, subscribe, matchColumn, ignoreRepeats]);
+
+    // Content that scrolls under a resting pointer sends no report, so re-test the
+    // last known position after every render. An unchanged index does not re-render.
+    useEffect(() => {
+
+        if (!enabled || pointer.current === null) return;
+
+        setHoveredIndex(
+            latest.current.isActive
+                ? hitTest(nodes.current, pointer.current.row, matchColumn ? pointer.current.column : undefined)
+                : null,
+        );
+
+    });
 
     const rowRef = useCallback(
         (index: number) => {
@@ -678,6 +765,6 @@ export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColum
         [enabled],
     );
 
-    return { enabled, rowRef };
+    return { enabled, rowRef, hovered: isActive ? hoveredIndex : null };
 
 }

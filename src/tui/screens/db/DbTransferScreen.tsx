@@ -37,7 +37,7 @@ import type { ScreenProps } from '../../types.js';
 import { getErrorMessage, progressPercentage } from '../../utils/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext, useGlobalModes } from '../../app-context.js';
 import { useTransferProgress, useLoadGuard, useAsyncEffect } from '../../hooks/index.js';
 import {
@@ -66,6 +66,7 @@ import {
 import type { TransferOptions, TransferPlan, ConflictStrategy } from '../../../core/transfer/index.js';
 import type { Config } from '../../../core/config/types.js';
 import type { DtSchema } from '../../../core/dt/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type TransferMode = 'db-to-db' | 'export' | 'import';
 
@@ -117,6 +118,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
     const [scanningFiles, setScanningFiles] = useState(false);
     const [importSchemas, setImportSchemas] = useState<Map<string, DtSchema>>(new Map());
     const [loadingSchemas, setLoadingSchemas] = useState(false);
+
+    useBusy(phase === 'running');
 
     const { tryAcquire, release } = useLoadGuard();
 
@@ -817,7 +820,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -845,8 +848,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Select</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Enter">Select</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -880,9 +883,9 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Space] Toggle</Text>
-                    <Text dimColor>[Enter] Continue</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Space">Toggle</Hotkey>
+                    <Hotkey keys="Enter">Continue</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -918,8 +921,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Continue</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">Continue</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -1000,7 +1003,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                         <Text color="yellow">No .dt, .dtz, or .dtzx files found in the project.</Text>
                     </Panel>
                     <Box>
-                        <Text dimColor>[Esc] Back</Text>
+                        <Hotkey keys="Esc">Back</Hotkey>
                     </Box>
                 </Box>
             );
@@ -1082,8 +1085,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Continue to options</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">Continue to options</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -1128,8 +1131,8 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter] Continue</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Enter">Continue</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -1413,7 +1416,7 @@ export function DbTransferScreen({ params: _params }: ScreenProps): ReactElement
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Done</Text>
+                    <Hotkey keys="Esc">Done</Hotkey>
                 </Box>
             </Box>
         );
@@ -1527,8 +1530,8 @@ function ImportPassphraseInput({
                 </Box>
             </Panel>
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Continue</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Enter">Continue</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );
@@ -1822,9 +1825,9 @@ function ExportOptionsInput({
             </Panel>
             <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[↑↓] Navigate</Text>
-                <Text dimColor>[Space] Toggle</Text>
-                <Text dimColor>[Enter] Continue</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Space">Toggle</Hotkey>
+                <Hotkey keys="Enter">Continue</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

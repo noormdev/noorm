@@ -13,6 +13,7 @@ import type { StageSecret } from './types.js';
 import { SelectList, type SelectListItem } from '../lists/index.js';
 import { Confirm } from '../dialogs/index.js';
 import { Panel } from '../layout/index.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 /**
  * Secret list item value.
@@ -320,23 +321,26 @@ export function SecretDefinitionList({
                     showDescriptionBelow={true}
                 />
             )}
+
+            <SecretDefinitionListHelp />
         </Box>
     );
 
 }
 
 /**
- * Keyboard shortcuts help component for SecretDefinitionList.
+ * Drawn only in the list view: while the delete confirmation has focus, a
+ * clickable `[Enter] Edit` would press the confirmation's default answer.
  */
-export function SecretDefinitionListHelp(): ReactElement {
+function SecretDefinitionListHelp(): ReactElement {
 
     return (
         <Box gap={2} flexWrap="wrap">
-            <Text dimColor>[a] Add</Text>
-            <Text dimColor>[e] Edit</Text>
-            <Text dimColor>[d] Delete</Text>
-            <Text dimColor>[Enter] Edit</Text>
-            <Text dimColor>[Esc] Back</Text>
+            <Hotkey keys="a">Add</Hotkey>
+            <Hotkey keys="e">Edit</Hotkey>
+            <Hotkey keys="d">Delete</Hotkey>
+            <Hotkey keys="Enter">Edit</Hotkey>
+            <Hotkey keys="Esc">Back</Hotkey>
         </Box>
     );
 
