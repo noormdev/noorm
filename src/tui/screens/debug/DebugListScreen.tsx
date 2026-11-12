@@ -38,6 +38,7 @@ import {
 } from '../../../core/debug/index.js';
 
 import type { SelectListItem } from '../../components/lists/SelectList.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Delete confirmation state.
@@ -379,7 +380,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -396,7 +397,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -429,7 +430,7 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -490,12 +491,12 @@ export function DebugListScreen({ params }: ScreenProps): ReactElement {
 
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[s] Sort column</Text>
-                <Text dimColor>[S] Direction</Text>
-                <Text dimColor>[d] Delete</Text>
-                <Text dimColor>[D] Delete all</Text>
-                <Text dimColor>[Enter] Detail</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="s">Sort column</Hotkey>
+                <Hotkey keys="S">Direction</Hotkey>
+                <Hotkey keys="d">Delete</Hotkey>
+                <Hotkey keys="D">Delete all</Hotkey>
+                <Hotkey keys="Enter">Detail</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

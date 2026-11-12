@@ -24,6 +24,7 @@ import { Panel, Spinner, StatusMessage, MissingParamPanel } from '../../componen
 import { useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, resolveChangesDir, resolveSqlDir } from '../../utils/index.js';
 import { scanChanges } from '../../../core/change/parser.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Edit steps.
@@ -110,9 +111,11 @@ export function ChangeEditScreen({ params }: ScreenProps): ReactElement {
     }, [activeConfig, changeName]);
 
     // Keyboard handling
-    useInput((_input, _key) => {
+    useInput((input, _key) => {
 
         if (!isFocused) return;
+
+        if (isMouseReport(input)) return;
 
         if (step === 'complete' || step === 'error') {
 

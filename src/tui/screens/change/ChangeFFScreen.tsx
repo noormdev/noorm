@@ -21,7 +21,7 @@ import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import {
     Panel,
@@ -43,6 +43,7 @@ import {
 } from '../../utils/index.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * FF steps.
@@ -69,6 +70,8 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
     const [error, setError] = useState<string | null>(null);
+
+    useBusy(step === 'running');
 
 
     // Load pending changes
@@ -201,9 +204,11 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     }, [back]);
 
     // Keyboard handling
-    useInput((_input, _key) => {
+    useInput((input, _key) => {
 
         if (!isFocused) return;
+
+        if (isMouseReport(input)) return;
 
         if (step === 'complete' || step === 'error') {
 

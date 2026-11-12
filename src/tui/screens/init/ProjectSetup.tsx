@@ -13,6 +13,7 @@ import { Panel } from '../../components/layout/index.js';
 import { SelectList } from '../../components/lists/index.js';
 import type { SelectListItem } from '../../components/lists/index.js';
 import { DEFAULT_CHANGES_PATH, DEFAULT_DB_DIR, DEFAULT_SQL_PATH, isDefaultLayout } from '../../../core/settings/defaults.js';
+import { HotkeyLine } from '../../components/layout/Hotkey.js';
 
 /**
  * Props for ProjectSetup.
@@ -160,7 +161,7 @@ export function ProjectSetup({
 
             {/* Keyboard hints */}
             <Box marginTop={1}>
-                <Text dimColor>[↑↓] navigate [Enter] select [Esc] cancel</Text>
+                <HotkeyLine>[↑↓] navigate [Enter] select [Esc] cancel</HotkeyLine>
             </Box>
         </Box>
     );

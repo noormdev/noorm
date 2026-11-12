@@ -5,6 +5,7 @@ import type { ReactElement } from 'react';
 import { Panel } from '../../components/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import type { ConfigAccess, PolicyCheck } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 const VAULT_EDIT_PERMISSIONS = ['vault:read', 'vault:write'] as const;
 
@@ -61,7 +62,7 @@ export function VaultEditRefused({ title, reason }: { title: string; reason?: st
                 <Text color="yellow">{reason}</Text>
             </Panel>
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

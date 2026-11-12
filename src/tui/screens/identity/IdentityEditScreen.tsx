@@ -27,6 +27,7 @@ import { Form, type FormField, type FormValues } from '../../components/forms/in
 import { createIdentityForExistingKeys } from '../../../core/identity/index.js';
 import { attempt } from '@logosdx/utils';
 import { getErrorMessage } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 /**
@@ -151,7 +152,7 @@ export function IdentityEditScreen({ params: _params }: ScreenProps): ReactEleme
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

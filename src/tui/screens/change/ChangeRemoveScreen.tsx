@@ -30,6 +30,7 @@ import { getErrorMessage, loadChangesWithStatus, isConfigGuarded } from '../../u
 import { deleteChange } from '../../../core/change/scaffold.js';
 import { ChangeHistory } from '../../../core/change/history.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Remove steps.
@@ -167,9 +168,11 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
     }, [back]);
 
     // Keyboard handling
-    useInput((_input, _key) => {
+    useInput((input, _key) => {
 
         if (!isFocused) return;
+
+        if (isMouseReport(input)) return;
 
         if (step === 'complete' || step === 'error') {
 

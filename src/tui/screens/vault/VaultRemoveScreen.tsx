@@ -13,7 +13,7 @@ import type { ScreenProps } from '../../types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useFocusScope, useBusy } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, SmartConfirm, useToast } from '../../components/index.js';
 import { useVaultConnection } from '../../hooks/index.js';
@@ -21,6 +21,7 @@ import { loadPrivateKey } from '../../../core/identity/storage.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
 import { vaultEditConfirmation, vaultEditRefusal, VaultEditRefused, type VaultEditPermission } from './edit-policy.js';
 import { getVaultKey, deleteVaultSecret, vaultSecretExists } from '../../../core/vault/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 type Phase = 'connecting' | 'ready' | 'deleting' | 'error';
@@ -39,6 +40,8 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
 
     const { phase: basePhase, error, connRef, setPhase: setBasePhase, setError } = useVaultConnection({ enabled: !denied });
     const phase = basePhase as Phase;
+
+    useBusy(phase === 'deleting');
     const setPhase = setBasePhase as (p: Phase) => void;
 
     const secretKey = params.name;
@@ -208,7 +211,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">No secret key provided.</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -224,7 +227,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">{error ?? 'Identity not available'}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -253,7 +256,7 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -320,8 +323,8 @@ export function VaultRemoveScreen({ params }: ScreenProps): ReactElement {
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[y/Enter] Delete</Text>
-                <Text dimColor>[n/Esc] Cancel</Text>
+                <Hotkey keys="y/Enter">Delete</Hotkey>
+                <Hotkey keys="n/Esc">Cancel</Hotkey>
             </Box>
         </Box>
     );

@@ -54,6 +54,7 @@ import { useFocusScope } from '../../../focus.js';
 import { useAsyncEffect } from '../../../hooks/index.js';
 import { Spinner } from '../../../components/index.js';
 import { ResultTable, RowViewOverlay } from '../../../components/terminal/index.js';
+import { Hotkey, HotkeyLine } from '../../../components/layout/Hotkey.js';
 
 /**
  * Props for the row peek overlay.
@@ -274,7 +275,12 @@ export function RowPeekOverlay({
     });
 
     const qualified = `${detail.schema ? `${detail.schema}.` : ''}${detail.name}`;
-    const header = <Text dimColor wrap="truncate">Rows · {qualified} · [Esc] Close</Text>;
+    const header = (
+        <Box>
+            <Text dimColor wrap="truncate">Rows · {qualified} · </Text>
+            <Hotkey keys="Esc">Close</Hotkey>
+        </Box>
+    );
 
     if (error) {
 
@@ -345,7 +351,10 @@ export function RowPeekOverlay({
                 for the row view would throw away the cursor and the scroll
                 offset that Escape is supposed to come back to. */}
             <Box flexDirection="column" display={subject === null ? 'flex' : 'none'}>
-                <Text dimColor wrap="truncate">Rows · {qualified} · {keys}</Text>
+                <Box>
+                    <Text dimColor wrap="truncate">Rows · {qualified} · </Text>
+                    <HotkeyLine>{keys}</HotkeyLine>
+                </Box>
                 <PeekSet {...setProps('first')} />
                 {label.last !== null && <PeekSet {...setProps('last')} />}
                 {peek.mode === 'head' && (

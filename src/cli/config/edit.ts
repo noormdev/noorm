@@ -26,7 +26,8 @@ const editCommand = defineCommand({
 
         outputError(
             args,
-            'Interactive only — run: noorm ui. For headless edits use: noorm config import <file.json> --force --yes',
+            'Interactive only — run: noorm ui. For headless edits use: noorm config import <file.json> --force --yes, '
+            + 'or to change only the password: noorm config set-password <name> --stdin --yes',
         );
         process.exit(1);
 

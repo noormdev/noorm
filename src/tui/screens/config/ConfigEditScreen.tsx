@@ -25,6 +25,7 @@ import { Panel, Form, useToast, MissingParamPanel, NotFoundPanel } from '../../c
 import { testConnection } from '../../../core/connection/factory.js';
 import { SettingsProvider, validateAccessRoles } from '../../../core/config/resolver.js';
 import { useAbortableTask } from '../../hooks/index.js';
+import { useBusy } from '../../focus.js';
 import {
     getErrorMessage,
     STOPPED_WAITING_MESSAGE,
@@ -66,6 +67,8 @@ export function ConfigEditScreen({ params }: ScreenProps): ReactElement {
     // local write, and offering a hatch over it would let the screen report
     // "nothing was saved" about a config that had just been written.
     const [cancellable, setCancellable] = useState(false);
+
+    useBusy(busy);
 
     const task = useAbortableTask();
 

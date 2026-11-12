@@ -33,6 +33,7 @@ import { Panel, Spinner, SelectList, TextOverlay } from '../../components/index.
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { ChangeHistory } from '../../../core/change/history.js';
 import { getErrorMessage, oneLine } from '../../utils/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Rows this screen spends inside its Panel on everything that is not the list.
@@ -334,8 +335,8 @@ export function ChangeHistoryDetailScreen({ params }: ScreenProps): ReactElement
                 {/* Keyboard hints */}
                 <Box marginTop={1} gap={2}>
                     <Text dimColor>[↑↓] Navigate</Text>
-                    {failureText && <Text dimColor>[Enter] Full Error</Text>}
-                    <Text dimColor>[Esc] Back</Text>
+                    {failureText && <Hotkey keys="Enter">Full Error</Hotkey>}
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         </Panel>

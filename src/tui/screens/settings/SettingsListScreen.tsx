@@ -26,6 +26,7 @@ import { Panel, SelectList, type SelectListItem } from '../../components/index.j
 import { DEFAULT_CHANGES_PATH, DEFAULT_SQL_PATH } from '../../../core/settings/defaults.js';
 import { BUILTIN_ROLES, isBuiltinRole } from '../../../core/policy/index.js';
 import { rowBudget } from '../../components/terminal/viewport.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Settings section item value.
@@ -310,9 +311,9 @@ export function SettingsListScreen({ params: _params }: ScreenProps): ReactEleme
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Edit</Text>
-                <Text dimColor>[i] Init</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Enter">Edit</Hotkey>
+                <Hotkey keys="i">Init</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

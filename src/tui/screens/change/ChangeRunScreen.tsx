@@ -22,7 +22,7 @@ import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import {
     Panel,
@@ -42,6 +42,7 @@ import { getErrorMessage,
 } from '../../utils/index.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { isMouseReport } from '../../mouse.js';
 
 /**
  * Run steps.
@@ -71,6 +72,8 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     const [change, setChange] = useState<Change | null>(null);
     const [result, setResult] = useState<ChangeResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    useBusy(step === 'running');
 
 
     // Load change info
@@ -181,9 +184,11 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
     }, [back]);
 
     // Keyboard handling
-    useInput((_input, _key) => {
+    useInput((input, _key) => {
 
         if (!isFocused) return;
+
+        if (isMouseReport(input)) return;
 
         if (step === 'complete' || step === 'error') {
 

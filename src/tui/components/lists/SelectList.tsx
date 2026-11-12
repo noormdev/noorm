@@ -19,7 +19,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
 
 import { useFocusScope } from '../../focus.js';
-import { useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useOptionalRouter } from '../../router.js';
 import { listMemoryKey, recallListPosition, rememberListPosition } from '../../list-memory.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
@@ -469,7 +469,7 @@ export function SelectList<T = unknown>({
 
     // Inert without a MouseProvider above it or with the setting off: no refs
     // are attached to the rows and nothing subscribes.
-    const { rowRef } = useRowMouse({
+    const { rowRef, hovered } = useRowMouse({
         isActive: isFocused && !isDisabled,
         onClick: setHighlightedIndex,
         onActivate: activateRow,
@@ -516,6 +516,7 @@ export function SelectList<T = unknown>({
 
                 const actualIndex = startIndex + visibleIndex;
                 const isHighlighted = actualIndex === highlightedIndex;
+                const isHovered = hovered === actualIndex && !isHighlighted;
 
                 // Number indicator (1-9, dimmed for items beyond 9)
                 const numberIndicator = numberNav
@@ -525,7 +526,12 @@ export function SelectList<T = unknown>({
                     : '';
 
                 return (
-                    <Box key={item.key} flexDirection="column" ref={rowRef(actualIndex)}>
+                    <Box
+                        key={item.key}
+                        flexDirection="column"
+                        ref={rowRef(actualIndex)}
+                        backgroundColor={isHovered ? hoverBackground() : undefined}
+                    >
                         <Box>
                             {numberNav && (
                                 <Text dimColor>{numberIndicator}</Text>
@@ -547,6 +553,7 @@ export function SelectList<T = unknown>({
                                 <Text
                                     color={isHighlighted && isFocused ? 'cyan' : undefined}
                                     bold={isHighlighted && isFocused}
+                                    wrap="truncate"
                                 >
                                     {isHighlighted ? '❯ ' : '  '}
                                     {item.icon ? `${item.icon} ` : ''}
@@ -560,7 +567,7 @@ export function SelectList<T = unknown>({
                         </Box>
                         {/* Description below (when showDescriptionBelow is true) */}
                         {showDescriptionBelow && item.description && (
-                            <Text dimColor> {item.description}</Text>
+                            <Text dimColor wrap="truncate"> {item.description}</Text>
                         )}
                     </Box>
                 );

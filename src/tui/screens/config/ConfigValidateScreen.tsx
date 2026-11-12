@@ -25,6 +25,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, StatusList, type StatusListItem } from '../../components/index.js';
 import { validateConfigChecks } from '../../../core/config/validate.js';
 import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Validate steps.
@@ -179,8 +180,8 @@ export function ConfigValidateScreen({ params }: ScreenProps): ReactElement {
                 </Box>
 
                 <Box marginTop={1} flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[e] Edit</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="e">Edit</Hotkey>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         </Panel>

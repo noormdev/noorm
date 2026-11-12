@@ -214,7 +214,7 @@ Through the CLI, an `agent` channel `confirm` cell is a deny, so `--yes` never u
 | `db:teardown` | `db teardown` | deny | deny | confirm |
 | `db:destroy` | `db drop` | deny | deny | confirm |
 | `change:rm` | `change rm` | deny | confirm | confirm |
-| `config:rm`, `config:write` | `config rm`, overwrites with `config import` or `config create`, `config sync` | deny | confirm | confirm |
+| `config:rm`, `config:write` | `config rm`, `config set-password`, overwrites with `config import` or `config create`, `config sync` | deny | confirm | confirm |
 | `vault:read`, `secret:read` | `vault list`, `secret list`, `config export` | deny | allow | allow |
 | `vault:write`, `secret:write` | `vault init`, `set`, `rm`, `cp`, and `secret set`, `rm` | deny | confirm | allow |
 | `vault:propagate` | `vault propagate`, `ci identity enroll` | deny | confirm | confirm |
@@ -400,6 +400,27 @@ noorm config repair-access staging --user admin --agent false --yes
 ```
 
 Both replacement assignments are required and must name current built-in or project roles; `--agent false` disables agent access. The user channel must explicitly pass `--yes`; agents cannot repair access even with confirmation. When the user role is still valid, its `config:write` permission applies, so an unknown agent role cannot bypass a user-role denial. Valid access cannot be edited through this command. No role is automatically substituted.
+
+
+#### `config set-password <name> [value]`
+
+
+Replace the database password of a stored config, for rotation jobs that issue a new password and need it saved without the TUI:
+
+```bash
+echo "$NEW_PASSWORD" | noorm config set-password prod --stdin --yes
+```
+
+| Flag | Effect |
+|---|---|
+| `[value]` | The new password. Visible in the process table and shell history, so prefer `--stdin` |
+| `--stdin` | Read the password from stdin. One trailing newline is stripped |
+| `--yes`, `-y` | Confirm the `config:write` policy cell. `NOORM_YES` works too |
+| `--json` | Return `{ success: true, name }`. The password is never printed |
+
+Only `connection.password` changes. Other connection fields, access, and the config's secrets stay as they were. The command does not connect: run `noorm config validate <name>` afterwards to check the new password. It requires the config's `config:write` permission, so a viewer config is refused. SQLite configs are refused because SQLite has no password. An empty password is refused, so a rotation script whose variable came back empty cannot wipe the stored one. An unknown config name or a config with malformed access exits 2. A missing or empty value, a denied policy, or a missing confirmation exits 1. Every refusal leaves state unchanged.
+
+A stage's `locked: true` does not block this command; it only blocks deletion.
 
 
 #### `config rm <name>`

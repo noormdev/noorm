@@ -105,6 +105,7 @@ stateDiagram-v2
 |------|-----|--------|
 | Browse | `↑` `↓`, `Tab`, `Shift+Tab` | Move between fields, wrapping through the action row |
 | Browse | `Enter` | Open the field for editing |
+| Browse | `x` | On a password field with a value, empty it. Opening a password field starts from its current value, so this replaces it without backspacing |
 | Browse | `Esc` | Cancel the form |
 | Edit | `Enter` | Commit and return to browse |
 | Edit | `Esc` | Restore the value the field held when edit opened |
@@ -113,11 +114,13 @@ stateDiagram-v2
 
 A checkbox toggles in place on `Enter` or `Space`. A select expands on `Enter`, moves with `↑` `↓`, and takes the highlighted option on a second `Enter`. A red `*` marks a required field. Most forms reject an empty required field and put the cursor on it with an error. Pipeline input forms instead require presence: explicitly saving an empty string is valid.
 
+A value longer than the row ends in `…` instead of wrapping, and an open text field scrolls to keep the cursor in view. On the config edit form, an empty password keeps the stored one, as its placeholder says: clear the field with `x` and type the replacement.
+
 
 ### Mouse
 
 
-On by default, in lists and result grids:
+On by default. In lists and result grids:
 
 | Action | Effect |
 |--------|--------|
@@ -125,10 +128,37 @@ On by default, in lists and result grids:
 | Double-click a row | Same as `Enter` on that row |
 | Wheel | Move the cursor one row, or scroll a document |
 
-A click acts on whatever already has focus. Clicking an unfocused list does nothing.
+In a form:
+
+| Action | Effect |
+|--------|--------|
+| Click a field | Move the cursor to it. Another field being edited is committed first |
+| Double-click a text, password, or select field | Open it for editing |
+| Click a checkbox | Toggle it |
+| Click `[ Submit ]` or `[ Cancel ]` | Activate that button |
+| Click an option in an open select | Highlight it. Double-click takes it |
+| Wheel | Move between fields, or the highlight in an open select |
+
+In a confirm dialog, clicking `Yes (y)` confirms and clicking `No (n)` cancels.
+
+A `[key] Label` hint is a button: a footer hint such as `[a] Add` or `[Esc] Back`, a Quick Actions entry, a row of Available Actions, or a menu entry on More. A click presses that key, through the same path the keyboard takes, so whatever has focus answers it exactly as it would the key. A double click presses once. Hints that name no single key (`[↑↓] Scroll`, `[any] Back`) and sentences that only mention a key ("Press [a] to add one") are plain text; the Home prompts "Press [c] to ..." are the exception and are buttons.
+
+A hint does nothing while a confirmation holds the screen, since the key would answer the confirmation. It never types its letter into a text field that is taking input; `Esc` and `Enter` hints still work there.
+
+| Also clickable | Effect |
+|----------------|--------|
+| Earlier breadcrumb crumbs | Go back to that screen. Inactive while an overlay is open, a confirmation holds the screen, or an operation is running |
+| The idle `/ Filter...` row of a searchable list | Enter search mode |
+| Rows of the file picker | Click moves the cursor and enters select mode; double-click toggles the checkbox |
+| Rows of the log viewer, SQL history and clear lists, known users, result grids | Click moves the cursor; double-click does what `Enter` does |
+
+Moving the pointer over anything a click would act on shades it, so you can see what is clickable. The shade is a step off your terminal's own background (lighter on a dark theme, darker on a light one), asked for when `noorm ui` starts, and the text keeps its color. A terminal that does not report its background gets ANSI bright black instead. The cursor row keeps its own marker and is not shaded. Nothing shades, or answers a click, in a list that does not hold focus.
+
 
 ::: tip
-Mouse tracking takes click-drag text selection away from the terminal. Hold Option in macOS Terminal and iTerm2, or Shift in most others. To turn the mouse off, set `ui.mouse` in `.noorm/settings.yml`; `?` prints the same hint.
+Mouse tracking takes click-drag text selection away from the terminal. Hold Option in macOS Terminal and iTerm2, or Shift in most others.
+
+Hover makes the terminal send a report for every cell the pointer crosses, which is noticeable over a slow SSH link. To turn the mouse off, set `ui.mouse` in `.noorm/settings.yml`; `?` prints the same hint. If a crashed session leaves the terminal printing characters as the pointer moves, run `reset`.
 
 ```yaml
 # .noorm/settings.yml

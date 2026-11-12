@@ -23,12 +23,13 @@ import { GATED_BY_CALLER, fetchList } from '../../../core/explore/operations.js'
 
 import type { ScreenProps } from '../../types.js';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings, useGlobalModes } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useConnection, useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, withScreenConnection } from '../../utils/index.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'blocked' | 'preview' | 'confirm' | 'running' | 'done' | 'error';
 
@@ -49,6 +50,8 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
     const [error, setError] = useState<string | null>(null);
     const [tables, setTables] = useState<TableSummary[]>([]);
     const [result, setResult] = useState<TruncateResult | null>(null);
+
+    useBusy(phase === 'running');
 
     // Get preserved tables from settings - memoize to prevent effect re-runs
     const preserveTables = useMemo(
@@ -216,7 +219,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -243,7 +246,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -301,8 +304,8 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/y] Continue</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Enter/y">Continue</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -364,7 +367,7 @@ export function DbTruncateScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Done</Text>
+                    <Hotkey keys="Enter/Esc">Done</Hotkey>
                 </Box>
             </Box>
         );

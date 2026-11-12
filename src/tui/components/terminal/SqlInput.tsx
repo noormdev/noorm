@@ -13,6 +13,7 @@ import type { ReactElement } from 'react';
 
 import { isMouseReport } from '../../mouse.js';
 import { useTextEntry } from '../../focus.js';
+import { HotkeyLine } from '../layout/Hotkey.js';
 
 /**
  * Props for SqlInput component.
@@ -277,11 +278,11 @@ export function SqlInput({
                 ))}
             </Box>
             <Box marginTop={1}>
-                <Text dimColor>
+                <HotkeyLine>
                     {editMode
                         ? '[Shift+Tab] Exit edit  [Enter] New line'
                         : '[Shift+Tab] Edit mode  [Enter] Execute  [Shift+Enter] New line'}
-                </Text>
+                </HotkeyLine>
             </Box>
         </Box>
     );

@@ -23,6 +23,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, Confirm, Spinner, useToast } from '../../components/index.js';
 import { getErrorMessage } from '../../utils/index.js';
 import { useSecretSource } from '../../hooks/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * SettingsSecretRemoveScreen component.
@@ -127,7 +128,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -149,7 +150,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -175,7 +176,7 @@ export function SettingsSecretRemoveScreen({ params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

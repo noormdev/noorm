@@ -21,13 +21,14 @@ import type { Kysely } from 'kysely';
 
 import { attempt } from '@logosdx/utils';
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Form, SmartConfirm, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
 import { createConnection } from '../../../core/connection/index.js';
 import { getLockManager, LockAcquireError } from '../../../core/lock/index.js';
 import { checkConfigPolicy } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Screen phase state.
@@ -55,6 +56,8 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
     const [phase, setPhase] = useState<Phase>('loading');
     const [error, setError] = useState<string | null>(null);
     const [pending, setPending] = useState<AcquireRequest | null>(null);
+
+    useBusy(phase === 'running');
 
     const {
         status: lockStatus,
@@ -248,7 +251,7 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -296,7 +299,7 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -387,7 +390,7 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Done</Text>
+                    <Hotkey keys="Enter/Esc">Done</Hotkey>
                 </Box>
             </Box>
         );
@@ -404,7 +407,7 @@ export function LockAcquireScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

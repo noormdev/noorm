@@ -18,9 +18,11 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, useToast } from '../../components/index.js';
 import { SqlHistoryManager } from '../../../core/sql-terminal/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Clear option type.
@@ -191,6 +193,27 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
 
     });
 
+    // Above the early returns, or the hook count changes with the phase.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused && phase === 'select',
+        onClick: setHighlightedIndex,
+        onActivate: (index) => {
+
+            const option = options[index];
+
+            if (!option) return;
+
+            setSelectedOption(option.key);
+            setPhase('confirm');
+
+        },
+        onWheel: (delta) => {
+
+            setHighlightedIndex((i) => Math.min(Math.max(i + delta, 0), options.length - 1));
+
+        },
+    });
+
     // No config
     if (!activeConfigName || !projectRoot) {
 
@@ -201,7 +224,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -235,7 +258,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -295,9 +318,15 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                     {options.map((option, index) => {
 
                         const isHighlighted = index === highlightedIndex;
+                        const isHovered = hovered === index && !isHighlighted;
 
                         return (
-                            <Box key={option.key} flexDirection="column">
+                            <Box
+                                key={option.key}
+                                flexDirection="column"
+                                ref={rowRef(index)}
+                                backgroundColor={isHovered ? hoverBackground() : undefined}
+                            >
                                 <Box>
                                     <Text
                                         inverse={isHighlighted}
@@ -319,9 +348,9 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
 
             {/* Footer hints */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[Enter] Select</Text>
+                <Hotkey keys="Enter">Select</Hotkey>
                 <Text dimColor>[↑/↓] Navigate</Text>
-                <Text dimColor>[Esc] Cancel</Text>
+                <Hotkey keys="Esc">Cancel</Hotkey>
             </Box>
         </Box>
     );

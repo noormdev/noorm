@@ -28,6 +28,7 @@ import {
     getTableInfo,
     type DebugOperations,
 } from '../../../core/debug/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * DebugDetailScreen component.
@@ -171,7 +172,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -188,7 +189,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -221,7 +222,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -238,7 +239,7 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -299,8 +300,8 @@ export function DebugDetailScreen({ params }: ScreenProps): ReactElement {
 
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[d] Delete</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="d">Delete</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

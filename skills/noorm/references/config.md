@@ -329,6 +329,8 @@ Stage defaults fill fields below stored, environment, and inline values, in the 
 
 Create stored configs with `noorm config create --stage staging --name review` or `noorm config create --all`; overwrites require literal `--force --yes` and authorization. Creation does not implicitly persist stage or environment passwords. Use `noorm config sync --stage staging --name review --json` to preview current defaults, then `--yes` to apply without a prompt. These aliases require an unprotected stage; a protected stage requires the config name to match the stage name because no stage association is stored. Sync preserves passwords and absent fields, refuses a different dialect, and requires `config:write`. Stage access assignments may name project roles and remain subject to validation and protected-stage permission ceilings.
 
+To rotate a stored password without touching the rest of a config, use `noorm config set-password <name> --stdin --yes`. For credentials that must be fresh on every new connection, pass a password callback to the SDK instead of storing one.
+
 See `docs/spec/config-access-roles.md` for the full per-channel access model and MCP's `access.agent: false` invisibility.
 
 ## Minimal Settings Example

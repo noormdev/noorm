@@ -32,6 +32,7 @@ import {
     NOORM_TABLE_INFO,
     type TableCountResult,
 } from '../../../core/debug/index.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * DebugOverviewScreen component.
@@ -137,7 +138,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -170,7 +171,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -226,26 +227,28 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
                             const hasRows = count !== null && count > 0;
 
                             return (
-                                <Box key={info.key} gap={2}>
-                                    <Text color={hasRows ? 'cyan' : 'gray'}>
+                                <KeyTarget key={info.key} keys={String(index + 1)} block disabled={!hasRows}>
+                                    <Box gap={2}>
+                                        <Text color={hasRows ? 'cyan' : 'gray'}>
                                         [{index + 1}]
-                                    </Text>
-                                    <Box width={14}>
-                                        <Text color={hasRows ? undefined : 'gray'}>
-                                            {info.displayName}
                                         </Text>
-                                    </Box>
-                                    <Box width={20}>
-                                        <Text dimColor>{info.description}</Text>
-                                    </Box>
-                                    {failed
-                                        ? <Text bold color="red">error</Text>
-                                        : (
-                                            <Text bold={hasRows} color={hasRows ? 'green' : 'gray'}>
-                                                {count} {count === 1 ? 'row' : 'rows'}
+                                        <Box width={14}>
+                                            <Text color={hasRows ? undefined : 'gray'}>
+                                                {info.displayName}
                                             </Text>
-                                        )}
-                                </Box>
+                                        </Box>
+                                        <Box width={20}>
+                                            <Text dimColor>{info.description}</Text>
+                                        </Box>
+                                        {failed
+                                            ? <Text bold color="red">error</Text>
+                                            : (
+                                                <Text bold={hasRows} color={hasRows ? 'green' : 'gray'}>
+                                                    {count} {count === 1 ? 'row' : 'rows'}
+                                                </Text>
+                                            )}
+                                    </Box>
+                                </KeyTarget>
                             );
 
                         })}
@@ -256,7 +259,7 @@ export function DebugOverviewScreen({ params: _params }: ScreenProps): ReactElem
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
                 <Text dimColor>[1-5] Select table</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

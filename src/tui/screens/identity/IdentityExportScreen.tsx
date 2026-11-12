@@ -25,6 +25,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, useToast } from '../../components/index.js';
 import { copyToClipboard, isClipboardAvailable } from '../../utils/index.js';
 import { attemptSync } from '@logosdx/utils';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 
 /**
@@ -104,7 +105,7 @@ export function IdentityExportScreen({ params: _params }: ScreenProps): ReactEle
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -143,13 +144,13 @@ export function IdentityExportScreen({ params: _params }: ScreenProps): ReactEle
             {/* Keyboard shortcuts */}
             <Box flexWrap="wrap" columnGap={2}>
                 {clipboardAvailable ? (
-                    <Text dimColor>[c] Copy to Clipboard</Text>
+                    <Hotkey keys="c">Copy to Clipboard</Hotkey>
                 ) : (
                     <Text dimColor color="yellow">
                         Clipboard not available
                     </Text>
                 )}
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

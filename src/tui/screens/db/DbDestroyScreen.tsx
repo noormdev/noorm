@@ -19,13 +19,14 @@ import type { ScreenProps } from '../../types.js';
 import type { DbStatus } from '../../../core/db/index.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { checkDbStatus, destroyDb } from '../../../core/db/index.js';
 import { useConnectionContext } from '../../providers/ConnectionProvider.js';
 import { checkConfigPolicy, confirmationPhraseFor } from '../../../core/policy/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * Screen phase state.
@@ -52,6 +53,8 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
 
     // Status info
     const [status, setStatus] = useState<DbStatus | null>(null);
+
+    useBusy(phase === 'disconnecting' || phase === 'running');
 
     // Check current state
     useAsyncEffect(async (isCancelled) => {
@@ -207,7 +210,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -243,7 +246,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                     </Panel>
 
                     <Box flexWrap="wrap" columnGap={2}>
-                        <Text dimColor>[Esc] Back</Text>
+                        <Hotkey keys="Esc">Back</Hotkey>
                     </Box>
                 </Box>
             );
@@ -316,7 +319,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Done</Text>
+                    <Hotkey keys="Enter/Esc">Done</Hotkey>
                 </Box>
             </Box>
         );
@@ -333,7 +336,7 @@ export function DbDestroyScreen({ params: _params }: ScreenProps): ReactElement 
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );

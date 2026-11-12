@@ -21,11 +21,14 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { useFocusScope, useTextEntry } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { readLogFile } from '../../../core/logger/reader.js';
 import { Spinner } from '../feedback/index.js';
 
 import type { LogEntry } from '../../../core/logger/types.js';
+import { oneLine } from '../../utils/string.js';
+import { Hotkey } from '../layout/Hotkey.js';
 
 /**
  * Props for LogViewerOverlay.
@@ -298,8 +301,36 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
 
     });
 
-    // Calculate visible window
-    const startIdx = Math.max(0, highlightedIndex - Math.floor(VISIBLE_ENTRIES / 2));
+    // The keyboard guard, plus the two modes that own their keys: a click must not
+    // reach past the search box or the detail view.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused && !searchMode && !showDetail,
+        onClick: setHighlightedIndex,
+        onActivate: (index) => {
+
+            if (!filteredEntries[index]) return;
+
+            setHighlightedIndex(index);
+            setShowDetail(true);
+
+        },
+        onWheel: (delta) => {
+
+            setHighlightedIndex((prev) => Math.min(Math.max(prev + delta, 0), Math.max(0, filteredEntries.length - 1)));
+
+        },
+    });
+
+    // The window moves only when the highlight leaves it. Recentring on every
+    // change scrolled a clicked row away from the pointer before the second click.
+    const windowStart = useRef(0);
+    let startIdx = Math.min(windowStart.current, Math.max(0, filteredEntries.length - VISIBLE_ENTRIES));
+
+    if (highlightedIndex < startIdx) startIdx = highlightedIndex;
+    else if (highlightedIndex >= startIdx + VISIBLE_ENTRIES) startIdx = highlightedIndex - VISIBLE_ENTRIES + 1;
+
+    windowStart.current = startIdx;
+
     const visibleEntries = filteredEntries.slice(startIdx, startIdx + VISIBLE_ENTRIES);
 
     // Detail view
@@ -321,7 +352,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                     gap={2}
                 >
                     <Text bold color="blue">Log Entry Detail</Text>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
 
                 {/* Content */}
@@ -339,7 +370,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                     borderColor="gray"
                     paddingX={1}
                 >
-                    <Text dimColor>[Esc] Back to list</Text>
+                    <Hotkey keys="Esc">Back to list</Hotkey>
                 </Box>
             </Box>
         );
@@ -397,9 +428,15 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
 
                             const actualIdx = startIdx + idx;
                             const isHighlighted = actualIdx === highlightedIndex;
+                            const isHovered = hovered === actualIdx && !isHighlighted;
 
                             return (
-                                <Box key={`${entry.time}-${actualIdx}`} gap={1}>
+                                <Box
+                                    key={`${entry.time}-${actualIdx}`}
+                                    gap={1}
+                                    ref={rowRef(actualIdx)}
+                                    backgroundColor={isHovered ? hoverBackground() : undefined}
+                                >
                                     <Text inverse={isHighlighted}>
                                         {isHighlighted ? '>' : ' '}
                                     </Text>
@@ -414,7 +451,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                                     <Box width={25}>
                                         <Text color="cyan">{entry.type.slice(0, 24)}</Text>
                                     </Box>
-                                    <Text>{entry.message.slice(0, 45)}</Text>
+                                    <Text wrap="truncate">{oneLine(entry.message)}</Text>
                                 </Box>
                             );
 
@@ -434,11 +471,12 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                 paddingX={1}
                 gap={2}
             >
-                <Text dimColor>[/] Search</Text>
-                <Text dimColor>[g/G] Top/Bottom</Text>
-                <Text dimColor>[Space] {paused ? 'Resume' : 'Pause'}</Text>
-                <Text dimColor>[Enter] Detail</Text>
-                <Text dimColor>[Shift+L] Close</Text>
+                <Hotkey keys="/">Search</Hotkey>
+                <Hotkey keys="g">Top</Hotkey>
+                <Hotkey keys="G">Bottom</Hotkey>
+                <Hotkey keys="Space">{paused ? 'Resume' : 'Pause'}</Hotkey>
+                <Hotkey keys="Enter">Detail</Hotkey>
+                <Hotkey keys="Shift+L">Close</Hotkey>
             </Box>
         </Box>
     );

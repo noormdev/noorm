@@ -16,7 +16,7 @@ import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
-import { useFocusScope } from '../../focus.js';
+import { useBusy, useFocusScope } from '../../focus.js';
 import { useAppContext, useSettings, useGlobalModes } from '../../app-context.js';
 import { useToast, Panel, Spinner, ProtectedConfirm } from '../../components/index.js';
 import { previewTeardown, teardownSchema } from '../../../core/teardown/index.js';
@@ -28,6 +28,7 @@ import { attempt } from '@logosdx/utils';
 
 import type { Kysely } from 'kysely';
 import type { TeardownPreview, TeardownResult } from '../../../core/teardown/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 type Phase = 'loading' | 'blocked' | 'preview' | 'view' | 'confirm' | 'running' | 'done' | 'error';
 
@@ -60,6 +61,8 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
     const [result, setResult] = useState<TeardownResult | null>(null);
     const [viewCategory, setViewCategory] = useState<ViewCategory>('tables');
     const [viewScroll, setViewScroll] = useState(0);
+
+    useBusy(phase === 'running');
 
     // Get options from settings - memoize to prevent effect re-runs
     const postScript = settings?.teardown?.postScript;
@@ -335,7 +338,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -362,7 +365,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                     <Text color="red">{error}</Text>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Back</Text>
+                    <Hotkey keys="Enter/Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -443,10 +446,10 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
 
                 <Box flexWrap="wrap" columnGap={2}>
                     {nonEmptyCategories.length > 0 && (
-                        <Text dimColor>[v] View details</Text>
+                        <Hotkey keys="v">View details</Hotkey>
                     )}
-                    <Text dimColor>[Enter/y] Continue</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Hotkey keys="Enter/y">Continue</Hotkey>
+                    <Hotkey keys="Esc">Cancel</Hotkey>
                 </Box>
             </Box>
         );
@@ -509,7 +512,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                 <Box flexWrap="wrap" columnGap={2}>
                     <Text dimColor>[←/→] Category</Text>
                     {hasMore && <Text dimColor>[↑/↓] Scroll</Text>}
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -609,7 +612,7 @@ export function DbTeardownScreen({ params: _params }: ScreenProps): ReactElement
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Enter/Esc] Done</Text>
+                    <Hotkey keys="Enter/Esc">Done</Hotkey>
                 </Box>
             </Box>
         );

@@ -27,7 +27,7 @@ import { createContext, useContext, useState, useCallback, useMemo, useId, useEf
 
 import type { ReactNode, ReactElement } from 'react';
 
-import type { FocusEntry, FocusContextValue } from './types.js';
+import type { FocusEntry, FocusContextValue, GuardKind } from './types.js';
 
 const FocusContext = createContext<FocusContextValue | null>(null);
 
@@ -59,6 +59,22 @@ export function FocusProvider({ children }: FocusProviderProps): ReactElement {
     const activeTextEntries = useRef(0);
 
     const isTyping = useCallback(() => activeTextEntries.current > 0, []);
+
+    const guards = useRef<Record<GuardKind, number>>({ busy: 0, modal: 0 });
+
+    const isGuarded = useCallback((kind: GuardKind) => guards.current[kind] > 0, []);
+
+    const beginGuard = useCallback((kind: GuardKind) => {
+
+        guards.current[kind] += 1;
+
+        return () => {
+
+            guards.current[kind] -= 1;
+
+        };
+
+    }, []);
 
     const beginTextEntry = useCallback(() => {
 
@@ -145,8 +161,10 @@ export function FocusProvider({ children }: FocusProviderProps): ReactElement {
             stack,
             isTyping,
             beginTextEntry,
+            isGuarded,
+            beginGuard,
         }),
-        [push, pop, isActive, activeId, stack, isTyping, beginTextEntry],
+        [push, pop, isActive, activeId, stack, isTyping, beginTextEntry, isGuarded, beginGuard],
     );
 
     return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
@@ -266,6 +284,75 @@ export function useTextEntry(active: boolean): void {
         return beginTextEntry();
 
     }, [active, beginTextEntry]);
+
+}
+
+function useGuard(kind: GuardKind, active: boolean): void {
+
+    const beginGuard = useContext(FocusContext)?.beginGuard;
+
+    useEffect(() => {
+
+        if (!active || !beginGuard) return;
+
+        return beginGuard(kind);
+
+    }, [kind, active, beginGuard]);
+
+}
+
+/**
+ * Mark the screen busy while `active`, so a click on the breadcrumb does not
+ * walk away from a running operation. Keyboard Escape is the screen's own call.
+ *
+ * @example
+ * useBusy(step === 'running');
+ */
+export function useBusy(active: boolean): void {
+
+    useGuard('busy', active);
+
+}
+
+/**
+ * Mark a confirmation as holding the screen while `active`, so a click on a hint
+ * behind it cannot press the confirmation's keys.
+ *
+ * @example
+ * useModal(isFocused);
+ */
+export function useModal(active: boolean): void {
+
+    useGuard('modal', active);
+
+}
+
+/**
+ * Whether the given guard is held right now, read at call time.
+ * Always false outside a FocusProvider.
+ *
+ * @example
+ * const isGuarded = useIsGuarded();
+ * if (!isGuarded('busy')) backBy(1);
+ */
+export function useIsGuarded(): (kind: GuardKind) => boolean {
+
+    return useContext(FocusContext)?.isGuarded ?? (() => false);
+
+}
+
+/**
+ * Whether a text field is taking keystrokes right now, read at call time.
+ *
+ * Always false outside a FocusProvider.
+ *
+ * @example
+ * const isTyping = useIsTyping();
+ * if (!isTyping()) press('r');
+ */
+export function useIsTyping(): () => boolean {
+
+    return useContext(FocusContext)?.isTyping ?? (() => false);
 
 }
 

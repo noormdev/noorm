@@ -7,6 +7,7 @@ import { useAppContext } from '../../app-context.js';
 import { Panel, ProtectedConfirm } from '../../components/index.js';
 import { useFocusScope } from '../../focus.js';
 import { useRouter } from '../../router.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /** Gate local secret metadata and values before a screen reads either. */
 export function SecretReadGate({ children }: { children: ReactElement }): ReactElement {
@@ -39,7 +40,7 @@ export function SecretReadGate({ children }: { children: ReactElement }): ReactE
                 <Panel title="Secrets" borderColor="red">
                     <Text color="red">{check.blockedReason ?? 'Secret read is not allowed'}</Text>
                 </Panel>
-                <Text dimColor>[Enter/Esc] Back</Text>
+                <Hotkey keys="Enter/Esc">Back</Hotkey>
             </Box>
         );
 

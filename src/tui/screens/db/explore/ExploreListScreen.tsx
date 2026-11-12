@@ -41,6 +41,7 @@ import type {
     IndexSummary,
     ForeignKeySummary,
 } from '../../../../core/explore/index.js';
+import { Hotkey } from '../../../components/layout/Hotkey.js';
 
 /**
  * Category configuration.
@@ -276,7 +277,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -293,7 +294,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -326,7 +327,7 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
                 </Panel>
 
                 <Box flexWrap="wrap" columnGap={2}>
-                    <Text dimColor>[Esc] Back</Text>
+                    <Hotkey keys="Esc">Back</Hotkey>
                 </Box>
             </Box>
         );
@@ -352,8 +353,8 @@ export function ExploreListScreen({ params: _params }: ScreenProps): ReactElemen
 
             {/* Hotkeys */}
             <Box flexWrap="wrap" columnGap={2}>
-                {meta.hasDetail && <Text dimColor>[Enter] View detail</Text>}
-                <Text dimColor>[Esc] Back</Text>
+                {meta.hasDetail && <Hotkey keys="Enter">View detail</Hotkey>}
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );

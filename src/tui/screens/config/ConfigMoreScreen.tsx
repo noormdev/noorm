@@ -21,6 +21,7 @@ import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, SelectList, type SelectListItem } from '../../components/index.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 
 /**
  * More action item.
@@ -132,10 +133,10 @@ export function ConfigMoreScreen({ params }: ScreenProps): ReactElement {
             </Panel>
 
             <Box flexWrap="wrap" columnGap={2}>
-                <Text dimColor>[x] Export</Text>
-                <Text dimColor>[i] Import</Text>
-                <Text dimColor>[v] Validate</Text>
-                <Text dimColor>[Esc] Back</Text>
+                <Hotkey keys="x">Export</Hotkey>
+                <Hotkey keys="i">Import</Hotkey>
+                <Hotkey keys="v">Validate</Hotkey>
+                <Hotkey keys="Esc">Back</Hotkey>
             </Box>
         </Box>
     );
