@@ -1,5 +1,7 @@
 # @noormdev/sdk
 
+## 1.11.0
+
 ## 1.10.1
 
 ### Patch Changes
