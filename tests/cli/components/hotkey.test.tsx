@@ -7,9 +7,9 @@ import React from 'react';
 
 import { FocusProvider, useBusy, useIsGuarded } from '../../../src/tui/focus.js';
 import { MouseProvider, MOUSE_ENABLE, MOUSE_DISABLE, isMouseReport, useRowMouse } from '../../../src/tui/mouse.js';
-import { Hotkey, resolveHotkey } from '../../../src/tui/components/layout/index.js';
+import { Hotkey, KeyTarget, resolveHotkey } from '../../../src/tui/components/layout/index.js';
 import { TextInput } from '../../../src/tui/components/forms/index.js';
-import { Confirm } from '../../../src/tui/components/dialogs/index.js';
+import { Confirm, ProtectedConfirm } from '../../../src/tui/components/dialogs/index.js';
 
 const ESC = String.fromCharCode(27);
 
@@ -414,6 +414,67 @@ describe('cli: Hotkey guards', () => {
         await tick();
 
         expect((lastUi(frames).split('\n').find((line) => line.includes('[h] History')) ?? '')).not.toContain(`${ESC}[100m`);
+
+        unmount();
+
+    });
+
+    it('should neither press nor shade a disabled target, like a row the keyboard also skips', async () => {
+
+        chalk.level = 1;
+
+        const { frames, stdin, log, unmount } = await mount(
+            <KeyTarget keys="3" disabled><Text>[3] Procedures 0</Text></KeyTarget>,
+        );
+
+        const { row, column } = locate(lastUi(frames), '[3] Procedures');
+
+        stdin.write(move(row, column));
+        await tick();
+        stdin.write(press(row, column));
+        await tick();
+
+        expect(log.some((entry) => entry.input === '3')).toBe(false);
+        expect(lastUi(frames).split('\n').find((line) => line.includes('Procedures')) ?? '').not.toContain(`${ESC}[100m`);
+
+        unmount();
+
+    });
+
+    it('should press an enabled numbered target, so a category row answers its number key', async () => {
+
+        const { frames, stdin, log, unmount } = await mount(
+            <KeyTarget keys="1" block><Text>[1] Tables 74</Text></KeyTarget>,
+        );
+
+        clickOn(stdin, lastUi(frames), '[1] Tables');
+        await waitFor(() => log.some((entry) => entry.input === '1'));
+
+        expect(log.some((entry) => entry.input === '1')).toBe(true);
+
+        unmount();
+
+    });
+
+    it('should answer a click on the protected confirmation buttons', async () => {
+
+        const answers: string[] = [];
+
+        const { frames, stdin, unmount } = await mount(
+            <ProtectedConfirm configName="prod" action="delete" confirmPhrase="yes-prod" onConfirm={() => answers.push('confirm')} onCancel={() => answers.push('cancel')} />,
+        );
+
+        // The phrase is not typed, so Enter must not confirm.
+        clickOn(stdin, lastUi(frames), '[Enter] Confirm');
+        await tick();
+
+        expect(answers).toEqual([]);
+        expect(plain(lastUi(frames))).toContain('Type "yes-prod" to confirm');
+
+        clickOn(stdin, lastUi(frames), '[Esc] Cancel');
+        await waitFor(() => answers.length > 0);
+
+        expect(answers).toEqual(['cancel']);
 
         unmount();
 

@@ -19,6 +19,7 @@ import { Badge } from '@inkjs/ui';
 import type { ReactElement } from 'react';
 
 import { isSslFileErrorMessage } from '../../../core/connection/ssl-files.js';
+import { KeyTarget } from '../layout/Hotkey.js';
 
 /**
  * Connection status types.
@@ -123,7 +124,7 @@ export function ConnectionStatus({
 
             {status === 'no-database' && (
                 <Box gap={1}>
-                    <Text dimColor>Database does not exist yet. Press [c] to create.</Text>
+                    <KeyTarget keys="c"><Text dimColor>Database does not exist yet. Press [c] to create.</Text></KeyTarget>
                 </Box>
             )}
 

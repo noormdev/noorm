@@ -316,7 +316,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
                         <Text color="yellow">●</Text>
                         <Text color="yellow">Not Created</Text>
                     </Box>
-                    <Text dimColor wrap="truncate">  Database does not exist. Use [d] DB to create.</Text>
+                    <KeyTarget keys="d"><Text dimColor wrap="truncate">  Database does not exist. Use [d] DB to create.</Text></KeyTarget>
                 </Box>
             );
 

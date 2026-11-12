@@ -668,9 +668,7 @@ export function SqlTerminalScreen({ params }: ScreenProps): ReactElement {
                         it here would be two hints for one key, and leaving the
                         idle label would name the wrong action. */}
                     {!isExecuting && (
-                        <Text dimColor>
-                            [Esc] {focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}
-                        </Text>
+                        <Hotkey keys="Esc">{focusArea === 'results' ? 'Edit Query' : query.trim() ? 'Clear' : 'Back'}</Hotkey>
                     )}
                 </Box>
             )}

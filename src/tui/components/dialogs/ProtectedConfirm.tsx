@@ -22,6 +22,7 @@ import { TextInput } from '../forms/TextInput.js';
 import type { ReactElement } from 'react';
 
 import { useFocusScope, useModal } from '../../focus.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { Panel } from '../layout/Panel.js';
 
 /**
@@ -107,33 +108,41 @@ export function ProtectedConfirm({
 
     }, [input, confirmPhrase, onConfirm]);
 
+    // Escape clears what was typed first, and only then cancels.
+    const handleEscape = () => {
+
+        if (input) {
+
+            setInput('');
+            setError(null);
+
+            return;
+
+        }
+
+        onCancel();
+
+    };
+
     // Keyboard handling
     useInput((_, key) => {
 
         if (!isFocused) return;
 
-        if (key.escape) {
+        if (key.escape) handleEscape();
 
-            if (input) {
+        if (key.return) handleSubmit();
 
-                setInput('');
-                setError(null);
+    });
 
-            }
-            else {
-
-                onCancel();
-
-            }
-
-        }
-
-        if (key.return) {
-
-            handleSubmit();
-
-        }
-
+    // The `useModal` guard makes hint wrappers inert here, so these are click targets of their own.
+    const { rowRef, hovered } = useRowMouse({
+        isActive: isFocused,
+        matchColumn: true,
+        ignoreRepeats: true,
+        onClick: (index) => (index === 0 ? handleSubmit() : handleEscape()),
+        onActivate: () => undefined,
+        onWheel: () => undefined,
     });
 
     return (
@@ -171,8 +180,12 @@ export function ProtectedConfirm({
                 {error && <Text color="red">{error}</Text>}
 
                 <Box marginTop={1} gap={2}>
-                    <Text dimColor>[Enter] Confirm</Text>
-                    <Text dimColor>[Esc] Cancel</Text>
+                    <Box ref={rowRef(0)} backgroundColor={hovered === 0 ? hoverBackground() : undefined}>
+                        <Text dimColor>[Enter] Confirm</Text>
+                    </Box>
+                    <Box ref={rowRef(1)} backgroundColor={hovered === 1 ? hoverBackground() : undefined}>
+                        <Text dimColor>[Esc] Cancel</Text>
+                    </Box>
                 </Box>
             </Box>
         </Panel>

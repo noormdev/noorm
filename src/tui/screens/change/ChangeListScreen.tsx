@@ -25,7 +25,7 @@ import { Panel, Spinner } from '../../components/index.js';
 import { useAsyncEffect } from '../../hooks/index.js';
 import { getErrorMessage, loadChangesWithStatus, buildMergedChangeList } from '../../utils/index.js';
 import { relativeTimeAgo } from '../../utils/date.js';
-import { Hotkey } from '../../components/layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Get status indicator for a change.
@@ -312,7 +312,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                 {/* Change List */}
                 {changes.length === 0 ? (
                     <Box marginTop={1}>
-                        <Text dimColor>No changes found. Press [a] to create one.</Text>
+                        <KeyTarget keys="a"><Text dimColor>No changes found. Press [a] to create one.</Text></KeyTarget>
                     </Box>
                 ) : (
                     <Box flexDirection="column" marginTop={1}>

@@ -128,6 +128,9 @@ export interface KeyTargetProps {
     /** Stretch to the parent's width, so the shaded band and the click target span the row. */
     block?: boolean;
 
+    /** The key does nothing right now (a row the keyboard also skips): no press and no shade. */
+    disabled?: boolean;
+
 }
 
 /**
@@ -138,7 +141,7 @@ export interface KeyTargetProps {
  * @example
  * <KeyTarget keys="s" block><Text>Settings</Text></KeyTarget>
  */
-export function KeyTarget({ keys, children, block = false }: KeyTargetProps): ReactElement {
+export function KeyTarget({ keys, children, block = false, disabled = false }: KeyTargetProps): ReactElement {
 
     const sequence = resolveHotkey(keys);
     const emitter = inputEmitter(useStdin());
@@ -146,6 +149,7 @@ export function KeyTarget({ keys, children, block = false }: KeyTargetProps): Re
     const isGuarded = useIsGuarded();
 
     const isBlocked = () => sequence === null
+        || disabled
         || isGuarded('modal')
         || (/^[ -~]$/.test(sequence) && isTyping());
 

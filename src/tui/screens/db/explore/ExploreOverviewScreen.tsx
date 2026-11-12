@@ -27,9 +27,9 @@ import { useConnection, useAsyncEffect } from '../../../hooks/index.js';
 import { Panel, Spinner } from '../../../components/index.js';
 import { fetchOverview, userGate } from '../../../../core/explore/index.js';
 import { CELL_GAP, LABEL_CAP, cellWidth, fitWidths, rowBudget } from './layout.js';
+import { Hotkey, KeyTarget } from '../../../components/layout/Hotkey.js';
 
 import type { ExploreOverview } from '../../../../core/explore/index.js';
-import { Hotkey } from '../../../components/layout/Hotkey.js';
 
 /**
  * Category configuration for navigation.
@@ -109,23 +109,25 @@ export function CategoryList({ overview, width }: { overview: ExploreOverview | 
                 const hasItems = count > 0;
 
                 return (
-                    <Box key={cat.key} gap={CELL_GAP}>
-                        <Box width={hotkeyWidth} flexShrink={0}>
-                            <Text color={hasItems ? 'cyan' : 'gray'}>
+                    <KeyTarget key={cat.key} keys={cat.numberKey} block disabled={!hasItems}>
+                        <Box gap={CELL_GAP}>
+                            <Box width={hotkeyWidth} flexShrink={0}>
+                                <Text color={hasItems ? 'cyan' : 'gray'}>
                                 [{cat.numberKey}]
-                            </Text>
+                                </Text>
+                            </Box>
+                            <Box width={labelWidth} flexShrink={0}>
+                                <Text color={hasItems ? undefined : 'gray'} wrap="truncate">
+                                    {cat.label}
+                                </Text>
+                            </Box>
+                            <Box width={countWidth} flexShrink={0}>
+                                <Text bold={hasItems} color={hasItems ? 'green' : 'gray'}>
+                                    {count}
+                                </Text>
+                            </Box>
                         </Box>
-                        <Box width={labelWidth} flexShrink={0}>
-                            <Text color={hasItems ? undefined : 'gray'} wrap="truncate">
-                                {cat.label}
-                            </Text>
-                        </Box>
-                        <Box width={countWidth} flexShrink={0}>
-                            <Text bold={hasItems} color={hasItems ? 'green' : 'gray'}>
-                                {count}
-                            </Text>
-                        </Box>
-                    </Box>
+                    </KeyTarget>
                 );
 
             })}

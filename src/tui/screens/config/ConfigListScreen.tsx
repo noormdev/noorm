@@ -33,7 +33,7 @@ import { SettingsProvider, effectiveConfig } from '../../../core/config/resolver
 import type { ConfigAccess } from '../../../core/policy/index.js';
 import type { ConnectionConfig } from '../../../core/connection/types.js';
 import { skipsVerification } from '../../utils/index.js';
-import { Hotkey } from '../../components/layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Config list item value.
@@ -239,9 +239,11 @@ export function ConfigListScreen({ params: _params }: ScreenProps): ReactElement
                 {configs.length === 0 ? (
                     <Box flexDirection="column" gap={1}>
                         <Text dimColor>No configurations found.</Text>
-                        <Text>
+                        <KeyTarget keys="a">
+                            <Text>
                             Press <Text color="cyan">a</Text> to add your first config.
-                        </Text>
+                            </Text>
+                        </KeyTarget>
                     </Box>
                 ) : (
                     <SelectList

@@ -36,7 +36,7 @@ import {
     updateDismissablePreference,
 } from '../../../core/update/global-settings.js';
 import type { DismissablePreference } from '../../../core/update/types.js';
-import { Hotkey } from '../layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../layout/Hotkey.js';
 
 // =============================================================================
 // Types
@@ -258,15 +258,21 @@ export function DismissableAlert({
             </Box>
 
             <Box gap={2}>
-                <Text inverse={selected === 0} color={selected === 0 ? 'green' : undefined}>
-                    {' '}[1] {confirmText}{' '}
-                </Text>
-                <Text inverse={selected === 1} color={selected === 1 ? 'yellow' : undefined}>
-                    {' '}[2] {laterText}{' '}
-                </Text>
-                <Text inverse={selected === 2} color={selected === 2 ? 'red' : undefined}>
-                    {' '}[3] {denyText}{' '}
-                </Text>
+                <KeyTarget keys="1">
+                    <Text inverse={selected === 0} color={selected === 0 ? 'green' : undefined}>
+                        {' '}[1] {confirmText}{' '}
+                    </Text>
+                </KeyTarget>
+                <KeyTarget keys="2">
+                    <Text inverse={selected === 1} color={selected === 1 ? 'yellow' : undefined}>
+                        {' '}[2] {laterText}{' '}
+                    </Text>
+                </KeyTarget>
+                <KeyTarget keys="3">
+                    <Text inverse={selected === 2} color={selected === 2 ? 'red' : undefined}>
+                        {' '}[3] {denyText}{' '}
+                    </Text>
+                </KeyTarget>
             </Box>
 
             {allowPersist && (

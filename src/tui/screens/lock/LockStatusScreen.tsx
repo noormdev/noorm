@@ -29,7 +29,7 @@ import { useFocusScope } from '../../focus.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, LockStatus, useToast } from '../../components/index.js';
 import { useLockStatus } from '../../hooks/index.js';
-import { Hotkey } from '../../components/layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Format duration for display.
@@ -300,9 +300,11 @@ export function LockStatusScreen({ params: _params }: ScreenProps): ReactElement
                 <Panel title="Actions" borderColor="green" paddingX={1} paddingY={1}>
                     <Box flexDirection="column" gap={1}>
                         <Text color="green">Database is unlocked and available.</Text>
-                        <Text>
+                        <KeyTarget keys="a">
+                            <Text>
                             Press <Text color="cyan">[a]</Text> to acquire the lock.
-                        </Text>
+                            </Text>
+                        </KeyTarget>
                     </Box>
                 </Panel>
             )}

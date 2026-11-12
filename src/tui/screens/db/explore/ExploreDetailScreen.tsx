@@ -70,7 +70,7 @@ import type {
     IndexSummary,
     ForeignKeySummary,
 } from '../../../../core/explore/index.js';
-import { Hotkey } from '../../../components/layout/Hotkey.js';
+import { Hotkey, HotkeyLine } from '../../../components/layout/Hotkey.js';
 
 /**
  * Route to category mapping.
@@ -969,7 +969,7 @@ export function ExploreDetailScreen({ params }: ScreenProps): ReactElement {
 
             <Box flexWrap="wrap" columnGap={2}>
                 {detailFooterHints({ scrolls, overlay, canPeek: peekable }).map((hint) => (
-                    <Text key={hint} dimColor>{hint}</Text>
+                    <HotkeyLine key={hint}>{hint}</HotkeyLine>
                 ))}
             </Box>
         </Box>

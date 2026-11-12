@@ -29,7 +29,7 @@ import {
     useToast,
     type SelectListItem,
 } from '../../components/index.js';
-import { Hotkey } from '../../components/layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /**
  * Stage list item value.
@@ -262,9 +262,11 @@ export function SettingsStagesListScreen({ params: _params }: ScreenProps): Reac
                 {items.length === 0 ? (
                     <Box flexDirection="column" gap={1}>
                         <Text dimColor>No stages defined.</Text>
-                        <Text>
+                        <KeyTarget keys="a">
+                            <Text>
                             Press <Text color="cyan">a</Text> to add your first stage.
-                        </Text>
+                            </Text>
+                        </KeyTarget>
                     </Box>
                 ) : (
                     <SelectList

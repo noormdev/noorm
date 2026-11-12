@@ -13,7 +13,7 @@ import type { StageSecret } from './types.js';
 import { SelectList, type SelectListItem } from '../lists/index.js';
 import { Confirm } from '../dialogs/index.js';
 import { Panel } from '../layout/index.js';
-import { Hotkey } from '../layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../layout/Hotkey.js';
 
 /**
  * Secret list item value.
@@ -307,9 +307,11 @@ export function SecretDefinitionList({
             {items.length === 0 ? (
                 <Box flexDirection="column" gap={1}>
                     <Text dimColor>No secrets defined.</Text>
-                    <Text>
+                    <KeyTarget keys="a">
+                        <Text>
                         Press <Text color="cyan">a</Text> to add a secret definition.
-                    </Text>
+                        </Text>
+                    </KeyTarget>
                 </Box>
             ) : (
                 <SelectList

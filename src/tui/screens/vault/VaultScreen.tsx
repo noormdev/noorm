@@ -38,7 +38,7 @@ import {
     type VaultSecret,
     type PendingVaultUser,
 } from '../../../core/vault/index.js';
-import { Hotkey } from '../../components/layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../../components/layout/Hotkey.js';
 
 /** Recipients of a propagation, as `getUsersWithoutVaultAccess` returns them. */
 type PropagationRecipient = PendingVaultUser;
@@ -489,7 +489,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                 <Panel title="Vault" paddingX={2} paddingY={1} borderColor="yellow">
                     <Box flexDirection="column" gap={1}>
                         <Text color="yellow">Vault not initialized.</Text>
-                        <Text>Press [i] to initialize the vault for this database.</Text>
+                        <KeyTarget keys="i"><Text>Press [i] to initialize the vault for this database.</Text></KeyTarget>
                     </Box>
                 </Panel>
                 <Box flexWrap="wrap" columnGap={2}>
@@ -596,7 +596,7 @@ export function VaultScreen({ params: _params }: ScreenProps): ReactElement {
                     {listItems.length === 0 ? (
                         <Box flexDirection="column" paddingY={1}>
                             <Text dimColor>No vault secrets yet.</Text>
-                            <Text dimColor>Press [a] to add the first secret.</Text>
+                            <KeyTarget keys="a"><Text dimColor>Press [a] to add the first secret.</Text></KeyTarget>
                         </Box>
                     ) : (
                         <SelectList

@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import type { SecretValueItem, SecretValueSummary } from './types.js';
 
 import { SelectList, type SelectListItem } from '../lists/index.js';
-import { Hotkey } from '../layout/Hotkey.js';
+import { Hotkey, KeyTarget } from '../layout/Hotkey.js';
 
 /**
  * Props for SecretValueList.
@@ -250,9 +250,11 @@ export function SecretValueList({
             {secrets.length === 0 ? (
                 <Box flexDirection="column" gap={1}>
                     <Text dimColor>No secrets defined.</Text>
-                    <Text>
+                    <KeyTarget keys="a">
+                        <Text>
                         Press <Text color="cyan">a</Text> to add a secret.
-                    </Text>
+                        </Text>
+                    </KeyTarget>
                 </Box>
             ) : (
                 <SelectList
