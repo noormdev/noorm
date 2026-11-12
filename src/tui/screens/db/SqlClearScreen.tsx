@@ -18,7 +18,7 @@ import type { ScreenProps } from '../../types.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, Confirm, useToast } from '../../components/index.js';
 import { SqlHistoryManager } from '../../../core/sql-terminal/index.js';
@@ -325,7 +325,7 @@ export function SqlClearScreen({ params: _params }: ScreenProps): ReactElement {
                                 key={option.key}
                                 flexDirection="column"
                                 ref={rowRef(index)}
-                                backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                backgroundColor={isHovered ? hoverBackground() : undefined}
                             >
                                 <Box>
                                     <Text

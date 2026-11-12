@@ -31,16 +31,22 @@ const uiCommand = defineCommand({
     },
     async run() {
 
-        const [{ render }, { default: React }, { App }] = await Promise.all([
+        const [{ render }, { default: React }, { App }, { detectHoverShade, setHoverBackground }] = await Promise.all([
             import('ink'),
             import('react'),
             import('../tui/app.js'),
+            import('../tui/terminal-background.js'),
         ]);
 
         enableAutoLoggerInit(process.cwd(), {
             console: nullStream,
             diagnostics: nullStream,
         });
+
+        // Before Ink owns stdin: it would take the terminal's reply for keypresses.
+        const shade = await detectHoverShade(process.stdin, process.stdout);
+
+        if (shade) setHoverBackground(shade);
 
         const { waitUntilExit, clear, unmount } = render(
             React.createElement(App, { initialRoute: 'home', initialParams: {} }),

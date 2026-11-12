@@ -19,7 +19,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { useFocusScope, useModal } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { Panel } from '../layout/Panel.js';
 
 /**
@@ -170,7 +170,7 @@ export function Confirm({
                 <Text>{message}</Text>
 
                 <Box gap={2}>
-                    <Box ref={rowRef(0)} backgroundColor={hovered === 0 && selected !== 'yes' ? HOVER_BACKGROUND : undefined}>
+                    <Box ref={rowRef(0)} backgroundColor={hovered === 0 && selected !== 'yes' ? hoverBackground() : undefined}>
                         <Text
                             color={selected === 'yes' ? 'green' : undefined}
                             bold={selected === 'yes'}
@@ -179,7 +179,7 @@ export function Confirm({
                             Yes (y)
                         </Text>
                     </Box>
-                    <Box ref={rowRef(1)} backgroundColor={hovered === 1 && selected !== 'no' ? HOVER_BACKGROUND : undefined}>
+                    <Box ref={rowRef(1)} backgroundColor={hovered === 1 && selected !== 'no' ? hoverBackground() : undefined}>
                         <Text color={selected === 'no' ? 'red' : undefined} bold={selected === 'no'}>
                             {selected === 'no' ? '❯ ' : '  '}
                             No (n)

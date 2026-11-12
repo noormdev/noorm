@@ -22,7 +22,7 @@ import { TextInput } from '../forms/TextInput.js';
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { Panel } from '../layout/Panel.js';
 import { Hotkey } from '../layout/Hotkey.js';
@@ -420,7 +420,7 @@ export function FilePicker({
                             <Box
                                 key={filepath}
                                 ref={rowRef(actualIndex)}
-                                backgroundColor={hovered === actualIndex && !isHighlighted ? HOVER_BACKGROUND : undefined}
+                                backgroundColor={hovered === actualIndex && !isHighlighted ? hoverBackground() : undefined}
                             >
                                 <Box flexShrink={0}>
                                     <Text color={isHighlighted ? 'cyan' : undefined}>

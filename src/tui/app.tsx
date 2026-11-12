@@ -35,7 +35,7 @@ import {
     useForceMode,
     useSettings,
 } from './app-context.js';
-import { HOVER_BACKGROUND, MouseProvider, isMouseReport, useMouseTransport, useRowMouse } from './mouse.js';
+import { hoverBackground, MouseProvider, isMouseReport, useMouseTransport, useRowMouse } from './mouse.js';
 import { isMouseEnabled } from '../core/settings/defaults.js';
 import { ToastProvider, ToastRenderer, LogViewerOverlay, useToast } from './components/index.js';
 import { ShutdownProvider } from './shutdown.js';
@@ -176,7 +176,7 @@ function Breadcrumb(): ReactElement {
                         {index > 0 && <Text dimColor> › </Text>}
                         <Box
                             ref={isCurrent ? undefined : rowRef(index)}
-                            backgroundColor={hovered === index && !isCurrent && !isGuarded('busy') && !isGuarded('modal') ? HOVER_BACKGROUND : undefined}
+                            backgroundColor={hovered === index && !isCurrent && !isGuarded('busy') && !isGuarded('modal') ? hoverBackground() : undefined}
                         >
                             <Text color={isCurrent ? 'white' : 'gray'}>{label}</Text>
                         </Box>

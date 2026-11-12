@@ -593,7 +593,7 @@ ui:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `mouse` | `true` | Answer clicks, wheel notches and hover (a shade on what a click would act on) in lists, forms, dialogs, hints and result grids |
+| `mouse` | `true` | Answer clicks, wheel notches and hover (a shade, derived from the terminal's background, on what a click would act on) in lists, forms, dialogs, hints and result grids |
 
 There is no settings-screen toggle and no accessor on `SettingsManager`. What an
 absent flag means is decided in exactly one place, `isMouseEnabled` in

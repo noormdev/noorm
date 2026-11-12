@@ -19,7 +19,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
 
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useOptionalRouter } from '../../router.js';
 import { listMemoryKey, recallListPosition, rememberListPosition } from '../../list-memory.js';
 import { useViewportRows } from '../../hooks/useViewportRows.js';
@@ -530,7 +530,7 @@ export function SelectList<T = unknown>({
                         key={item.key}
                         flexDirection="column"
                         ref={rowRef(actualIndex)}
-                        backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                        backgroundColor={isHovered ? hoverBackground() : undefined}
                     >
                         <Box>
                             {numberNav && (

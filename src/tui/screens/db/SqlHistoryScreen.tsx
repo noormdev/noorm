@@ -23,7 +23,7 @@ import type { SqlHistoryEntry, SqlExecutionResult } from '../../../core/sql-term
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel, Spinner, useToast } from '../../components/index.js';
 import { ResultBrowser } from '../../components/terminal/index.js';
@@ -406,7 +406,7 @@ export function SqlHistoryScreen({ params: _params }: ScreenProps): ReactElement
                                 flexDirection="column"
                                 paddingY={0}
                                 ref={rowRef(actualIndex)}
-                                backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                backgroundColor={isHovered ? hoverBackground() : undefined}
                             >
                                 <Box>
                                     <Text inverse={isHighlighted}>

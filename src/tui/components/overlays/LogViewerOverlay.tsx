@@ -21,7 +21,7 @@ import { Box, Text, useInput } from 'ink';
 import type { ReactElement } from 'react';
 
 import { useFocusScope, useTextEntry } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { readLogFile } from '../../../core/logger/reader.js';
 import { Spinner } from '../feedback/index.js';
@@ -435,7 +435,7 @@ export function LogViewerOverlay({ onClose }: LogViewerOverlayProps): ReactEleme
                                     key={`${entry.time}-${actualIdx}`}
                                     gap={1}
                                     ref={rowRef(actualIdx)}
-                                    backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                    backgroundColor={isHovered ? hoverBackground() : undefined}
                                 >
                                     <Text inverse={isHighlighted}>
                                         {isHighlighted ? '>' : ' '}

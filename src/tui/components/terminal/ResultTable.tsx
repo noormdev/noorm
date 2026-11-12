@@ -37,7 +37,7 @@ import { Box, Text, useInput, useWindowSize } from 'ink';
 import v from 'voca';
 import type { ReactElement } from 'react';
 
-import { HOVER_BACKGROUND, isMouseReport, useRowMouse } from '../../mouse.js';
+import { hoverBackground, isMouseReport, useRowMouse } from '../../mouse.js';
 import { useTextEntry } from '../../focus.js';
 import { fitGridColumns } from './columnFit.js';
 import { documentValue } from './rowDocument.js';
@@ -825,7 +825,7 @@ export function ResultTable({
                 <Box
                     key={index}
                     ref={rowRef(index)}
-                    backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                    backgroundColor={isHovered ? hoverBackground() : undefined}
                 >
                     {drawnColumns.map((col, colIndex) => {
 

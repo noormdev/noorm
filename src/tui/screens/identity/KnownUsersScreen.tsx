@@ -23,7 +23,7 @@ import type { KnownUser } from '../../../core/identity/index.js';
 
 import { useRouter } from '../../router.js';
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useAppContext } from '../../app-context.js';
 import { Panel } from '../../components/index.js';
 import { truncateHash } from '../../../core/identity/index.js';
@@ -197,7 +197,7 @@ export function KnownUsersScreen({ params: _params }: ScreenProps): ReactElement
                                     expanded details under it are not a target. */}
                                 <Box
                                     ref={rowRef(index)}
-                                    backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                    backgroundColor={isHovered ? hoverBackground() : undefined}
                                 >
                                     <Text color={isHighlighted ? 'cyan' : undefined}>
                                         {isHighlighted ? '>' : ' '}

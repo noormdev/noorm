@@ -109,13 +109,7 @@ const LIVE_REGION_ORIGIN_COLUMN = 1;
  */
 export const DOUBLE_CLICK_MS = 400;
 
-/**
- * Background of whatever the pointer is over and a click would act on.
- *
- * ANSI bright black, so it follows the terminal's palette. A theme that maps
- * bright black to its own background (Solarized Dark) shows no shade.
- */
-export const HOVER_BACKGROUND = 'gray';
+export { hoverBackground, setHoverBackground } from './terminal-background.js';
 
 /**
  * Which button a report came from. `none` marks a motion report.
@@ -630,7 +624,7 @@ function hitTest(nodes: Map<number, DOMElement>, row: number, column?: number): 
  *     onWheel: (delta) => step(delta),
  * });
  *
- * <Box ref={rowRef(index)} backgroundColor={hovered === index ? HOVER_BACKGROUND : undefined}>…</Box>
+ * <Box ref={rowRef(index)} backgroundColor={hovered === index ? hoverBackground() : undefined}>…</Box>
  * ```
  */
 export function useRowMouse({ isActive, onClick, onActivate, onWheel, matchColumn = false, ignoreRepeats = false }: RowMouseOptions): RowMouse {

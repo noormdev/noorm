@@ -41,6 +41,7 @@ import {
     isMouseReport,
     installTerminalRestore,
     useRowMouse,
+    setHoverBackground,
     DOUBLE_CLICK_MS,
 } from '../../src/tui/mouse.js';
 import { SelectList } from '../../src/tui/components/lists/index.js';
@@ -1089,6 +1090,7 @@ describe('cli: mouse hover', () => {
     afterEach(() => {
 
         chalk.level = originalChalkLevel;
+        setHoverBackground('gray');
 
     });
 
@@ -1234,6 +1236,29 @@ describe('cli: mouse hover', () => {
 
         expect(lineAt()).toContain('item-03');
         expect(lineAt()).toContain(HOVER_BG);
+
+        unmount();
+
+    });
+
+    it('should shade with the color derived from the terminal when one is set, and change no text style', async () => {
+
+        chalk.level = 3;
+        setHoverBackground('#2d3136');
+
+        const { frames, stdin, unmount } = render(<Harness><SelectList items={ITEMS} /></Harness>);
+
+        await waitFor(() => lastUi(frames).includes('alpha'));
+        await tick();
+
+        const rowOf = (name: string) => lastUi(frames).split('\n').find((line) => line.includes(name)) ?? '';
+        const before = rowOf('charlie');
+
+        stdin.write(move(terminalRowOf(lastUi(frames), 'charlie')));
+        await waitFor(() => rowOf('charlie').includes(`${ESC}[48;2;45;49;54m`));
+
+        // The shade is the only difference: the same text, on a row the background fills out to the edge.
+        expect(rowOf('charlie').replace(new RegExp(`${ESC}\\[(48;2;45;49;54|49)m`, 'g'), '').trimEnd()).toBe(before.trimEnd());
 
         unmount();
 

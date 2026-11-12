@@ -40,7 +40,7 @@ import type { ReactElement } from 'react';
 import type { DOMElement } from 'ink';
 
 import { useFocusScope } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { Hotkey } from '../layout/Hotkey.js';
 
 /** Options an expanded select shows before it starts scrolling. */
@@ -214,7 +214,7 @@ function SelectField({
                 const isHovered = hoveredOption === actualIndex && !isHighlighted;
 
                 return (
-                    <Box key={option.value} ref={rowRef(actualIndex)} backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}>
+                    <Box key={option.value} ref={rowRef(actualIndex)} backgroundColor={isHovered ? hoverBackground() : undefined}>
                         <Text
                             color={isHighlighted && isActive ? 'cyan' : undefined}
                             bold={isHighlighted && isActive}
@@ -948,11 +948,11 @@ export function Form({
                 const starWidth = field.required ? 1 : 0;
 
                 return (
-                    <Box key={field.key} ref={rowRef(index)} backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}>
+                    <Box key={field.key} ref={rowRef(index)} backgroundColor={isHovered ? hoverBackground() : undefined}>
                         <Box width={labelColumnWidth} flexShrink={0}>
                             <Text
                                 color={isActive ? 'cyan' : undefined}
-                                dimColor={!isActive && !isHovered}
+                                dimColor={!isActive}
                                 bold={isActive}
                             >
                                 {isActive ? '› ' : '  '}
@@ -1025,12 +1025,12 @@ export function Form({
                             <Box
                                 key={action}
                                 ref={rowRef(fields.length + actionIndex)}
-                                backgroundColor={isHovered ? HOVER_BACKGROUND : undefined}
+                                backgroundColor={isHovered ? hoverBackground() : undefined}
                             >
                                 <Text
                                     color={focused ? 'cyan' : undefined}
                                     bold={focused}
-                                    dimColor={!focused && !isHovered}
+                                    dimColor={!focused}
                                 >
                                     {focused ? '❯ ' : '  '}[ {label} ]
                                 </Text>

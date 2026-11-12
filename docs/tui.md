@@ -152,7 +152,7 @@ A hint does nothing while a confirmation holds the screen, since the key would a
 | Rows of the file picker | Click moves the cursor and enters select mode; double-click toggles the checkbox |
 | Rows of the log viewer, SQL history and clear lists, known users, result grids | Click moves the cursor; double-click does what `Enter` does |
 
-Moving the pointer over anything a click would act on shades it with a gray background, so you can see what is clickable. The cursor row keeps its own marker and is not shaded. Nothing shades, or answers a click, in a list that does not hold focus.
+Moving the pointer over anything a click would act on shades it, so you can see what is clickable. The shade is a step off your terminal's own background (lighter on a dark theme, darker on a light one), asked for when `noorm ui` starts, and the text keeps its color. A terminal that does not report its background gets ANSI bright black instead. The cursor row keeps its own marker and is not shaded. Nothing shades, or answers a click, in a list that does not hold focus.
 
 
 ::: tip

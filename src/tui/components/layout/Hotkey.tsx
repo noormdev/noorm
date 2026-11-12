@@ -21,7 +21,7 @@ import { Box, Text, useStdin } from 'ink';
 import type { ReactElement, ReactNode } from 'react';
 
 import { useIsGuarded, useIsTyping } from '../../focus.js';
-import { HOVER_BACKGROUND, useRowMouse } from '../../mouse.js';
+import { hoverBackground, useRowMouse } from '../../mouse.js';
 
 const ESC = String.fromCharCode(27);
 
@@ -170,7 +170,7 @@ export function KeyTarget({ keys, children, block = false }: KeyTargetProps): Re
         <Box
             ref={rowRef(0)}
             alignSelf={block ? 'stretch' : 'flex-start'}
-            backgroundColor={hovered === 0 && !isBlocked() ? HOVER_BACKGROUND : undefined}
+            backgroundColor={hovered === 0 && !isBlocked() ? hoverBackground() : undefined}
         >
             {children}
         </Box>
