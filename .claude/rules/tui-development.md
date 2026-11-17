@@ -426,7 +426,7 @@ It is **on** unless `ui.mouse` is false in `.noorm/settings.yml`. Off means iner
 | API | What it covers |
 |-----|----------------|
 | `usePaste` | Bracketed paste delivered as a single string. `SqlInput` currently submits only the first line of a multi-line paste. |
-| `useBoxMetrics` | Used for the height of `Form`'s status error and the width `TextInput` scrolls within. Still unused for measured box width/height/left/top instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
+| `useBoxMetrics` | Used for the height of `Form`'s status error, the width `TextInput` scrolls within, and the rows `ChangeListScreen`'s hint row wraps to. Still unused for measured box width/height/left/top instead of the hand-counted chrome constants at `SqlTerminalScreen.tsx:57` and `ConfigEditScreen.tsx:268`. |
 | `useAnimation`, `suspendTerminal()`, `interactive` | No current need. |
 
 `<Text>` no longer accepts `wrap="end"` or `wrap="middle"`. Both were undocumented no-ops on 6.8.0 and were dropped from the type in 7.0.0. This codebase uses `wrap="wrap"`, `wrap="truncate"`, and `wrap="truncate-start"` (`FilePicker` paths, where the end is what identifies a file), so nothing changed.

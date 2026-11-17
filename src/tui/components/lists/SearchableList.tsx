@@ -20,7 +20,6 @@ import { TextInput } from '../forms/TextInput.js';
 import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
-import { useViewportRows } from '../../hooks/useViewportRows.js';
 import { SelectList } from './SelectList.js';
 import { Hotkey, KeyTarget } from '../layout/Hotkey.js';
 
@@ -129,11 +128,6 @@ export function SearchableList<T = unknown>({
     onCancel,
     renderItem,
 }: SearchableListProps<T>): ReactElement {
-
-    // The wrapped SelectList is handed a resolved number, so it never
-    // double-counts this component's search and hint rows.
-    const availableRows = useViewportRows(SEARCH_CHROME_ROWS + reserveRows);
-    const visibleCount = pinnedVisibleCount ?? availableRows;
 
     // Focus management
     const hasExternalFocus = externalFocused !== undefined;
@@ -346,7 +340,8 @@ export function SearchableList<T = unknown>({
                     items={filteredItems}
                     onSelect={onSelect}
                     onHighlight={handleHighlightChange}
-                    visibleCount={visibleCount}
+                    visibleCount={pinnedVisibleCount}
+                    reserveRows={SEARCH_CHROME_ROWS + reserveRows}
                     isFocused={isFocused && !searchMode}
                     numberNav={numberNav}
                     defaultValue={currentHighlightedKey}
