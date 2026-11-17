@@ -76,6 +76,37 @@ export function viewportRows(terminalRows: number, reserveRows = 0): number {
 }
 
 /**
+ * Rows the `↑ N more` and `↓ N more` lines claim once a list overflows.
+ *
+ * Held back as a pair rather than per indicator, so the list keeps one height
+ * for the whole scroll instead of growing a row at each end.
+ */
+export const SCROLL_INDICATOR_ROWS = 2;
+
+/**
+ * Rows a list's items may take once its scroll indicators are paid for, or its
+ * indicators push the screen's footer off the bottom. Below
+ * `MIN_VIEWPORT_ROWS + SCROLL_INDICATOR_ROWS` the indicators overflow instead
+ * of shrinking the list under the floor.
+ *
+ * @example
+ * rowsThatFit(4, 20);  // 20 — fits, no indicators
+ * rowsThatFit(60, 20); // 18 — two rows go to the indicators
+ * rowsThatFit(60, 5);  // 5  — the floor
+ */
+export function rowsThatFit(itemRows: number, budget: number): number {
+
+    if (itemRows <= budget) {
+
+        return budget;
+
+    }
+
+    return Math.max(budget - SCROLL_INDICATOR_ROWS, MIN_VIEWPORT_ROWS);
+
+}
+
+/**
  * Rows the calling component may draw, recomputed whenever the terminal resizes.
  *
  * `useWindowSize` rather than `useStdout`: `stdout.rows` mutates on resize
@@ -83,9 +114,12 @@ export function viewportRows(terminalRows: number, reserveRows = 0): number {
  * size. Call it above any early return, or the hook count changes across an
  * async load boundary.
  *
+ * Pass a list's chrome as `reserveRows` rather than pinning this as its
+ * `visibleCount`: a pinned count is an item count, so the list's scroll
+ * indicators would be drawn on top of the budget.
+ *
  * @example
  * const rows = useViewportRows(bannerRows);
- * <SelectList items={items} visibleCount={rows} />
  */
 export function useViewportRows(reserveRows = 0): number {
 

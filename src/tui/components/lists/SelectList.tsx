@@ -22,7 +22,7 @@ import { useFocusScope } from '../../focus.js';
 import { hoverBackground, useRowMouse } from '../../mouse.js';
 import { useOptionalRouter } from '../../router.js';
 import { listMemoryKey, recallListPosition, rememberListPosition } from '../../list-memory.js';
-import { useViewportRows } from '../../hooks/useViewportRows.js';
+import { rowsThatFit, useViewportRows } from '../../hooks/useViewportRows.js';
 
 /**
  * Item in a SelectList.
@@ -176,7 +176,6 @@ export function SelectList<T = unknown>({
     // under-fills a mixed list rather than running it off the bottom.
     const availableRows = useViewportRows(reserveRows);
     const rowsPerItem = showDescriptionBelow ? 2 : 1;
-    const visibleCount = pinnedVisibleCount ?? Math.max(1, Math.floor(availableRows / rowsPerItem));
 
     // Use external focus if provided, otherwise manage own focus scope
     const hasExternalFocus = externalFocused !== undefined;
@@ -188,6 +187,10 @@ export function SelectList<T = unknown>({
 
     // Filter enabled items
     const enabledItems = useMemo(() => items.filter((item) => !item.disabled), [items]);
+
+    // A pinned count is an item count by contract, so the indicators stay on top of it.
+    const itemRows = rowsThatFit(enabledItems.length * rowsPerItem, availableRows);
+    const visibleCount = pinnedVisibleCount ?? Math.max(1, Math.floor(itemRows / rowsPerItem));
 
     // Refs for latest values - useInput handler reads these to avoid stale closures
     const enabledItemsRef = useRef(enabledItems);

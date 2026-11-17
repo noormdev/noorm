@@ -23,7 +23,7 @@ import type { ReactElement } from 'react';
 
 import { useFocusScope } from '../../focus.js';
 import { hoverBackground, useRowMouse } from '../../mouse.js';
-import { useViewportRows } from '../../hooks/useViewportRows.js';
+import { rowsThatFit, useViewportRows } from '../../hooks/useViewportRows.js';
 import { Panel } from '../layout/Panel.js';
 import { Hotkey } from '../layout/Hotkey.js';
 
@@ -116,7 +116,6 @@ export function FilePicker({
 }: FilePickerProps): ReactElement {
 
     const availableRows = useViewportRows(PICKER_CHROME_ROWS + reserveRows);
-    const visibleCount = pinnedVisibleCount ?? availableRows;
 
     const { isFocused } = useFocusScope(focusLabel);
 
@@ -129,6 +128,7 @@ export function FilePicker({
 
     // Filtered files based on search
     const filteredFiles = useMemo(() => filterFiles(files, search), [files, search]);
+    const visibleCount = pinnedVisibleCount ?? rowsThatFit(filteredFiles.length, availableRows);
 
     // Visible files window
     const visibleFiles = useMemo(

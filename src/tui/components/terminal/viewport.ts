@@ -19,19 +19,13 @@
  */
 import type { Key } from 'ink';
 
+import { SCROLL_INDICATOR_ROWS } from '../../hooks/useViewportRows.js';
+
 /** Columns a Panel spends on its border and horizontal padding. */
 const PANEL_CHROME_COLUMNS = 4;
 
 /** Narrowest row worth planning for. Below it the terminal is unusable anyway. */
 const MIN_ROW_COLUMNS = 24;
-
-/**
- * Rows the two scroll indicators claim once the content overflows.
- *
- * Held back as a pair rather than per-indicator so the viewport keeps one
- * height for the whole scroll, instead of growing a row at each end.
- */
-const INDICATOR_ROWS = 2;
 
 /**
  * Columns a row inside a Panel actually gets.
@@ -83,7 +77,7 @@ export function rowWindow(total: number, offset: number, budget: number): RowWin
 
     }
 
-    const count = Math.max(1, budget - INDICATOR_ROWS);
+    const count = Math.max(1, budget - SCROLL_INDICATOR_ROWS);
     const start = Math.min(Math.max(offset, 0), total - count);
 
     return { start, count, above: start, below: total - start - count };

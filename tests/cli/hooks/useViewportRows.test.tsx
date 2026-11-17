@@ -146,6 +146,38 @@ describe('cli: useViewportRows', () => {
 
         });
 
+        // The `↑ N more` / `↓ N more` lines are rows too. Left out of the
+        // budget, a scrolled list drew two rows past it and pushed the screen's
+        // hotkey footer off the bottom of the terminal.
+        it('should fit its scroll indicators inside the budget while scrolled', async () => {
+
+            pinTerminal(30);
+
+            const { stdin, lastFrame, unmount } = render(
+                <FocusProvider><SelectList items={items(60)} /></FocusProvider>,
+            );
+
+            // Press until the window has scrolled off both ends, polling rather
+            // than betting on a fixed sleep for focus and each repaint.
+            const scrolled = () => /↑ \d+ more/.test(lastFrame() ?? '') && /↓ \d+ more/.test(lastFrame() ?? '');
+            const deadline = Date.now() + 2000;
+
+            while (!scrolled() && Date.now() < deadline) {
+
+                stdin.write('\u001B[B');
+                await new Promise((resolve) => setTimeout(resolve, 10));
+
+            }
+
+            const frame = lastFrame() ?? '';
+            unmount();
+
+            expect(frame).toMatch(/↑ \d+ more/);
+            expect(frame).toMatch(/↓ \d+ more/);
+            expect(frame.split('\n').length).toBeLessThanOrEqual(viewportRows(30));
+
+        });
+
     });
 
     describe('SearchableList', () => {
@@ -167,6 +199,21 @@ describe('cli: useViewportRows', () => {
 
         });
 
+        it('should draw no more lines than the budget, search row and scroll indicators included', () => {
+
+            pinTerminal(30);
+
+            const { lastFrame, unmount } = render(
+                <FocusProvider><SearchableList items={items(60)} /></FocusProvider>,
+            );
+            const frame = lastFrame() ?? '';
+            unmount();
+
+            expect(frame).toMatch(/↓ \d+ more/);
+            expect(frame.split('\n').length).toBeLessThanOrEqual(viewportRows(30));
+
+        });
+
     });
 
     describe('FilePicker', () => {
@@ -177,6 +224,25 @@ describe('cli: useViewportRows', () => {
             const picker = <FilePicker files={files} onSelect={() => {}} onCancel={() => {}} />;
 
             expect(rowsAt(60, picker)).toBeGreaterThan(rowsAt(24, picker));
+
+        });
+
+        // The picker brings its own Panel and help line, so the whole frame has
+        // to fit what the shell leaves: the terminal less the breadcrumb, the
+        // status bar and their two rules.
+        it('should fit the terminal, scroll indicator included', () => {
+
+            pinTerminal(30);
+
+            const files = Array.from({ length: 60 }, (_, index) => `row-${index}.sql`);
+            const { lastFrame, unmount } = render(
+                <FocusProvider><FilePicker files={files} onSelect={() => {}} onCancel={() => {}} /></FocusProvider>,
+            );
+            const frame = lastFrame() ?? '';
+            unmount();
+
+            expect(frame).toMatch(/↓ \d+ more/);
+            expect(frame.split('\n').length).toBeLessThanOrEqual(30 - 4);
 
         });
 
