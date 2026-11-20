@@ -2,9 +2,35 @@
  * noorm change ff — fast-forward apply all pending changes.
  */
 import { defineCommand } from 'citty';
+import { confirm, isCancel, log, multiselect } from '@clack/prompts';
 
-import { withContext, outputResult, sharedArgs } from '../_utils.js';
+import type { BatchChangeOptions } from '../../core/change/types.js';
+import { isCi } from '../../core/environment.js';
+import { isAgentSession, resolveChannel } from '../../core/policy/index.js';
+
+import { isYesMode, withContext, outputResult, sharedArgs } from '../_utils.js';
 import { exitCodeForStatus } from '../_exit.js';
+
+const confirmRetirement: NonNullable<BatchChangeOptions['confirmRetirement']> = async (failures) => {
+
+    log.warn(failures.map(({ name, message }) => `${name}: ${message}`).join('\n'));
+
+    const names = await multiselect({
+        message: 'Select changes to retire',
+        options: failures.map(({ name }) => ({ value: name, label: name })),
+        required: false,
+    });
+
+    if (isCancel(names) || names.length === 0) return [];
+
+    const confirmed = await confirm({
+        message: 'Confirm all supported databases have caught up and rollback is no longer needed for these changes',
+        initialValue: false,
+    });
+
+    return !isCancel(confirmed) && confirmed ? names : [];
+
+};
 
 const ffCommand = defineCommand({
     meta: {
@@ -21,12 +47,16 @@ const ffCommand = defineCommand({
 
         const dryRun = Boolean(args.dryRun);
         const force = Boolean(args.force);
+        const canPrompt = !dryRun && !args.json && process.stdin.isTTY && process.stdout.isTTY
+            && !isYesMode(args) && !isCi()
+            && resolveChannel() === 'user' && !isAgentSession();
+        const options: BatchChangeOptions = canPrompt ? { dryRun, force, confirmRetirement } : { dryRun, force };
 
         const [result, error] = await withContext({
             args,
             fn: (ctx, logger) => {
 
-                return ctx.noorm.changes.ff({ dryRun, force }).then((res) => {
+                return ctx.noorm.changes.ff(options).then((res) => {
 
                     if (!args.json) {
 

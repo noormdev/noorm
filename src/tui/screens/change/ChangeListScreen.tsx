@@ -80,7 +80,13 @@ function getStatusIndicator(item: ChangeListItem): { symbol: string; color: stri
  */
 function isRunnable(item: ChangeListItem): boolean {
 
-    return item.status === 'pending' || item.status === 'failed' || item.status === 'reverted';
+    return !item.retired && (item.status === 'pending' || item.status === 'failed' || item.status === 'reverted');
+
+}
+
+function isRevertible(item: ChangeListItem): boolean {
+
+    return !item.retired && item.status === 'success';
 
 }
 
@@ -95,7 +101,7 @@ function detailHint(item: ChangeListItem): string {
 
     }
 
-    if (item.status === 'success') {
+    if (isRevertible(item)) {
 
         return 'Press Enter to revert';
 
@@ -124,10 +130,13 @@ function changeRow(cs: ChangeListItem, state: SelectListRowState): ReactElement 
                 {oneLine(cs.name)}
             </Text>
             <Text dimColor wrap="truncate">
+                {cs.retired && '  Retired'}
+                {cs.retired && cs.status === 'success' && '  applied'}
+                {cs.retired && cs.status === 'stale' && '  stale'}
                 {cs.status === 'success' && cs.appliedAt && (
                     <> {relativeTimeAgo(cs.appliedAt)}</>
                 )}
-                {cs.status === 'pending' && '  pending'}
+                {cs.status === 'pending' && (!cs.retired || !cs.isNew) && '  pending'}
                 {cs.status === 'reverted' && '  reverted'}
                 {cs.status === 'failed' && '  failed'}
                 {cs.orphaned && '  (orphaned)'}
@@ -172,13 +181,13 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         const [_, err] = await attempt(async () => {
 
-            const { changes: diskChanges, statuses, failures } = await loadChangesWithStatus(
+            const { changes: diskChanges, statuses, failures, retired } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
             if (isCancelled()) return;
 
-            const merged = buildMergedChangeList(diskChanges, statuses, failures);
+            const merged = buildMergedChangeList(diskChanges, statuses, failures, retired);
 
             // The list reports a highlight only while it has rows, so an empty
             // reload would otherwise leave the keys acting on a vanished change.
@@ -225,7 +234,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'e' && selectedChange && !selectedChange.orphaned) {
+        if (input === 'e' && selectedChange && !selectedChange.orphaned && !selectedChange.retired) {
 
             navigate('change/edit', { name: selectedChange.name });
 
@@ -233,7 +242,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'd' && selectedChange) {
+        if (input === 'd' && selectedChange && !selectedChange.retired) {
 
             navigate('change/rm', { name: selectedChange.name });
 
@@ -249,7 +258,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
         }
 
-        if (input === 'v' && selectedChange && selectedChange.status === 'success') {
+        if (input === 'v' && selectedChange && isRevertible(selectedChange)) {
 
             navigate('change/revert', { name: selectedChange.name });
 
@@ -327,7 +336,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
 
     // Statistics
     const applied = changes.filter((cs) => cs.status === 'success').length;
-    const pending = changes.filter((cs) => cs.status === 'pending').length;
+    const pending = changes.filter((cs) => cs.status === 'pending' && !cs.retired).length;
     const failed = changes.filter((cs) => cs.status === 'failed').length;
     const orphaned = changes.filter((cs) => cs.orphaned).length;
 
@@ -390,7 +399,7 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                                     navigate('change/run', { name: item.value.name });
 
                                 }
-                                else if (item.value.status === 'success') {
+                                else if (isRevertible(item.value)) {
 
                                     navigate('change/revert', { name: item.value.name });
 
@@ -433,10 +442,14 @@ export function ChangeListScreen({ params: _params }: ScreenProps): ReactElement
                 {/* Keyboard hints, measured - see CHROME_ROWS */}
                 <Box ref={hintsRef} flexWrap="wrap" columnGap={2}>
                     <Hotkey keys="a">Add</Hotkey>
-                    <Hotkey keys="e">Edit</Hotkey>
-                    <Hotkey keys="d">Delete</Hotkey>
-                    <Hotkey keys="r">Run</Hotkey>
-                    <Hotkey keys="v">Revert</Hotkey>
+                    {!selectedChange?.retired && (
+                        <>
+                            <Hotkey keys="e">Edit</Hotkey>
+                            <Hotkey keys="d">Delete</Hotkey>
+                            <Hotkey keys="r">Run</Hotkey>
+                            <Hotkey keys="v">Revert</Hotkey>
+                        </>
+                    )}
                     <Hotkey keys="n">Next</Hotkey>
                     <Hotkey keys="f">FF</Hotkey>
                     <Hotkey keys="w">Rewind</Hotkey>

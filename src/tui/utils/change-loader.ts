@@ -17,11 +17,13 @@ import type { Kysely } from 'kysely';
 import type { Config, Settings } from '../../core/index.js';
 import type { Change, ChangeStatus, ChangeListItem } from '../../core/change/types.js';
 import type { NoormDatabase } from '../../core/shared/index.js';
+import type { Direction } from '../../core/shared/tables.js';
 
 import { failureListItem, scanChanges } from '../../core/change/parser.js';
 import type { ChangeParseFailure } from '../../core/change/parser.js';
 import { isPendingChange } from '../../core/change/types.js';
 import { ChangeHistory } from '../../core/change/history.js';
+import { readRetiredChanges } from '../../core/change/retirement.js';
 import { createConnection } from '../../core/connection/factory.js';
 import { resolveChangesDir, resolveSqlDir } from './paths.js';
 
@@ -31,6 +33,7 @@ import { resolveChangesDir, resolveSqlDir } from './paths.js';
 export interface ChangesWithStatus {
     changes: Change[];
     statuses: Map<string, ChangeStatus>;
+    retired: ReadonlySet<string>;
 
     /** Folders on disk that could not be parsed; they must not vanish from the views */
     failures: ChangeParseFailure[];
@@ -55,11 +58,14 @@ export async function loadChangesWithStatus(
     activeConfigName: string,
     settings: Settings | null,
     projectRoot: string,
+    direction: Direction = 'change',
 ): Promise<ChangesWithStatus> {
 
+    const retired = await readRetiredChanges(projectRoot);
     const { changes, failures } = await scanChanges(
         resolveChangesDir(projectRoot, settings),
         resolveSqlDir(projectRoot, settings),
+        { retired, direction },
     );
 
     const conn = await createConnection(
@@ -73,7 +79,7 @@ export async function loadChangesWithStatus(
 
     await conn.destroy();
 
-    return { changes, statuses, failures };
+    return { changes, statuses, failures, retired };
 
 }
 
@@ -135,43 +141,17 @@ export function buildPendingChangeList(
 export function buildAppliedChangeList(
     changes: Change[],
     statuses: Map<string, ChangeStatus>,
+    failures: ChangeParseFailure[],
+    retired: ReadonlySet<string>,
 ): ChangeListItem[] {
 
-    return changes
-        .filter((cs) => {
-
-            const status = statuses.get(cs.name);
-
-            return status?.status === 'success';
-
-        })
-        .map((cs) => {
-
-            const status = statuses.get(cs.name)!;
-
-            return {
-                name: cs.name,
-                path: cs.path,
-                date: cs.date,
-                description: cs.description,
-                status: 'success' as const,
-                appliedAt: status.appliedAt,
-                appliedBy: status.appliedBy,
-                revertedAt: null,
-                errorMessage: null,
-                isNew: false,
-                orphaned: false,
-                changeFiles: cs.changeFiles,
-                revertFiles: cs.revertFiles,
-            };
-
-        })
+    return buildMergedChangeList(changes, statuses, failures, retired)
+        .filter((cs) => !cs.orphaned && cs.status === 'success' && cs.appliedAt)
         .sort((a, b) => {
 
-            const dateA = a.appliedAt?.getTime() ?? 0;
-            const dateB = b.appliedAt?.getTime() ?? 0;
+            const byDate = (b.appliedAt?.getTime() ?? 0) - (a.appliedAt?.getTime() ?? 0);
 
-            return dateB - dateA;
+            return byDate || (b.appliedHistoryId ?? 0) - (a.appliedHistoryId ?? 0);
 
         });
 
@@ -189,6 +169,7 @@ export function buildMergedChangeList(
     changes: Change[],
     statuses: Map<string, ChangeStatus>,
     failures: ChangeParseFailure[] = [],
+    retired: ReadonlySet<string> = new Set<string>(),
 ): ChangeListItem[] {
 
     const merged: ChangeListItem[] = failures.map((failure) => failureListItem(failure, statuses.get(failure.name)));
@@ -206,6 +187,7 @@ export function buildMergedChangeList(
             revertFiles: cs.revertFiles,
             hasChangelog: cs.hasChangelog,
             status: dbStatus?.status ?? 'pending',
+            appliedHistoryId: dbStatus?.appliedHistoryId,
             appliedAt: dbStatus?.appliedAt ?? null,
             appliedBy: dbStatus?.appliedBy ?? null,
             revertedAt: dbStatus?.revertedAt ?? null,
@@ -217,36 +199,29 @@ export function buildMergedChangeList(
     }
 
     // Add orphaned changes (in DB but not on disk)
-    const diskNames: Record<string, true> = {};
+    const diskNames = new Set(merged.map((item) => item.name));
 
-    for (const cs of changes) {
+    for (const name of new Set([...statuses.keys(), ...retired])) {
 
-        diskNames[cs.name] = true;
+        if (!diskNames.has(name)) {
 
-    }
-
-    for (const failure of failures) {
-
-        diskNames[failure.name] = true;
-
-    }
-
-    for (const [name, status] of statuses) {
-
-        if (!diskNames[name]) {
+            const status = statuses.get(name);
+            const isRetired = retired.has(name);
 
             merged.push({
                 name,
                 path: '',
                 date: null,
                 description: name,
-                status: status.status,
-                appliedAt: status.appliedAt,
-                appliedBy: status.appliedBy,
-                revertedAt: status.revertedAt,
-                errorMessage: status.errorMessage,
-                isNew: false,
-                orphaned: true,
+                status: status?.status ?? 'pending',
+                appliedAt: status?.appliedAt ?? null,
+                appliedBy: status?.appliedBy ?? null,
+                appliedHistoryId: status?.appliedHistoryId,
+                revertedAt: status?.revertedAt ?? null,
+                errorMessage: status?.errorMessage ?? null,
+                isNew: !status,
+                orphaned: !isRetired,
+                ...(isRetired ? { retired: true } : {}),
             });
 
         }

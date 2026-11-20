@@ -1025,11 +1025,11 @@ A build over zero files still succeeds, so `unmatchedInclude` is how a mistyped 
 | `reorderFiles(change, folder, newOrder)` | `Promise<Change>` | none | Renumbers by the order of filenames given |
 | `delete(change)` | `Promise<void>` | `change:rm` | Removes the folder from disk |
 | `discover()` | `Promise<Change[]>` | none | Every parseable change. Folders that fail to parse are dropped and reported as `error` events |
-| `parse(name)` | `Promise<Change>` | none | Throws `ChangeNotFoundError`, `ChangeValidationError`, or `ManifestReferenceError` |
+| `parse(name, direction?)` | `Promise<Change>` | none | Resolves both directions by default. Pass `'change'` or `'revert'` to resolve references for that direction only. Throws `ManifestReferenceError` for one missing reference or `AggregateError` for several |
 | `validate(change)` | `void` | none | Throws `ChangeValidationError` on duplicate filenames in a folder |
 | `apply(name, options?)` | `Promise<ChangeResult>` | `change:run` | An applied, unchanged change returns `success` with no files |
 | `revert(name, options?)` | `Promise<ChangeResult>` | `change:revert` | Throws `ChangeNotAppliedError` for a never-applied change, with `dryRun` and `preview` too |
-| `ff(options?)` | `Promise<BatchChangeResult>` | `change:ff` | Applies every pending change in name order |
+| `ff(options?)` | `Promise<BatchChangeResult>` | `change:ff` | Checks the full pending batch for unreadable forward SQL before applying any changes |
 | `next(count = 1, options?)` | `Promise<BatchChangeResult>` | `change:run` | Applies the next `count` pending changes |
 | `rewind(target, options?)` | `Promise<BatchChangeResult>` | `change:revert` | Reverts newest first. `target` is a change name (reverts it and everything after) or a number of changes |
 | `status()` | `Promise<ChangeListItem[]>` | none | Every change, merged from disk and database, sorted by name |
@@ -1069,8 +1069,9 @@ A `txt` file is a manifest: one path per line, relative to `paths.sql`, that run
 | `preview` | `boolean` | `false` | all | Emit rendered SQL without writing |
 | `output` | `string \| null` | `null` | all | File that receives preview output |
 | `abortOnError` | `boolean` | `true` | `ff`, `next`, `rewind` | Stop at the first failure |
+| `confirmRetirement` | `(failures: readonly { name: string; message: string }[]) => Promise<readonly string[]>` | unset | `ff` | An optional callback for human callers. Return only the names confirmed for project-wide retirement. An empty list stops the blocked batch without writing |
 
-`ChangeOptions` holds the first four. `BatchChangeOptions` adds `abortOnError` and is not exported. `AddFileOptions` is `{ name: string; type: 'sql' \| 'txt'; paths?: string[]; content?: string }`; `CreateChangeOptions` is `{ description: string; date?: Date }`.
+`ChangeOptions` holds the first four. `BatchChangeOptions` adds `abortOnError` and `confirmRetirement` and is not exported. `AddFileOptions` is `{ name: string; type: 'sql' \| 'txt'; paths?: string[]; content?: string }`; `CreateChangeOptions` is `{ description: string; date?: Date }`.
 
 A change moves between five statuses. `pending()` returns `pending`, `reverted`, and `stale`, plus a folder that never ran and fails to parse:
 
@@ -1088,7 +1089,7 @@ stateDiagram-v2
 
 On PostgreSQL a failed change rolls back its history rows, so it keeps its previous status. On mysql, mssql, and sqlite the failure is recorded as `failed`.
 
-An unparseable folder, such as a manifest that names a `db/sql/` file that no longer exists, comes back from `status()` and `pending()` as `status: 'failed'` and `isNew: true`, with `errorMessage` holding the parse error. `ff` and `next` fail at that change when they would run it, instead of skipping it. If the change already ran, it keeps its status and the batch adds a warning. A folder with neither `change/` nor `revert/` is not a change and is ignored.
+An unreadable forward folder that never ran appears in `status()` and `pending()` with `status: 'failed'`, `isNew: true`, and the parse error in `errorMessage`. `ff` checks the entire pending batch before running SQL. By default, `next` stops at the unreadable change when it reaches it. Changes listed in `.noorm/retired.yml` are not candidates for either command. [Retire obsolete changes](/guide/changes/forward-revert#how-do-i-retire-obsolete-changes) explains when to use the list.
 
 `ChangeListItem`:
 
@@ -1102,7 +1103,8 @@ An unparseable folder, such as a manifest that names a `db/sql/` file that no lo
 | `errorMessage` | `string \| null` | Failure message or parse error |
 | `appliedHistoryId` | `number \| null` | History id behind `appliedAt`; the true apply order |
 | `isNew` | `boolean` | On disk with no record |
-| `orphaned` | `boolean` | Recorded in the database, folder gone |
+| `orphaned` | `boolean` | The database has history for the change, its folder is gone, and the project has not declared it retired. |
+| `retired` | `boolean` when present | The project declares the change retired. Its execution status stays separate. |
 
 `ChangeResult`: `name`, `direction` (`'change' \| 'revert'`), `status`, `files` (each with `filepath`, `checksum`, `status`, `skipReason?`, `durationMs?`, `error?`, `renderedSql?`), `durationMs`, `error?`, `operationId?`.
 
@@ -1475,6 +1477,7 @@ Every class below is exported from `@noormdev/sdk`:
 | `ChangeValidationError` | `validate()` found duplicates, a change has no files, or its files are empty or only template placeholders | `changeName`, `issue` |
 | `ChangeNotFoundError` | `parse`, `apply`, or `revert` named a change that is not on disk | `changeName` |
 | `ChangeOrphanedError` | `apply` or `revert` named a change recorded in the database whose folder is gone | `changeName` |
+| `ChangeRetiredError` | A direct run or revert targets a change declared retired | `changeName` |
 | `ChangeNotAppliedError` | `revert` of a change that was never applied | `changeName` |
 | `ChangeAlreadyAppliedError` | Exported; no SDK method throws it today | `changeName`, `appliedAt` |
 | `ManifestReferenceError` | A `.txt` manifest names a file that is not under `paths.sql` | `manifestPath`, `missingPath` |
@@ -1498,7 +1501,7 @@ Every class below is exported from `@noormdev/sdk`:
 | Transfer and DT | `TransferOptions`, `TransferPlan`, `TransferTablePlan`, `TransferResult`, `TransferTableResult`, `ConflictStrategy`, `ExportOptions`, `ImportOptions` |
 | Routines | `tvp`, `TvpValue`, `ImpersonatedScope`, `RoutineCalls`, `TransactionScope`, `ExtractArgs`, `ExtractReturn` |
 | Events | `noormObserver`, `NoormEvents`, `NoormEventNames` |
-| Errors | `RequireTestError`, `ProtectedConfigError`, `SslFileError`, `NotConnectedError`, `ResetBuildError`, `DisconnectedError`, `DatabaseConnectionError`, `VersionMismatchError`, `MigrationError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ManifestReferenceError` |
+| Errors | `RequireTestError`, `ProtectedConfigError`, `SslFileError`, `NotConnectedError`, `ResetBuildError`, `DisconnectedError`, `DatabaseConnectionError`, `VersionMismatchError`, `MigrationError`, `VaultAccessError`, `ImpersonationError`, `LockAcquireError`, `LockExpiredError`, `ChangeValidationError`, `ChangeNotFoundError`, `ChangeAlreadyAppliedError`, `ChangeNotAppliedError`, `ChangeOrphanedError`, `ChangeRetiredError`, `ManifestReferenceError` |
 
 Four shapes that public signatures name are not exported: `BatchChangeOptions` (`changes.ff`, `next`, `rewind`), `FileHistoryRecord` (`changes.getFileHistory`), `TeardownOptions` (`db.teardown`), and `ForceReleaseResult` (`lock.forceRelease`). Declare them inline, or derive them with `Parameters<>` and `Awaited<ReturnType<>>`.
 

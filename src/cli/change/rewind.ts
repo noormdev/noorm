@@ -51,7 +51,7 @@ const rewindCommand = defineCommand({
                     const picked = await selectChangeFromStatus(status, {
                         message: 'Rewind back to which change?',
                         emptyMessage: 'No applied changes to rewind through.',
-                        filter: (c) => c.status === 'success',
+                        filter: (c) => !c.retired && c.status === 'success',
                     });
 
                     if (!picked) {

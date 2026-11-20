@@ -87,9 +87,11 @@ export function ChangeRunScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes } = await loadChangesWithStatus(
+            const { changes, retired } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
+
+            if (retired.has(changeName)) throw new Error(`Change "${changeName}" is retired`);
 
             const found = changes.find((cs) => cs.name === changeName);
 

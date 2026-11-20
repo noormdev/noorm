@@ -100,21 +100,37 @@ The retry skips files that already passed. If a half-applied run needs manual cl
 ## What happens when a change folder cannot be read?
 
 
-A manifest that names a file no longer in `db/sql/` makes its change unreadable. `ff` and `next` do not step over it:
+A manifest that names a missing file in `db/sql/` makes that direction of the change unreadable. During forward execution, `ff` checks the whole pending batch before running SQL.
 
-| The unreadable change | `ff` and `next` |
-|---|---|
-| never ran, or is `reverted` or `stale` | fail at its position, so later changes do not run out of order. Exit `1`, or `3` when earlier changes applied |
-| already applied | keep its status and add a `warnings` entry |
+| The unreadable forward change | `ff` | `next` |
+|---|---|---|
+| Never ran, or is `reverted` or `stale` | Blocks the batch before any pending SQL runs unless the operator retires the eligible changes | Stops at the unreadable change if it is in the batch |
+| Already applied | Keeps its execution status and reports a warning | Keeps its execution status and reports a warning |
 
+
+## How do I retire obsolete changes?
+
+Retire a change only when every supported database has caught up and you no longer need to roll it back. If a database still needs the change, restore its missing files instead. SQL execution errors are not candidates for retirement.
+
+Once no supported upgrade or rollback needs an old definition, remove it from `db/sql/` and remove its `build.exclude` entry. Retire the old changes that refer to it in the same project update. Check that no remaining forward or rollback manifest needs the file, then verify a clean build.
+
+Open Fast-Forward in the TUI or run `noorm change ff` in a human terminal to review pending changes with missing forward files. Use Space to select the changes, press Enter, and confirm both conditions. To stop without recording retirement, cancel, select nothing, or decline confirmation.
+
+NoORM writes the confirmed names to `.noorm/retired.yml` at the project root and checks the batch again. You can also edit the file directly:
+
+```yaml
+- 2026-10-22-open-orders
+- 2026-10-23-payment
 ```
-✗ log  Fast-forward partial  executed=1 skipped=1 failed=1
-• log    2026-10-20-order-status (success)
-✗ log    2026-10-22-open-orders (failed)
-✗ log      error: Manifest '/home/dana/orders/db/changes/2026-10-22-open-orders/change/001_rebuild-views.txt' references missing file: 02_views/02_unpaid_invoices.sql
-```
 
-`skipped=1` is `2026-10-23-payment`, which never ran.
+Use a YAML list of exact change names. No Git command is required to record retirement. Commit the file when you want other checkouts to use the same list. A missing file means no changes are retired; an invalid file blocks change operations.
+
+NoORM skips retired changes even while their folders remain and keeps their database execution history. It cannot revert a retired change or rewind across one. Retirement does not delete any files or modify any database.
+
+If a retired change has a recorded failure or an unfinished run on the target database, `ff` stops. Check the execution history and reconcile the database before proceeding. Retirement cannot undo SQL that already ran.
+This guard applies to `ff`; use it to check the whole batch rather than running one change at a time with `next`.
+
+CI, agent sessions, redirected input or output, `NOORM_YES`, `--json`, and `--dry-run` never prompt or write to `.noorm/retired.yml`. If a pending change remains unreadable, `ff` reports the failure before any pending SQL runs.
 
 
 ## How do I roll back?
