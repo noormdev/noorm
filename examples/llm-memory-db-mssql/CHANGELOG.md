@@ -1,5 +1,12 @@
 # @noormdev/example-llm-memory-db-mssql
 
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [ed9ec31]
+  - @noormdev/sdk@1.12.0
+
 ## 0.0.20
 
 ### Patch Changes
