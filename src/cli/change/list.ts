@@ -28,14 +28,14 @@ const listCommand = defineCommand({
 
         if (error) process.exit(1);
 
-        const pending = changes.filter((c) => c.status === 'pending').length;
+        const pending = changes.filter((c) => c.status === 'pending' && !c.retired).length;
 
         const text = changes.length === 0
             ? 'No changes found.'
             : [
                 // `orphaned` is computed but was never rendered, so a change
                 // deleted from disk printed identically to a live applied one.
-                ...changes.map((cs) => `${cs.name} (${cs.status}${cs.orphaned ? ', orphaned' : ''})${cs.status === 'failed' && cs.errorMessage ? `: ${cs.errorMessage.split('\n')[0]}` : ''}`),
+                ...changes.map((cs) => `${cs.name} (${cs.status}${cs.retired ? ', retired' : ''}${cs.orphaned ? ', orphaned' : ''})${cs.status === 'failed' && cs.errorMessage ? `: ${cs.errorMessage.split('\n')[0]}` : ''}`),
                 ...(pending > 0 ? [`${pending} pending change(s)`] : []),
             ].join('\n');
 

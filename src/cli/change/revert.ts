@@ -48,7 +48,7 @@ const revertCommand = defineCommand({
                     const picked = await selectChangeFromStatus(status, {
                         message: 'Pick a change to revert',
                         emptyMessage: 'No applied changes to revert.',
-                        filter: (c) => c.status === 'success',
+                        filter: (c) => !c.retired && c.status === 'success',
                     });
 
                     if (!picked) {

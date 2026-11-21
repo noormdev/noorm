@@ -42,6 +42,7 @@ import { getLockManager } from '../lock/index.js';
 import { ChangeHistory, decideNeedsRunFile } from './history.js';
 import { ChangeTracker, type CanRevertResult } from './tracker.js';
 import { tablesExist } from '../version/schema/index.js';
+import { assertNotRetired } from './retirement.js';
 import { resolveManifest, validateChange, hasRevertFiles } from './parser.js';
 import type {
     Change,
@@ -112,6 +113,7 @@ export async function executeChange(
 ): Promise<ChangeResult> {
 
     assertChangePolicy(context, 'change:run');
+    await assertNotRetired(context.projectRoot, change.name);
 
     const start = performance.now();
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -215,48 +217,19 @@ export async function executeChange(
 
     }
 
-    // Acquire lock
-    const lockManager = getLockManager();
-    const identity = formatIdentity(context.identity);
+    return getLockManager().withLock(
+        context.db,
+        context.configName,
+        formatIdentity(context.identity),
+        async () => {
 
-    const [, lockErr] = await attempt(() =>
-        lockManager.acquire(context.db, context.configName, identity, {
-            reason: `Change: ${change.name}`,
-            dialect: context.dialect ?? 'postgres',
-        }),
+            await assertNotRetired(context.projectRoot, change.name);
+
+            return executeFiles(context, change, files, 'change', changeChecksum, opts.force, history, start);
+
+        },
+        { reason: `Change: ${change.name}`, dialect: context.dialect ?? 'postgres' },
     );
-
-    if (lockErr) {
-
-        // Lock error is thrown, not returned
-        throw lockErr;
-
-    }
-
-    // Execute files (lock will be released after, regardless of outcome)
-    const [result, execErr] = await attempt(() =>
-        executeFiles(
-            context,
-            change,
-            files,
-            'change',
-            changeChecksum,
-            opts.force,
-            history,
-            start,
-        ),
-    );
-
-    // Always release lock
-    await attempt(() => lockManager.release(context.db, context.configName, identity, context.dialect ?? 'postgres'));
-
-    if (execErr) {
-
-        throw execErr;
-
-    }
-
-    return result;
 
 }
 
@@ -270,15 +243,18 @@ export async function executeChange(
  * @param context - Execution context
  * @param change - Change to revert
  * @param options - Execution options
+ * @param rewindRange - Full rewind range to check under the execution lock
  * @returns Execution result
  */
 export async function revertChange(
     context: ChangeContext,
     change: Change,
     options: ChangeOptions = {},
+    rewindRange?: readonly string[],
 ): Promise<ChangeResult> {
 
     assertChangePolicy(context, 'change:revert');
+    await assertNotRetired(context.projectRoot, change.name);
 
     const start = performance.now();
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -369,45 +345,19 @@ export async function revertChange(
 
     }
 
-    // Acquire lock
-    const lockManager = getLockManager();
-    const identity = formatIdentity(context.identity);
+    const result = await getLockManager().withLock(
+        context.db,
+        context.configName,
+        formatIdentity(context.identity),
+        async () => {
 
-    const [, lockErr] = await attempt(() =>
-        lockManager.acquire(context.db, context.configName, identity, {
-            reason: `Revert: ${change.name}`,
-            dialect: context.dialect ?? 'postgres',
-        }),
+            await assertNotRetired(context.projectRoot, change.name, rewindRange);
+
+            return executeFiles(context, change, files, 'revert', revertChecksum, opts.force, history, start);
+
+        },
+        { reason: `Revert: ${change.name}`, dialect: context.dialect ?? 'postgres' },
     );
-
-    if (lockErr) {
-
-        throw lockErr;
-
-    }
-
-    // Execute files (lock will be released after, regardless of outcome)
-    const [result, execErr] = await attempt(() =>
-        executeFiles(
-            context,
-            change,
-            files,
-            'revert',
-            revertChecksum,
-            opts.force,
-            history,
-            start,
-        ),
-    );
-
-    // Always release lock
-    await attempt(() => lockManager.release(context.db, context.configName, identity, context.dialect ?? 'postgres'));
-
-    if (execErr) {
-
-        throw execErr;
-
-    }
 
     // If successful, mark original as reverted
     if (result.status === 'success') {

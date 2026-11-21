@@ -76,6 +76,7 @@ export {
     ChangeAlreadyAppliedError,
     ChangeNotAppliedError,
     ChangeOrphanedError,
+    ChangeRetiredError,
     ManifestReferenceError,
 } from './types.js';
 

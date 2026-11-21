@@ -71,9 +71,11 @@ export function ChangeRemoveScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
+            const { changes, statuses, retired } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
+
+            if (retired.has(changeName)) throw new Error(`Change "${changeName}" is retired`);
 
             const found = changes.find((cs) => cs.name === changeName);
             const dbStatus = statuses.get(changeName);

@@ -122,6 +122,50 @@ describe('mcp: immutable approved execution', () => {
 
     });
 
+    it('should reject retirement that changes the approved fast-forward batch', async () => {
+
+        const name = '2026-01-01-add';
+        const change = path.join(root, 'changes', name, 'change');
+        await mkdir(change, { recursive: true });
+        await writeFile(path.join(change, '001.sql'), 'CREATE TABLE later_retired (id INTEGER);');
+
+        const approved = await prepareCommand('change_ff', {}, ctx);
+        await mkdir(path.join(root, '.noorm'), { recursive: true });
+        await writeFile(path.join(root, '.noorm', 'retired.yml'), `- ${name}\n`);
+        await expect(approved.run(() => ctx.noorm.changes.ff())).rejects.toThrow(/plan changed/);
+        expect(await tableNames()).not.toContain('later_retired');
+
+    });
+
+    it('should ignore templates in retired folders during approval', async () => {
+
+        const name = '2026-01-01-retired';
+        const change = path.join(root, 'changes', name, 'change');
+        await mkdir(change, { recursive: true });
+        await mkdir(path.join(root, '.noorm'), { recursive: true });
+        await writeFile(path.join(change, '001.sql.tmpl'), 'CREATE TABLE obsolete (id INTEGER);');
+        await writeFile(path.join(root, '.noorm', 'retired.yml'), `- ${name}\n`);
+
+        const approved = await prepareCommand('change_ff', {}, ctx);
+        expect((await approved.run(() => ctx.noorm.changes.ff())).executed).toBe(0);
+        expect(await tableNames()).not.toContain('obsolete');
+
+    });
+
+    it('should prepare a forward run without resolving a missing rollback reference', async () => {
+
+        const change = path.join(root, 'changes', '2026-01-01-add');
+        await mkdir(path.join(change, 'change'), { recursive: true });
+        await mkdir(path.join(change, 'revert'));
+        await writeFile(path.join(change, 'change', '001.sql'), 'CREATE TABLE forward_only (id INTEGER);');
+        await writeFile(path.join(change, 'revert', '001.txt'), 'old-definition.sql\n');
+
+        const approved = await prepareCommand('change_ff', {}, ctx);
+        expect((await approved.run(() => ctx.noorm.changes.ff())).status).toBe('success');
+        expect(await tableNames()).toContain('forward_only');
+
+    });
+
     it('should permit a plain pending fast-forward after a previously applied template', async () => {
 
         const appliedName = '2026-01-01-applied';

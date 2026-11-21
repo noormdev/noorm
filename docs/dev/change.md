@@ -237,7 +237,9 @@ Each change has a status based on its execution history:
 These are the `OperationStatus` values from `core/shared`, shared with the runner.
 `isPendingChange(item)` is the one predicate every "what still needs applying"
 surface uses (`ff`, `next`, the SDK's `pending()`, the CLI picker): it returns
-true for `pending`, `reverted`, and `stale` on non-orphaned changes.
+true for `pending`, `reverted`, `stale`, and new unreadable changes, excluding
+retired and orphaned entries. `ff` checks all pending forward files before
+executing SQL. By default, `next` stops when it reaches an unreadable change.
 
 The `list()` method returns items with additional metadata:
 
@@ -251,7 +253,8 @@ interface ChangeListItem {
     errorMessage: string | null
     appliedHistoryId?: number | null  // history row id — the true apply-order key
     isNew: boolean         // Exists on disk but no DB record
-    orphaned: boolean      // In DB but folder deleted from disk
+    orphaned: boolean      // In DB, folder missing, and not retired
+    retired?: boolean      // Declared in .noorm/retired.yml
     // Disk metadata (when change exists on disk)
     path?: string
     date?: Date | null

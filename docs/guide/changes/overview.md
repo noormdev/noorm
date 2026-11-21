@@ -134,7 +134,7 @@ Each line is `name (status)`. A change recorded in the database whose folder is 
 |---|---|---|
 | `change run` fails: files are empty or contain only template placeholders | The scaffolded stub is a comment, and a change needs real SQL | Replace the comment with SQL |
 | A folder in `db/changes/` never appears in `change list` | It has neither `change/` nor `revert/` | Add `change/` with at least one file |
-| `change list` shows `failed` with `references missing file` | A manifest names a file that `db/sql/` no longer has. Deleting or renaming a `db/sql/` file breaks every unapplied change that lists it | Restore the file, or fix the manifest line |
+| `change list` shows `failed` with `references missing file` | An active change still names a deleted or renamed file under `db/sql/` | Fix the reference if a supported database needs it. Otherwise, [retire the change](/guide/changes/forward-revert#how-do-i-retire-obsolete-changes) |
 | You edited an applied change and `change ff` does nothing | `ff` skips applied changes, so databases that ran it keep the old body | Add a new change. `change run <name>` re-executes the edit on the one database you point it at |
 | `change ff` fails on a database built from `db/sql/` | A build records no changes, so `ff` replays all of them | Write each statement to be safe to run twice ([Add a column](/guide/changes/add-a-column)) |
 | A manifest-listed table file fails on replay: already exists | A manifest runs the file's current content, and `CREATE TABLE` fails on an existing table | List only `CREATE OR REPLACE` objects: views, functions, procedures, triggers |
