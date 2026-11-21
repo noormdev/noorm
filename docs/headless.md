@@ -879,6 +879,8 @@ noorm change list --json
 
 JSON: `changes[]` and `pending`. An unreadable change that never ran shows as `failed`, with the parse message after it in text and in `errorMessage` under `--json`.
 
+Retired entries retain their execution status, include `retired: true` in JSON, and do not count toward `pending`.
+
 
 #### `change ff`
 
@@ -920,12 +922,9 @@ JSON fields:
 | `error` | Why the batch failed before any change ran |
 | `dryRun` | `true` under `--dry-run` |
 
-A missing `db/changes/` directory is a warning, not a failure. A change folder that cannot be parsed, for example a `.txt` manifest naming a file no longer in `db/sql/`, is handled by its status:
+A missing `db/changes/` directory is a warning, not a failure. If a pending change's forward files cannot be read, `ff` reports `failed` (exit `1`) before running any pending SQL. The per-change `error` identifies the problem. An unreadable forward change that was already applied keeps its status and produces a warning.
 
-| The unreadable change | `ff` and `next` |
-|---|---|
-| Never ran, `reverted`, or `stale` | Fails at that change's position, so later changes do not run out of order. The result is `failed` (exit `1`), or `partial` (exit `3`) when earlier changes applied, and `error` carries the parse message |
-| Applied | Keeps its status and adds a message to `warnings` |
+In a human terminal, `ff` can offer to [retire changes with missing forward files](/guide/changes/forward-revert#how-do-i-retire-obsolete-changes). CI, agent, non-TTY, `NOORM_YES`, `--json`, and `--dry-run` invocations do not prompt or write the retirement file. All invocations skip names already listed in `.noorm/retired.yml`.
 
 A folder with neither `change/` nor `revert/` is not a change and is ignored. On a database built from `db/sql/`, the first `ff` runs every change, so write changes that are safe to run twice. See [Add a column](/guide/changes/add-a-column).
 

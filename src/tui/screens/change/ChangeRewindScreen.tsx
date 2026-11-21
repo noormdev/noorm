@@ -90,13 +90,13 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
+            const { changes, statuses, failures, retired } = await loadChangesWithStatus(
                 activeConfig, activeConfigName ?? '', settings, projectRoot,
             );
 
             if (isCancelled()) return;
 
-            const applied = buildAppliedChangeList(changes, statuses);
+            const applied = buildAppliedChangeList(changes, statuses, failures, retired);
 
             setAppliedChanges(applied);
 
@@ -152,35 +152,31 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
         applied: ChangeListItem[],
     ): { changes: ChangeListItem[]; error?: string } => {
 
-        // Try as number (only if entire input is digits)
-        if (isNumericString(input)) {
+        const numeric = isNumericString(input);
+        const count = numeric ? parseInt(input, 10) : applied.findIndex((cs) => cs.name === input) + 1;
 
-            const count = parseInt(input, 10);
-
-            if (count > applied.length) {
-
-                return {
-                    changes: [],
-                    error: `Only ${applied.length} applied changes available`,
-                };
-
-            }
-
-            return { changes: applied.slice(0, count) };
-
-        }
-
-        // Try as change name
-        const targetIndex = applied.findIndex((cs) => cs.name === input);
-
-        if (targetIndex === -1) {
+        if (!numeric && count === 0) {
 
             return { changes: [], error: `Change not found or not applied: ${input}` };
 
         }
 
-        // Return all changes from newest to target (inclusive)
-        return { changes: applied.slice(0, targetIndex + 1) };
+        if (count > applied.length) {
+
+            return { changes: [], error: `Only ${applied.length} applied changes available` };
+
+        }
+
+        const changes = applied.slice(0, count);
+        const barrier = changes.find((cs) => cs.retired);
+
+        if (barrier) {
+
+            return { changes: [], error: `Cannot rewind through retired change "${barrier.name}"` };
+
+        }
+
+        return { changes };
 
     };
 
@@ -242,7 +238,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
 
             if (result.failed > 0) {
 
-                setError(`${result.failed} revert(s) failed`);
+                setError(result.error ?? `${result.failed} revert(s) failed`);
                 setStep('error');
 
             }
@@ -348,7 +344,7 @@ export function ChangeRewindScreen({ params }: ScreenProps): ReactElement {
                         {appliedChanges.slice(0, 5).map((cs) => (
                             <Text key={cs.name} dimColor>
                                 {' '}
-                                • {cs.name}
+                                • {cs.name}{cs.retired && ' (Retired)'}
                             </Text>
                         ))}
                     </Box>

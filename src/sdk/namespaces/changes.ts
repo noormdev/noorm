@@ -188,17 +188,18 @@ export class ChangesNamespace {
 
     /**
      * Parse a single change from disk by name.
+     * Pass a direction to resolve SQL references for that direction only.
      *
      * @example
      * ```typescript
      * const change = await ctx.noorm.changes.parse('2024-01-15-add-users')
      * ```
      */
-    async parse(name: string): Promise<Change> {
+    async parse(name: string, direction?: 'change' | 'revert'): Promise<Change> {
 
         const changePath = path.join(this.#changesDir, name);
 
-        return coreParseChange(changePath, this.#sqlDir);
+        return coreParseChange(changePath, this.#sqlDir, direction);
 
     }
 

@@ -45,6 +45,8 @@ const actualManagerModule = await import('../../../../src/core/change/manager.js
 
 /** Options object handed to `ff()` on each invocation. */
 const ffCalls: BatchChangeOptions[] = [];
+let retirementDecision: Promise<readonly string[]> | undefined;
+let offerRetirement = false;
 
 /**
  * Records the `ff()` options and short-circuits execution.
@@ -58,6 +60,15 @@ class SpyChangeManager extends actualManagerModule.ChangeManager {
     override async ff(options: BatchChangeOptions = {}): Promise<BatchChangeResult> {
 
         ffCalls.push(options);
+        if (offerRetirement) {
+
+            retirementDecision = options.confirmRetirement?.([
+                { name: 'old-orders', message: 'Missing forward SQL: orders.sql' },
+                { name: 'old-payments', message: 'Missing forward SQL: payments.sql' },
+            ]);
+            await retirementDecision;
+
+        }
 
         return {
             status: 'success',
@@ -67,6 +78,24 @@ class SpyChangeManager extends actualManagerModule.ChangeManager {
             failed: 0,
             durationMs: 0,
         };
+
+    }
+
+    override async preflightFastForward() {
+
+        const preflight: { pending: number; failures: BatchChangeResult['changes'] } = {
+            pending: 0,
+            failures: [{
+                name: 'add-widgets-table',
+                direction: 'change',
+                status: 'failed',
+                files: [],
+                durationMs: 0,
+                error: 'Unresolved rollback operation',
+            }],
+        };
+
+        return preflight;
 
     }
 
@@ -221,6 +250,8 @@ describe('cli: ChangeFFScreen global modes', () => {
         actualCore.observer.clear();
 
         ffCalls.length = 0;
+        offerRetirement = false;
+        retirementDecision = undefined;
         mockStateManager = createMockStateManager();
         mockSettingsManager = createMockSettingsManager();
 
@@ -256,6 +287,54 @@ describe('cli: ChangeFFScreen global modes', () => {
 
     });
 
+    it('shows strict preflight failures without running an empty pending batch', async () => {
+
+        await mkdir(join(tempDir, '.noorm'), { recursive: true });
+        await writeFile(join(tempDir, '.noorm', 'retired.yml'), '- add-widgets-table\n');
+
+        const { lastFrame, unmount } = render(tree({ dryRun: false, force: false }));
+
+        await Bun.sleep(300);
+        const frame = lastFrame();
+        unmount();
+
+        expect(frame).toContain('Unresolved rollback operation');
+        expect(ffCalls).toHaveLength(0);
+
+    });
+
+    it.each(['confirm', 'escape', 'unmount'])('settles retirement on %s', async (action) => {
+
+        offerRetirement = true;
+        const { stdin, lastFrame, unmount } = render(tree({ dryRun: false, force: false }));
+        try {
+
+            await Bun.sleep(300);
+            stdin.write('y');
+            await Bun.sleep(150);
+            expect(lastFrame()).toContain('orders.sql');
+            stdin.write(' ');
+            await Bun.sleep(50);
+            stdin.write('\r');
+            await Bun.sleep(100);
+            expect(lastFrame()).toContain('Retire 1 change');
+            expect(lastFrame()).toContain('rollback');
+
+            if (action === 'unmount') unmount();
+            else stdin.write(action === 'confirm' ? 'y' : '\x1b');
+
+            expect(retirementDecision).toBeDefined();
+            expect(await retirementDecision).toEqual(action === 'confirm' ? ['old-orders'] : []);
+
+        }
+        finally {
+
+            if (action !== 'unmount') unmount();
+
+        }
+
+    });
+
     it('should pass dryRun: true to ChangeManager.ff when global dry-run is on', async () => {
 
         const options = await runFastForward({ dryRun: true, force: false });
@@ -278,7 +357,7 @@ describe('cli: ChangeFFScreen global modes', () => {
 
         // Not `toBeFalsy()`: an omitted options object would satisfy that while
         // leaving the manager on its own defaults, which is the regression.
-        expect(options).toEqual({ dryRun: false, force: false });
+        expect(options).toMatchObject({ dryRun: false, force: false });
 
     });
 

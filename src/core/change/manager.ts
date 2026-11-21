@@ -32,7 +32,10 @@ import { failureListItem, parseChange, scanChanges } from './parser.js';
 import type { ChangeParseFailure } from './parser.js';
 import { deleteChange as deleteFromDisk } from './scaffold.js';
 import { ChangeHistory } from './history.js';
-import { assertApprovedPending } from '../shared/approved-content.js';
+import { assertApprovedPending, hasApprovedContent } from '../shared/approved-content.js';
+import type { Direction } from '../shared/tables.js';
+import { assertPolicy } from '../policy/index.js';
+import { appendRetiredChanges, assertNotRetired, readRetiredChanges } from './retirement.js';
 import { executeChange, revertChange } from './executor.js';
 import type {
     Change,
@@ -45,19 +48,7 @@ import type {
     ChangeHistoryRecord,
     FileHistoryRecord,
 } from './types.js';
-import { ChangeNotFoundError, ChangeOrphanedError, isPendingChange } from './types.js';
-
-// ─────────────────────────────────────────────────────────────
-// Default Options
-// ─────────────────────────────────────────────────────────────
-
-const DEFAULT_BATCH: Required<Omit<BatchChangeOptions, 'output'>> & { output: string | null } = {
-    force: false,
-    dryRun: false,
-    preview: false,
-    output: null,
-    abortOnError: true,
-};
+import { ChangeNotFoundError, ChangeOrphanedError, ChangeRetiredError, DEFAULT_BATCH_OPTIONS, isPendingChange } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 // Manager Class
@@ -116,32 +107,23 @@ export class ChangeManager {
     }
 
     /**
-     * Merge disk and database state, and report the folders that cannot be read.
-     *
-     * An unreadable folder that a batch would run (never run, or `reverted` or
-     * `stale`) is pending work: the batch fails at its position rather than
-     * skipping it and running later changes out of order. `unreadable` holds the
-     * applied ones; they keep their status and only warrant a warning.
+     * Merge project retirement, forward files and recorded database status.
+     * Applied changes with unreadable forward files retain their status.
      */
-    async #scan(): Promise<{
-        items: ChangeListItem[];
-        unreadable: ChangeParseFailure[];
-    }> {
+    async #scan(throwOnReadError = false) {
 
-        // Discover changes from disk
+        const retired = await readRetiredChanges(this.#context.projectRoot);
         const { changes: diskChanges, failures } = await scanChanges(
             this.#context.changesDir,
             this.#context.sqlDir,
+            { retired, direction: 'change' },
         );
 
         // Get all statuses from DB
-        const statuses = await this.#history.getAllStatuses();
+        const statuses = await this.#history.getAllStatuses(throwOnReadError);
 
         // Create set of disk names for orphan detection
         const diskNames = new Set([...diskChanges, ...failures].map((cs) => cs.name));
-
-        // Get orphaned changes
-        const orphanedNames = await this.#history.getOrphaned(diskNames);
 
         // Merge disk + DB
         const result: ChangeListItem[] = [];
@@ -175,7 +157,7 @@ export class ChangeManager {
 
             const item = failureListItem(failure, status);
 
-            if (!isPendingChange(item)) {
+            if (item.status === 'success') {
 
                 unreadable.push(failure);
 
@@ -185,10 +167,29 @@ export class ChangeManager {
 
         }
 
-        // Add orphaned changes
-        for (const name of orphanedNames) {
+        for (const name of retired) {
 
-            const status = statuses.get(name)!;
+            const status = statuses.get(name);
+
+            result.push({
+                name,
+                status: status?.status ?? 'pending',
+                appliedAt: status?.appliedAt ?? null,
+                appliedBy: status?.appliedBy ?? null,
+                revertedAt: status?.revertedAt ?? null,
+                errorMessage: status?.errorMessage ?? null,
+                appliedHistoryId: status?.appliedHistoryId ?? null,
+                isNew: !status,
+                orphaned: false,
+                retired: true,
+            });
+
+        }
+
+        // Add orphaned changes
+        for (const [name, status] of statuses) {
+
+            if (diskNames.has(name) || retired.has(name)) continue;
 
             result.push({
                 name,
@@ -214,7 +215,9 @@ export class ChangeManager {
         // Sort by name
         return {
             items: result.sort((a, b) => a.name.localeCompare(b.name)),
+            failures,
             unreadable,
+            statuses,
         };
 
     }
@@ -232,7 +235,7 @@ export class ChangeManager {
      */
     async run(name: string, options: ChangeOptions = {}): Promise<ChangeResult> {
 
-        const change = await this.#loadChange(name);
+        const change = await this.#loadChange(name, 'change');
 
         return executeChange(this.#context, change, options);
 
@@ -263,7 +266,7 @@ export class ChangeManager {
      */
     async revert(name: string, options: ChangeOptions = {}): Promise<ChangeResult> {
 
-        const change = await this.#loadChange(name);
+        const change = await this.#loadChange(name, 'revert');
 
         return revertChange(this.#context, change, options);
 
@@ -297,38 +300,24 @@ export class ChangeManager {
         options: BatchChangeOptions = {},
     ): Promise<BatchChangeResult> {
 
-        const opts = { ...DEFAULT_BATCH, ...options };
         const start = performance.now();
-
-        const { items, unreadable } = await this.#scan();
-
-        const messages = [
-            ...(await this.#collectWarnings() ?? []),
-            ...unreadable.map((f) => `Change '${f.name}' is applied but its files can no longer be read: ${f.message}`),
-        ];
-        const warnings = messages.length > 0 ? messages : undefined;
-
-        // An unreadable pending change keeps its place in the sequence:
-        // loading it fails, which stops the batch there.
-        const pending = items
-            .filter(isPendingChange)
-            .slice(0, count);
+        const scan = await this.#scan();
+        const pending = scan.items.filter(isPendingChange).slice(0, count);
 
         assertApprovedPending(pending.map((item) => item.name));
 
-        if (pending.length === 0) {
+        return this.#runPending(pending, options, start, await this.#batchWarnings(scan.unreadable));
 
-            return {
-                status: 'success',
-                changes: [],
-                executed: 0,
-                skipped: 0,
-                failed: 0,
-                durationMs: performance.now() - start,
-                warnings,
-            };
+    }
 
-        }
+    async #runPending(
+        pending: ChangeListItem[],
+        options: BatchChangeOptions,
+        start: number,
+        warnings: string[] | undefined,
+    ): Promise<BatchChangeResult> {
+
+        const opts = { ...DEFAULT_BATCH_OPTIONS, ...options };
 
         // Execute each
         const results: ChangeResult[] = [];
@@ -338,7 +327,7 @@ export class ChangeManager {
         for (const item of pending) {
 
             // Load full change from disk
-            const [change, loadErr] = await attempt(() => this.#loadChange(item.name));
+            const [change, loadErr] = await attempt(() => this.#loadChange(item.name, 'change'));
 
             if (loadErr) {
 
@@ -389,6 +378,17 @@ export class ChangeManager {
 
     }
 
+    async #batchWarnings(unreadable: ChangeParseFailure[]): Promise<string[] | undefined> {
+
+        const warnings = [
+            ...(await this.#collectWarnings() ?? []),
+            ...unreadable.map((failure) => `Change '${failure.name}' is applied but its files can no longer be read: ${failure.message}`),
+        ];
+
+        return warnings.length > 0 ? warnings : undefined;
+
+    }
+
     /**
      * Report conditions that silently shrink a batch to nothing.
      *
@@ -414,7 +414,114 @@ export class ChangeManager {
      */
     async ff(options: BatchChangeOptions = {}): Promise<BatchChangeResult> {
 
-        return this.next(Number.POSITIVE_INFINITY, options);
+        const start = performance.now();
+        let plan = await this.#planFastForward();
+        assertApprovedPending(plan.pending.map((item) => item.name));
+
+        const confirm = options.confirmRetirement;
+
+        const { projectRoot, channel, configName, access } = this.#context;
+
+        if (confirm && channel === 'user' && !options.dryRun && !options.preview
+            && !hasApprovedContent() && plan.candidates.size > 0) {
+
+            assertPolicy(channel, { name: configName, access }, 'change:run');
+
+            const approved = plan.candidates;
+            const offered = Array.from(approved, ([name, message]) => ({ name, message }));
+            const selected = (await confirm(offered)).filter((name) => approved.has(name));
+
+            if (selected.length > 0) {
+
+                await appendRetiredChanges(projectRoot, async () => {
+
+                    const current = await this.#planFastForward();
+
+                    return selected.filter((name) =>
+                        current.candidates.get(name) === approved.get(name),
+                    );
+
+                });
+
+                plan = await this.#planFastForward();
+
+            }
+
+        }
+
+        const warnings = await this.#batchWarnings(plan.unreadable);
+
+        if (plan.failures.length > 0) {
+
+            return {
+                status: 'failed',
+                changes: plan.failures,
+                executed: 0,
+                skipped: plan.pending.length - plan.pendingFailures,
+                failed: plan.failures.length,
+                durationMs: performance.now() - start,
+                warnings,
+            };
+
+        }
+
+        return this.#runPending(plan.pending, options, start, warnings);
+
+    }
+
+    /** Inspect the strict fast-forward plan without rendering or executing it. */
+    async preflightFastForward() {
+
+        const { pending, failures } = await this.#planFastForward();
+
+        return { pending: pending.length, failures };
+
+    }
+
+    async #planFastForward() {
+
+        const scan = await this.#scan(true);
+        const parseFailures = new Map(scan.failures.map((failure) => [failure.name, failure]));
+        const candidates = new Map<string, string>();
+        const pending: ChangeListItem[] = [];
+        const failures: ChangeResult[] = [];
+        let pendingFailures = 0;
+
+        for (const item of scan.items) {
+
+            const parseFailure = parseFailures.get(item.name);
+            const isPending = isPendingChange(item);
+            const unresolved = !item.isNew && (item.status === 'pending' || item.status === 'failed');
+            const unresolvedRevert = scan.statuses.get(item.name)?.unresolvedRevert;
+            if (isPending) pending.push(item);
+
+            let error: string;
+            if ((unresolved || unresolvedRevert) && (item.retired || parseFailure)) {
+
+                error = unresolvedRevert
+                    ? unresolvedRevert.errorMessage ?? `Change '${item.name}' has an unresolved recorded rollback (${unresolvedRevert.status})`
+                    : item.errorMessage ?? `Change '${item.name}' has an unresolved recorded execution (${item.status})`;
+                if (isPending && parseFailure) error = `${error}\n${parseFailure.message}`;
+
+            }
+            else if (isPending && parseFailure) {
+
+                error = parseFailure.message;
+                if (parseFailure.missingForwardReferences) candidates.set(item.name, error);
+
+            }
+            else {
+
+                continue;
+
+            }
+
+            if (isPending) pendingFailures++;
+            failures.push({ name: item.name, direction: 'change', status: 'failed', files: [], durationMs: 0, error });
+
+        }
+
+        return { pending, failures, pendingFailures, candidates, unreadable: scan.unreadable };
 
     }
 
@@ -430,7 +537,7 @@ export class ChangeManager {
         options: BatchChangeOptions = {},
     ): Promise<BatchChangeResult> {
 
-        const opts = { ...DEFAULT_BATCH, ...options };
+        const opts = { ...DEFAULT_BATCH_OPTIONS, ...options };
         const start = performance.now();
 
         // Get applied changes sorted by appliedAt (most recent first), tiebreaking
@@ -491,6 +598,22 @@ export class ChangeManager {
 
         }
 
+        const retired = toRevert.find((item) => item.retired);
+
+        if (retired) {
+
+            return {
+                status: 'failed',
+                changes: [],
+                executed: 0,
+                skipped: 0,
+                failed: 1,
+                durationMs: performance.now() - start,
+                error: `Cannot rewind across retired change '${retired.name}'`,
+            };
+
+        }
+
         if (toRevert.length === 0) {
 
             return {
@@ -509,6 +632,8 @@ export class ChangeManager {
         let failed = 0;
         let executed = 0;
         let skipped = 0;
+        let blockedByRetirement: string | undefined;
+        let retirementRange = opts.dryRun || opts.preview ? undefined : toRevert.map((item) => item.name);
 
         for (const item of toRevert) {
 
@@ -529,7 +654,15 @@ export class ChangeManager {
             }
 
             // Load full change from disk
-            const [change, loadErr] = await attempt(() => this.#loadChange(item.name));
+            const [change, loadErr] = await attempt(() => this.#loadChange(item.name, 'revert'));
+
+            if (loadErr instanceof ChangeRetiredError) {
+
+                blockedByRetirement = loadErr.changeName;
+                failed++;
+                break;
+
+            }
 
             if (loadErr) {
 
@@ -550,7 +683,18 @@ export class ChangeManager {
 
             }
 
-            const result = await revertChange(this.#context, change, opts);
+            const [result, revertErr] = await attempt(() => revertChange(this.#context, change, opts, retirementRange));
+
+            if (revertErr) {
+
+                if (!(revertErr instanceof ChangeRetiredError)) throw revertErr;
+                blockedByRetirement = revertErr.changeName;
+                failed++;
+                break;
+
+            }
+
+            if (result.files.length > 0) retirementRange = undefined;
             results.push(result);
 
             if (result.status === 'success') {
@@ -575,6 +719,7 @@ export class ChangeManager {
             skipped,
             failed,
             durationMs: performance.now() - start,
+            ...(blockedByRetirement && { error: `Cannot rewind across retired change '${blockedByRetirement}'` }),
         };
 
     }
@@ -659,9 +804,9 @@ export class ChangeManager {
     /**
      * Load a change from disk.
      */
-    async load(name: string): Promise<Change> {
+    async load(name: string, direction?: Direction): Promise<Change> {
 
-        return this.#loadChange(name);
+        return this.#loadChange(name, direction);
 
     }
 
@@ -672,12 +817,14 @@ export class ChangeManager {
     /**
      * Load a change from disk by name.
      */
-    async #loadChange(name: string): Promise<Change> {
+    async #loadChange(name: string, direction?: Direction): Promise<Change> {
+
+        await assertNotRetired(this.#context.projectRoot, name);
 
         const changePath = path.join(this.#context.changesDir, name);
 
         const [change, err] = await attempt(() =>
-            parseChange(changePath, this.#context.sqlDir),
+            parseChange(changePath, this.#context.sqlDir, direction),
         );
 
         if (err) {

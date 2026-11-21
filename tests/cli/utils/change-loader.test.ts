@@ -21,6 +21,7 @@ const broken: ChangeParseFailure = {
     name: '2026-02-01-broken',
     path: '/project/db/changes/2026-02-01-broken',
     message: "Manifest 'x.txt' references missing file: views/missing.sql",
+    missingForwardReferences: true,
 };
 
 describe('tui: change loader with unreadable changes', () => {
@@ -75,6 +76,14 @@ describe('tui: change loader with unreadable changes', () => {
             expect(merged).toHaveLength(1);
             expect(merged[0]?.status).toBe('success');
             expect(merged[0]?.orphaned).toBe(false);
+
+        });
+
+        it('shows retired names that match inherited object keys', () => {
+
+            const merged = buildMergedChangeList([], new Map(), [], new Set(['constructor']));
+
+            expect(merged).toMatchObject([{ name: 'constructor', retired: true, status: 'pending' }]);
 
         });
 

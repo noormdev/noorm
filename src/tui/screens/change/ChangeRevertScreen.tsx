@@ -86,15 +86,19 @@ export function ChangeRevertScreen({ params }: ScreenProps): ReactElement {
 
         const [_, err] = await attempt(async () => {
 
-            const { changes, statuses } = await loadChangesWithStatus(
-                activeConfig, activeConfigName ?? '', settings, projectRoot,
+            const { changes, statuses, failures, retired } = await loadChangesWithStatus(
+                activeConfig, activeConfigName ?? '', settings, projectRoot, 'revert',
             );
+
+            if (retired.has(changeName)) throw new Error(`Change "${changeName}" is retired`);
 
             const found = changes.find((cs) => cs.name === changeName);
 
             if (!found) {
 
-                throw new Error(`Change not found: ${changeName}`);
+                const failure = failures.find((item) => item.name === changeName);
+
+                throw new Error(failure?.message ?? `Change not found: ${changeName}`);
 
             }
 

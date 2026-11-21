@@ -9,18 +9,21 @@
 import { attachPolicyContext } from '../../../src/core/policy/index.js';
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { attempt } from '@logosdx/utils';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
+import { existsSync, writeFileSync } from 'node:fs';
+import { mkdtemp, rm, mkdir, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Kysely, SqliteDialect, sql } from 'kysely';
 import { BunSqliteDatabase } from '../../../src/core/connection/dialects/sqlite-bun.js';
+import { withApprovedContent } from '../../../src/core/shared/approved-content.js';
 
 import { ChangeManager } from '../../../src/core/change/manager.js';
+import { executeChange, revertChange } from '../../../src/core/change/executor.js';
 import { ChangeHistory } from '../../../src/core/change/history.js';
 import { ChangeTracker } from '../../../src/core/change/tracker.js';
 import { v1 } from '../../../src/core/version/schema/migrations/v1.js';
-import { resetLockManager } from '../../../src/core/lock/index.js';
+import { getLockManager, resetLockManager } from '../../../src/core/lock/index.js';
+import { observer } from '../../../src/core/observer.js';
 import { ChangeNotAppliedError } from '../../../src/core/change/types.js';
 import type { NoormDatabase } from '../../../src/core/shared/index.js';
 import type { ChangeContext } from '../../../src/core/change/types.js';
@@ -131,6 +134,365 @@ describe('change: manager', () => {
         await db.destroy();
 
         await rm(tempDir, { recursive: true, force: true });
+
+    });
+
+    describe('retirement', () => {
+
+        async function retirementFile(contents?: string): Promise<string> {
+
+            const file = join(tempDir, '.noorm', 'retired.yml');
+
+            if (contents !== undefined) {
+
+                await mkdir(join(tempDir, '.noorm'), { recursive: true });
+                await writeFile(file, contents);
+
+            }
+
+            return file;
+
+        }
+
+        it('lists retired changes without folders or history and preserves applied history', async () => {
+
+            await createTestChange('applied', [{ name: '001.sql', content: 'SELECT 1' }]);
+            const manager = new ChangeManager(buildContext());
+            await manager.run('applied');
+            await retirementFile('- applied\n- never-ran\n');
+            await rm(changesDir, { recursive: true });
+
+            expect(await manager.get('applied')).toMatchObject({
+                retired: true, orphaned: false, status: 'success',
+            });
+            expect(await manager.get('never-ran')).toMatchObject({
+                retired: true, orphaned: false, status: 'pending',
+            });
+            expect(await manager.getHistory('applied')).toHaveLength(1);
+
+        });
+
+        it('blocks named and pre-parsed executions and rewinds crossing retirement', async () => {
+
+            const context = buildContext();
+            const manager = new ChangeManager(context);
+            for (const name of ['older', 'newer']) {
+
+                await createTestChange(name,
+                    [{ name: '001.sql', content: `CREATE TABLE ${name} (id INTEGER)` }],
+                    [{ name: '001.sql', content: `DROP TABLE ${name}` }]);
+                await manager.run(name);
+
+            }
+
+            const older = await manager.load('older');
+            await retirementFile('- older\n');
+            await rm(join(changesDir, 'older'), { recursive: true });
+
+            await expect(manager.run('older', { force: true })).rejects.toThrow('retired');
+            await expect(manager.revert('older', { force: true })).rejects.toThrow('retired');
+            await expect(executeChange(context, older, { force: true })).rejects.toThrow('retired');
+            await expect(revertChange(context, older, { force: true })).rejects.toThrow('retired');
+            expect(await manager.rewind(2)).toMatchObject({ status: 'failed', executed: 0 });
+            expect(await manager.rewind('older')).toMatchObject({ status: 'failed', executed: 0 });
+            expect(await tableExists('newer')).toBe(true);
+
+        });
+
+        it('does not execute a change when retirement YAML is not a list of names', async () => {
+
+            await createTestChange('valid', [{ name: '001.sql', content: 'CREATE TABLE valid_table (id INTEGER)' }]);
+            await retirementFile('valid: true\n');
+            const manager = new ChangeManager(buildContext());
+
+            await expect(manager.ff()).rejects.toThrow('retired.yml');
+            expect(await tableExists('valid_table')).toBe(false);
+
+        });
+
+        it('writes only explicitly confirmed missing-forward IDs and merges existing retirement', async () => {
+
+            await createTestChange('a-valid', [{ name: '001.sql', content: 'CREATE TABLE valid_table (id INTEGER)' }]);
+            await createTestChange('b-broken', [{ name: '001.txt', content: 'one.sql\ntwo.sql\n' }]);
+            await createTestChange('c-broken', [{ name: '001.txt', content: 'three.sql\n' }]);
+            const manager = new ChangeManager(buildContext());
+            const file = await retirementFile('- existing\n');
+            const stateFile = join(tempDir, '.noorm', 'state.enc');
+            await writeFile(stateFile, 'unchanged');
+
+            const result = await manager.ff({ confirmRetirement: async (failures) => {
+
+                expect(await tableExists('valid_table')).toBe(false);
+                expect(failures.map((failure) => failure.name)).toEqual(['b-broken', 'c-broken']);
+                expect(failures[0]?.message).toContain('one.sql');
+                expect(failures[0]?.message).toContain('two.sql');
+                await writeFile(file, '# Retired after all stages migrated\n- existing\n- added-during-confirmation\n');
+
+                return ['a-valid', 'b-broken'];
+
+            } });
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0, failed: 1 });
+            expect(result.changes[0]?.name).toBe('c-broken');
+            expect(await manager.get('b-broken')).toMatchObject({ retired: true });
+            expect(await manager.get('added-during-confirmation')).toMatchObject({ retired: true });
+            expect(await readFile(file, 'utf-8')).toContain('# Retired after all stages migrated');
+            expect((await manager.get('a-valid'))?.retired).toBeUndefined();
+            expect(await readFile(stateFile, 'utf-8')).toBe('unchanged');
+            expect(await tableExists('valid_table')).toBe(false);
+
+        });
+
+        it('revalidates repair and recorded SQL failures after confirmation', async () => {
+
+            await createTestChange('a-repaired', [{ name: '001.txt', content: 'a.sql\n' }]);
+            await createTestChange('b-failed', [{ name: '001.txt', content: 'b.sql\n' }]);
+            const manager = new ChangeManager(buildContext());
+
+            const result = await manager.ff({ confirmRetirement: async () => {
+
+                await writeFile(join(sqlDir, 'a.sql'), 'SELECT 1');
+                await writeFile(join(sqlDir, 'b.sql'), 'SELECT * FROM missing_table');
+                expect((await manager.run('b-failed')).status).toBe('failed');
+                await rm(join(sqlDir, 'b.sql'));
+
+                return ['a-repaired', 'b-failed'];
+
+            } });
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0, failed: 1 });
+            expect(result.changes[0]?.error).toContain('missing_table');
+            expect(existsSync(await retirementFile())).toBe(false);
+
+        });
+
+        it('does not prompt or write in dry runs or for malformed manifests', async () => {
+
+            await createTestChange('broken', [{ name: '001.txt', content: 'missing.sql' }]);
+            const manager = new ChangeManager(buildContext());
+            const confirmRetirement = async () => {
+
+                throw new Error('unexpected prompt');
+
+            };
+
+            expect(await manager.ff({ dryRun: true, confirmRetirement })).toMatchObject({ status: 'failed', executed: 0 });
+            await writeFile(join(changesDir, 'broken', 'change', '002.txt'), '# malformed');
+            expect(await manager.ff({ confirmRetirement })).toMatchObject({ status: 'failed', executed: 0 });
+            expect(existsSync(await retirementFile())).toBe(false);
+
+        });
+
+        it('allows valid forward SQL even when rollback references are missing', async () => {
+
+            await createTestChange('broken-rollback',
+                [{ name: '001.sql', content: 'CREATE TABLE forward_table (id INTEGER)' }],
+                [{ name: '001.txt', content: 'missing-rollback.sql' }]);
+            const manager = new ChangeManager(buildContext());
+
+            expect(await manager.ff()).toMatchObject({ status: 'success', executed: 1 });
+            expect(await tableExists('forward_table')).toBe(true);
+            await expect(manager.revert('broken-rollback')).rejects.toThrow('missing-rollback.sql');
+
+        });
+
+        it('rescans and runs the remaining changes after confirmation', async () => {
+
+            await createTestChange('retire-me', [{ name: '001.txt', content: 'missing.sql' }]);
+            await createTestChange('run-me', [{ name: '001.sql', content: 'CREATE TABLE after_retirement (id INTEGER)' }]);
+            const manager = new ChangeManager(buildContext());
+
+            expect(await manager.ff({ confirmRetirement: async () => ['retire-me'] }))
+                .toMatchObject({ status: 'success', executed: 1 });
+            expect(await tableExists('after_retirement')).toBe(true);
+            expect(await manager.getHistory('retire-me')).toHaveLength(0);
+            expect(await manager.get('retire-me')).toMatchObject({ retired: true, status: 'pending' });
+
+        });
+
+        it('blocks ff for a retired recorded SQL failure even without its folder', async () => {
+
+            await createTestChange('failed-sql', [{ name: '001.sql', content: 'SELECT * FROM missing_table' }]);
+            await createTestChange('healthy', [{ name: '001.sql', content: 'CREATE TABLE healthy_table (id INTEGER)' }]);
+            const manager = new ChangeManager(buildContext());
+            expect((await manager.run('failed-sql')).status).toBe('failed');
+            await retirementFile('- failed-sql\n');
+            await rm(join(changesDir, 'failed-sql'), { recursive: true });
+
+            const result = await manager.ff({ confirmRetirement: async () => {
+
+                throw new Error('unexpected prompt');
+
+            } });
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0, failed: 1 });
+            expect(result.changes[0]?.error).toContain('missing_table');
+            expect(await tableExists('healthy_table')).toBe(false);
+
+        });
+
+        it('does not offer a rollback-only failure or retirement inside an approved plan', async () => {
+
+            await createTestChange('rollback-only', [], [{ name: '001.txt', content: 'missing-rollback.sql' }]);
+            const manager = new ChangeManager(buildContext());
+            const confirmRetirement = async () => {
+
+                throw new Error('unexpected prompt');
+
+            };
+
+            expect(await manager.ff({ confirmRetirement })).toMatchObject({ status: 'failed', executed: 0 });
+            await expect(manager.revert('rollback-only')).rejects.toThrow('missing-rollback.sql');
+
+            await createTestChange('forward-broken', [{ name: '001.txt', content: 'missing-forward.sql' }]);
+            const result = await withApprovedContent({
+                sql: new Map(),
+                checksums: new Map(),
+                pending: ['forward-broken', 'rollback-only'],
+            }, () => manager.ff({ confirmRetirement }));
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0, failed: 2 });
+            expect(existsSync(await retirementFile())).toBe(false);
+
+        });
+
+        for (const direction of ['change', 'revert']) {
+
+            it(`rechecks retirement at ${direction} lock acquisition and releases the lock`, async () => {
+
+                await createTestChange('lock-race',
+                    [{ name: '001.sql', content: 'CREATE TABLE lock_race (id INTEGER)' }],
+                    [{ name: '001.sql', content: 'DROP TABLE lock_race' }]);
+                const manager = new ChangeManager(buildContext());
+                if (direction === 'revert') await manager.run('lock-race');
+
+                const file = await retirementFile('[]\n');
+                const stop = observer.on('lock:acquired', () => writeFileSync(file, '- lock-race\n'));
+
+                try {
+
+                    const run = direction === 'change' ? manager.run('lock-race') : manager.revert('lock-race');
+                    await expect(run).rejects.toThrow('retired');
+
+                }
+                finally {
+
+                    stop();
+
+                }
+
+                expect(await tableExists('lock_race')).toBe(direction === 'revert');
+                expect((await getLockManager().status(db, 'test', 'sqlite')).isLocked).toBe(false);
+
+            });
+
+        }
+
+        it('does not offer retirement to the agent channel', async () => {
+
+            await createTestChange('broken', [{ name: '001.txt', content: 'missing.sql' }]);
+            const manager = new ChangeManager(buildContext({ channel: 'agent' }));
+
+            const result = await manager.ff({ confirmRetirement: async () => ['broken'] });
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0 });
+            expect(existsSync(await retirementFile())).toBe(false);
+
+        });
+
+        it('does not resume execution when retirement is declined during a concurrent repair', async () => {
+
+            await createTestChange('broken', [{ name: '001.txt', content: 'missing.sql' }]);
+            const manager = new ChangeManager(buildContext());
+
+            const result = await manager.ff({ confirmRetirement: async () => {
+
+                await writeFile(join(sqlDir, 'missing.sql'), 'CREATE TABLE repaired (id INTEGER)');
+
+                return [];
+
+            } });
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0 });
+            expect(await tableExists('repaired')).toBe(false);
+
+        });
+
+        it('does not offer or skip a persisted pending operation with missing files', async () => {
+
+            await writeFile(join(sqlDir, 'gone.sql'), 'CREATE TABLE interrupted (id INTEGER)');
+            await createTestChange('interrupted', [{ name: '001.txt', content: 'gone.sql' }]);
+            const manager = new ChangeManager(buildContext());
+
+            expect((await manager.run('interrupted')).status).toBe('success');
+            await sql`UPDATE __noorm_change__ SET status = 'pending' WHERE name = 'interrupted'`.execute(db);
+            await rm(join(sqlDir, 'gone.sql'));
+            const confirmRetirement = async () => ['interrupted'];
+
+            expect(await manager.ff({ confirmRetirement })).toMatchObject({ status: 'failed', executed: 0, skipped: 0 });
+            expect(existsSync(await retirementFile())).toBe(false);
+
+            await retirementFile('- interrupted\n');
+            await rm(join(changesDir, 'interrupted'), { recursive: true });
+            expect(await manager.ff()).toMatchObject({ status: 'failed', executed: 0 });
+
+        });
+
+        it('keeps a retired partial rollback blocking even when the forward status is success', async () => {
+
+            await createTestChange('partial-revert',
+                [{ name: '001.sql', content: 'CREATE TABLE partial_revert (id INTEGER)' }],
+                [
+                    { name: '001_drop.sql', content: 'DROP TABLE partial_revert' },
+                    { name: '002_fail.sql', content: 'SELECT * FROM missing_rollback_table' },
+                ]);
+            const manager = new ChangeManager(buildContext());
+            expect((await manager.run('partial-revert')).status).toBe('success');
+            expect((await manager.revert('partial-revert')).status).toBe('failed');
+            expect(await tableExists('partial_revert')).toBe(false);
+
+            await retirementFile('- partial-revert\n');
+            await rm(join(changesDir, 'partial-revert'), { recursive: true });
+            expect(await manager.get('partial-revert')).toMatchObject({ retired: true, status: 'success' });
+
+            const result = await manager.ff();
+
+            expect(result).toMatchObject({ status: 'failed', executed: 0, failed: 1 });
+            expect(result.changes[0]?.error).toContain('missing_rollback_table');
+
+        });
+
+        it('rechecks the whole rewind range under the first revert lock', async () => {
+
+            const manager = new ChangeManager(buildContext());
+            for (const name of ['older', 'newer']) {
+
+                await createTestChange(name,
+                    [{ name: '001.sql', content: `CREATE TABLE ${name} (id INTEGER)` }],
+                    [{ name: '001.sql', content: `DROP TABLE ${name}` }]);
+                await manager.run(name);
+
+            }
+
+            const file = await retirementFile('[]\n');
+            const stop = observer.on('lock:acquired', () => writeFileSync(file, '- older\n'));
+
+            try {
+
+                expect(await manager.rewind(2, { abortOnError: false }))
+                    .toMatchObject({ status: 'failed', executed: 0, error: "Cannot rewind across retired change 'older'" });
+
+            }
+            finally {
+
+                stop();
+
+            }
+
+            expect(await tableExists('newer')).toBe(true);
+            expect((await getLockManager().status(db, 'test', 'sqlite')).isLocked).toBe(false);
+
+        });
 
     });
 
@@ -565,6 +927,35 @@ describe('change: manager', () => {
 
     describe('history read failures', () => {
 
+        it('rejects ff before confirmation when change history is unreadable', async () => {
+
+            await createTestChange('broken', [{ name: '001.txt', content: 'gone.sql' }]);
+            await sql`ALTER TABLE __noorm_change__ RENAME COLUMN status TO status_x`.execute(db);
+            await sql`DROP TABLE __noorm_version__`.execute(db);
+            const manager = new ChangeManager(buildContext());
+            let prompted = false;
+
+            await expect(manager.ff({ confirmRetirement: async () => {
+
+                prompted = true;
+
+                return [];
+
+            } })).rejects.toThrow();
+            expect(prompted).toBe(false);
+
+        });
+
+        it('permits ff preview without previously bootstrapped tracking tables', async () => {
+
+            await sql`DROP TABLE __noorm_change__`.execute(db);
+            await sql`DROP TABLE __noorm_version__`.execute(db);
+            const manager = new ChangeManager(buildContext());
+
+            expect(await manager.ff({ preview: true })).toMatchObject({ status: 'success', executed: 0 });
+
+        });
+
         it('should not report a successful revert when the history read failed', async () => {
 
             await createTestChange(
@@ -749,7 +1140,7 @@ describe('change: manager', () => {
 
         }
 
-        it('should fail ff at the broken change instead of reporting success', async () => {
+        it('should fail ff before running any SQL when a pending forward manifest breaks', async () => {
 
             await createTestChange('2025-01-01-good', [
                 { name: '001.sql', content: 'CREATE TABLE parse_good (id INTEGER PRIMARY KEY)' },
@@ -762,15 +1153,15 @@ describe('change: manager', () => {
             const manager = new ChangeManager(buildContext());
             const result = await manager.ff();
 
-            expect(result.status).toBe('partial');
-            expect(result.executed).toBe(1);
+            expect(result.status).toBe('failed');
+            expect(result.executed).toBe(0);
             expect(result.failed).toBe(1);
 
             const broken = result.changes.find((c) => c.name === '2025-01-02-broken');
 
             expect(broken?.status).toBe('failed');
             expect(broken?.error).toContain('missing.sql');
-            expect(await tableExists('parse_good')).toBe(true);
+            expect(await tableExists('parse_good')).toBe(false);
             expect(await tableExists('parse_after')).toBe(false);
 
         });

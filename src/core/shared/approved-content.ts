@@ -23,6 +23,12 @@ export function withApprovedContent<T>(content: ApprovedContent, action: () => P
 
 }
 
+export function hasApprovedContent(): boolean {
+
+    return approved.getStore() !== undefined;
+
+}
+
 export function approvedSql(filepath: string): string | undefined {
 
     const scope = approved.getStore();

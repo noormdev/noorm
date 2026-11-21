@@ -33,6 +33,7 @@ import { getFullVersionRecord, type FullVersionRecord } from '../../core/version
 import { fetchOverview, userGate, type ExploreOverview } from '../../core/explore/index.js';
 import { ChangeHistory } from '../../core/change/history.js';
 import { failureListItem, scanChanges } from '../../core/change/parser.js';
+import { readRetiredChanges } from '../../core/change/retirement.js';
 import { isPendingChange } from '../../core/change/types.js';
 import { getLockManager } from '../../core/lock/manager.js';
 import { checkConfigPolicy } from '../../core/policy/index.js';
@@ -190,6 +191,7 @@ export function HomeScreen({ params: _params }: ScreenProps): ReactElement {
             const { changes: diskChanges, failures } = await scanChanges(
                 resolveChangesDir(projectRoot, settings),
                 resolveSqlDir(projectRoot, settings),
+                { retired: await readRetiredChanges(projectRoot), direction: 'change' },
             );
 
             // Get statuses from DB

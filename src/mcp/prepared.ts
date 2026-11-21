@@ -5,9 +5,6 @@ import { z } from 'zod';
 import type { Context } from '../sdk/context.js';
 import { prepareRunContext } from '../sdk/namespaces/run.js';
 import type { ChangeFile } from '../core/change/types.js';
-import { ChangeHistory, isPendingChange } from '../core/change/index.js';
-import type { NoormDatabase } from '../core/shared/index.js';
-import type { Kysely } from 'kysely';
 import { filterFilesByPaths } from '../core/shared/index.js';
 import { changeFilePlan, withApprovedContent } from '../core/shared/approved-content.js';
 import type { ApprovedContent } from '../core/shared/approved-content.js';
@@ -85,24 +82,19 @@ export async function preflightCommand(command: string, input: unknown, ctx: Con
     else if (command === 'change_ff') {
 
         await ctx.connect();
-        const history = new ChangeHistory(ctx.kysely as Kysely<NoormDatabase>, ctx.noorm.config.name, ctx.dialect);
-        const statuses = await history.getAllStatuses();
-        for (const change of await ctx.noorm.changes.discover()) {
+        for (const change of await ctx.noorm.changes.pending()) {
 
-            const status = statuses.get(change.name);
-            if (!status || isPendingChange({ ...status, isNew: false, orphaned: false })) {
-
-                rejectChange(change.changeFiles);
-
-            }
+            if (!change.changeFiles) throw new Error(change.errorMessage ?? `Unreadable change: ${change.name}`);
+            rejectChange(change.changeFiles);
 
         }
 
     }
     else if (command === 'change_run' || command === 'change_revert') {
 
-        const change = await ctx.noorm.changes.parse(z.string().parse(args['name']));
-        rejectChange(command === 'change_revert' ? change.revertFiles : change.changeFiles);
+        const direction = command === 'change_revert' ? 'revert' : 'change';
+        const change = await ctx.noorm.changes.parse(z.string().parse(args['name']), direction);
+        rejectChange(direction === 'revert' ? change.revertFiles : change.changeFiles);
 
     }
 
@@ -171,7 +163,7 @@ export async function prepareCommand(command: string, input: unknown, ctx: Conte
 
     const addChange = async (name: string, direction: 'change' | 'revert'): Promise<void> => {
 
-        const change = await ctx.noorm.changes.parse(name);
+        const change = await ctx.noorm.changes.parse(name, direction);
         const files: ChangeFile[] = direction === 'change' ? change.changeFiles : change.revertFiles;
         changes.set(`${direction}:${change.name}`, changeFilePlan(files));
         for (const file of files) {

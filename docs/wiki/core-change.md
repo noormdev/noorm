@@ -111,7 +111,9 @@ flowchart TD
 
 ### Change lifecycle
 
-A change's `OperationStatus` moves between `pending`, `success`, `failed`, `reverted`, and `stale`, computed by `ChangeManager`/`ChangeHistory` from the tracking-table rows. `isPendingChange` ([`src/core/change/types.ts`](../../src/core/change/types.ts)) treats `pending`, `reverted`, and `stale` as "needs a forward run" for `ff`/`next`, plus a `failed` item that is also `isNew` (a folder that never ran and could not be parsed); `ff` and `next` stop at that item. It is false for orphaned items. An ordinary `failed` change re-applies only through an explicit run, via `needsRun`'s own `failed` branch.
+`ChangeManager` and `ChangeHistory` derive a change's `OperationStatus` from database tracking rows. `isPendingChange` selects `pending`, `reverted`, `stale`, and new unreadable changes, excluding retired and orphaned entries. `ff` fails before execution if any pending forward files are unreadable. By default, `next` stops at the unreadable change. An ordinary recorded SQL failure requires an explicit run.
+
+`.noorm/retired.yml` declares project retirement separately from execution status. The manager skips retired names before parsing, preserves their history in listings, and rejects direct apply or rollback.
 
 Forward runs move a change into `success` or `failed`:
 

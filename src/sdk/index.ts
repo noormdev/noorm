@@ -368,6 +368,7 @@ export {
     ChangeAlreadyAppliedError,
     ChangeNotAppliedError,
     ChangeOrphanedError,
+    ChangeRetiredError,
     ManifestReferenceError,
 } from '../core/change/types.js';
 
