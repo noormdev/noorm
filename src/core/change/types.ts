@@ -238,6 +238,9 @@ export interface ChangeListItem {
 
     /** True if exists in DB but folder deleted from disk */
     orphaned: boolean;
+
+    /** Whether project retirement prevents execution regardless of database status. */
+    retired?: boolean;
 }
 
 /**
@@ -261,7 +264,7 @@ export interface ChangeListItem {
  */
 export function isPendingChange(item: ChangeListItem): boolean {
 
-    return !item.orphaned && (
+    return !item.orphaned && !item.retired && (
         item.status === 'pending'
         || item.status === 'reverted'
         || item.status === 'stale'
@@ -306,6 +309,9 @@ export interface ChangeOptions {
 export interface BatchChangeOptions extends ChangeOptions {
     /** Stop on first failure. Default: true */
     abortOnError?: boolean;
+
+    /** Real fast-forward only: select exact missing-forward IDs for revalidation and project retirement. */
+    confirmRetirement?: (failures: ReadonlyArray<{ name: string; message: string }>) => Promise<readonly string[]>;
 }
 
 /**
@@ -323,7 +329,7 @@ export const DEFAULT_CHANGE_OPTIONS: Required<Omit<ChangeOptions, 'output'>> & {
 /**
  * Default batch options.
  */
-export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangeOptions, 'output'>> & {
+export const DEFAULT_BATCH_OPTIONS: Required<Omit<BatchChangeOptions, 'output' | 'confirmRetirement'>> & {
     output: string | null;
 } = {
     ...DEFAULT_CHANGE_OPTIONS,
@@ -733,6 +739,19 @@ export class ChangeOrphanedError extends Error {
 
 }
 
+/** Error when project retirement prevents running or reverting a change. */
+export class ChangeRetiredError extends Error {
+
+    override readonly name = 'ChangeRetiredError';
+
+    constructor(public readonly changeName: string) {
+
+        super(`Change '${changeName}' is retired in .noorm/retired.yml`);
+
+    }
+
+}
+
 /**
  * Error when .txt manifest has invalid references.
  */
@@ -743,9 +762,12 @@ export class ManifestReferenceError extends Error {
     constructor(
         public readonly manifestPath: string,
         public readonly missingPath: string,
+        additionalMissingPaths: readonly string[] = [],
     ) {
 
-        super(`Manifest '${manifestPath}' references missing file: ${missingPath}`);
+        super([missingPath, ...additionalMissingPaths]
+            .map((missing) => `Manifest '${manifestPath}' references missing file: ${missing}`)
+            .join('\n'));
 
     }
 

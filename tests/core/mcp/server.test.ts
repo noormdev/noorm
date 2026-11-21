@@ -13,7 +13,6 @@ import { createMcpServer } from '../../../src/mcp/server.js';
 import { serveModernMcp } from '../../../src/mcp/stdio.js';
 import { createRegistry } from '../../../src/rpc/index.js';
 import { Context } from '../../../src/sdk/context.js';
-import { ChangesNamespace } from '../../../src/sdk/namespaces/changes.js';
 import { parseConfig } from '../../../src/core/config/schema.js';
 import { parseSettings } from '../../../src/core/settings/schema.js';
 import { checkConfigPolicy } from '../../../src/core/policy/index.js';
@@ -319,25 +318,35 @@ describe('modern MCP protocol and authorization', () => {
 
     });
 
-    it('runs preflight once per approval', async () => {
+    it('reviews and applies active changes without reading retired templates', async () => {
 
         settings = parseSettings({
             paths: { sql: 'sql', changes: 'changes' },
             access: { roles: { operator: { permissions: { 'change:ff': 'confirm' } } } },
         });
         await initializeTracker();
-        const discover = spyOn(ChangesNamespace.prototype, 'discover');
-        try {
+        const retired = join(root, 'changes', '001-retired', 'change');
+        const active = join(root, 'changes', '002-active', 'change');
+        await mkdir(retired, { recursive: true });
+        await mkdir(active, { recursive: true });
+        await mkdir(join(root, '.noorm'), { recursive: true });
+        await writeFile(join(root, '.noorm', 'retired.yml'), '- 001-retired\n');
+        await writeFile(join(retired, '001.sql.tmpl'), 'CREATE TABLE retired_change (id INTEGER);');
+        await writeFile(join(active, '001.sql'), 'CREATE TABLE active_change (id INTEGER);');
 
-            challengeSchema.parse((await wire.request('tools/call', { name: 'change_ff', arguments: { config: 'test' } })).result);
-            expect(discover).toHaveBeenCalledTimes(1);
+        const params = { name: 'change_ff', arguments: { config: 'test' } };
+        const initial = challengeSchema.parse((await wire.request('tools/call', params)).result);
+        const review = JSON.stringify(initial.inputRequests);
+        expect(review).toContain('active_change');
+        expect(review).not.toContain('retired_change');
+        expect(await tables()).not.toContain('active_change');
 
-        }
-        finally {
-
-            discover.mockRestore();
-
-        }
+        const result = await wire.request('tools/call', {
+            ...params, requestState: initial.requestState, inputResponses: accepted,
+        });
+        expect(result.result).toMatchObject({ resultType: 'complete' });
+        expect(await tables()).toContain('active_change');
+        expect(await tables()).not.toContain('retired_change');
 
     });
 

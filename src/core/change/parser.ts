@@ -25,6 +25,7 @@ import { constants as fsConstants } from 'node:fs';
 import { attempt } from '@logosdx/utils';
 
 import { observer } from '../observer.js';
+import type { Direction } from '../shared/tables.js';
 import type { Change, ChangeFile, ChangeFileType, ChangeListItem, ChangeStatus } from './types.js';
 import {
     ChangeValidationError,
@@ -57,6 +58,7 @@ const SEQUENCE_REGEX = /^(\d{3})_(.+)$/;
  *
  * @param folderPath - Absolute path to change folder
  * @param sqlDir - Schema directory for resolving .txt references
+ * @param direction - Resolve references only for this side, or both if omitted
  * @returns Parsed change
  * @throws ChangeNotFoundError if folder doesn't exist
  * @throws ChangeValidationError if structure is invalid
@@ -72,7 +74,7 @@ const SEQUENCE_REGEX = /^(\d{3})_(.+)$/;
  * console.log(change.changeFiles)  // [{ filename: '001_create-table.sql', ... }]
  * ```
  */
-export async function parseChange(folderPath: string, sqlDir?: string): Promise<Change> {
+export async function parseChange(folderPath: string, sqlDir?: string, direction?: Direction): Promise<Change> {
 
     // Check folder exists
     const [folderStat, statErr] = await attempt(() => stat(folderPath));
@@ -89,30 +91,18 @@ export async function parseChange(folderPath: string, sqlDir?: string): Promise<
 
     // Scan change/ folder
     const changePath = path.join(folderPath, 'change');
-    const [changeFiles, changeErr] = await attempt(() => scanFolder(changePath, sqlDir));
-
-    if (changeErr && !isNotFoundError(changeErr)) {
-
-        throw changeErr;
-
-    }
+    const changeFiles = await scanFolder(changePath, direction === 'revert' ? undefined : sqlDir, direction === 'revert');
 
     // Scan revert/ folder
     const revertPath = path.join(folderPath, 'revert');
-    const [revertFiles, revertErr] = await attempt(() => scanFolder(revertPath, sqlDir));
-
-    if (revertErr && !isNotFoundError(revertErr)) {
-
-        throw revertErr;
-
-    }
+    const revertFiles = await scanFolder(revertPath, direction === 'change' ? undefined : sqlDir, direction === 'change');
 
     // Check for changelog.md
     const changelogPath = path.join(folderPath, 'changelog.md');
     const hasChangelog = await fileExists(changelogPath);
 
     // Validate: must have at least change/ or revert/
-    if ((!changeFiles || changeFiles.length === 0) && (!revertFiles || revertFiles.length === 0)) {
+    if (changeFiles.length === 0 && revertFiles.length === 0) {
 
         throw new ChangeValidationError(
             name,
@@ -121,13 +111,19 @@ export async function parseChange(folderPath: string, sqlDir?: string): Promise<
 
     }
 
+    if (direction === 'change' && changeFiles.length === 0) {
+
+        throw new ChangeValidationError(name, 'No files in change/ folder');
+
+    }
+
     return {
         name,
         path: folderPath,
         date,
         description,
-        changeFiles: changeFiles ?? [],
-        revertFiles: revertFiles ?? [],
+        changeFiles,
+        revertFiles,
         hasChangelog,
     };
 
@@ -142,6 +138,7 @@ export interface ChangeParseFailure {
     name: string;
     path: string;
     message: string;
+    missingForwardReferences: boolean;
 }
 
 /**
@@ -214,6 +211,7 @@ export async function discoverChanges(
 export async function scanChanges(
     changesDir: string,
     sqlDir?: string,
+    options: { retired?: ReadonlySet<string>; direction?: Direction } = {},
 ): Promise<{ changes: Change[]; failures: ChangeParseFailure[] }> {
 
     // Check directory exists
@@ -249,11 +247,13 @@ export async function scanChanges(
 
     for (const folder of folders) {
 
+        if (options.retired?.has(folder.name)) continue;
+
         const folderPath = path.join(changesDir, folder.name);
 
         if (!(await looksLikeChange(folderPath))) continue;
 
-        const [change, parseErr] = await attempt(() => parseChange(folderPath, sqlDir));
+        const [change, parseErr] = await attempt(() => parseChange(folderPath, sqlDir, options.direction));
 
         if (parseErr) {
 
@@ -264,7 +264,12 @@ export async function scanChanges(
                 context: { folder: folder.name, operation: 'parse' },
             });
 
-            failures.push({ name: folder.name, path: folderPath, message: parseErr.message });
+            failures.push({
+                name: folder.name,
+                path: folderPath,
+                message: parseErr.message,
+                missingForwardReferences: options.direction === 'change' && onlyMissingManifestReferences(parseErr),
+            });
 
             continue;
 
@@ -279,6 +284,13 @@ export async function scanChanges(
         changes: changes.sort((a, b) => a.name.localeCompare(b.name)),
         failures,
     };
+
+}
+
+function onlyMissingManifestReferences(error: unknown): boolean {
+
+    return error instanceof ManifestReferenceError
+        || (error instanceof AggregateError && error.errors.every(onlyMissingManifestReferences));
 
 }
 
@@ -339,26 +351,42 @@ export async function resolveManifest(manifestPath: string, sqlDir: string): Pro
 
     // Resolve each path
     const resolvedPaths: string[] = [];
+    const missingPaths: string[] = [];
+    const errors: Error[] = [];
 
     for (const relativePath of lines) {
 
         const absolutePath = path.join(sqlDir, relativePath);
 
-        // Validate file exists
+        const [file, statErr] = await attempt(() => stat(absolutePath));
+
+        if (statErr) {
+
+            if (isNotFoundError(statErr)) missingPaths.push(relativePath);
+            else errors.push(statErr);
+            continue;
+
+        }
+
+        if (!file.isFile()) {
+
+            errors.push(new ChangeValidationError(
+                path.basename(path.dirname(path.dirname(manifestPath))),
+                `Manifest '${manifestPath}' references a path that is not a file: ${relativePath}`,
+            ));
+            continue;
+
+        }
+
         const [, accessErr] = await attempt(() => access(absolutePath, fsConstants.R_OK));
-
-        if (!accessErr) {
-
-            resolvedPaths.push(absolutePath);
-
-        }
-        else {
-
-            throw new ManifestReferenceError(manifestPath, relativePath);
-
-        }
+        if (accessErr) errors.push(accessErr);
+        else resolvedPaths.push(absolutePath);
 
     }
+
+    const [firstMissing] = missingPaths;
+    if (firstMissing) errors.push(new ManifestReferenceError(manifestPath, firstMissing, missingPaths.slice(1)));
+    throwParseErrors(errors);
 
     // Line order is the author's execution order — a table before the view
     // that selects from it. Sorting here reordered across directories and
@@ -468,20 +496,23 @@ async function looksLikeChange(folderPath: string): Promise<boolean> {
 /**
  * Scan a folder for SQL and manifest files.
  */
-async function scanFolder(folderPath: string, sqlDir?: string): Promise<ChangeFile[]> {
+async function scanFolder(folderPath: string, sqlDir?: string, ignoreReadError = false): Promise<ChangeFile[]> {
 
     // Read directory
     const [entries, err] = await attempt(() => readdir(folderPath, { withFileTypes: true }));
 
     if (err) {
 
+        if (ignoreReadError || isNotFoundError(err)) return [];
+
         throw err;
 
     }
 
     const files: ChangeFile[] = [];
+    const errors: Error[] = [];
 
-    for (const entry of entries) {
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
 
         if (!entry.isFile()) continue;
 
@@ -508,7 +539,8 @@ async function scanFolder(folderPath: string, sqlDir?: string): Promise<ChangeFi
 
             if (resolveErr) {
 
-                throw resolveErr;
+                errors.push(resolveErr);
+                continue;
 
             }
 
@@ -520,8 +552,17 @@ async function scanFolder(folderPath: string, sqlDir?: string): Promise<ChangeFi
 
     }
 
-    // Sort by filename for deterministic order
-    return files.sort((a, b) => a.filename.localeCompare(b.filename));
+    throwParseErrors(errors);
+
+    return files;
+
+}
+
+function throwParseErrors(errors: Error[]): void {
+
+    const [firstError] = errors;
+    if (errors.length > 1) throw new AggregateError(errors, errors.map((error) => error.message).join('\n'));
+    if (firstError) throw firstError;
 
 }
 
@@ -566,7 +607,7 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 function isNotFoundError(err: Error): boolean {
 
-    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+    return 'code' in err && err.code === 'ENOENT';
 
 }
 

@@ -9,13 +9,14 @@
  * noorm change ff    # Same thing
  * ```
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ProgressBar } from '@inkjs/ui';
 
 import type { ReactElement } from 'react';
 import type { ScreenProps } from '../../types.js';
-import type { ChangeListItem } from '../../../core/change/types.js';
+import type { ChangeManager } from '../../../core/change/manager.js';
+import type { BatchChangeOptions, ChangeListItem, ChangeResult } from '../../../core/change/types.js';
 import type { NoormDatabase } from '../../../core/shared/index.js';
 import type { Kysely } from 'kysely';
 
@@ -28,6 +29,8 @@ import {
     Spinner,
     StatusMessage,
     SmartConfirm,
+    Confirm,
+    SelectList,
     StatusList,
     StatementProgress,
 } from '../../components/index.js';
@@ -43,6 +46,7 @@ import {
 } from '../../utils/index.js';
 import { validateChangeContent } from '../../../core/change/validation.js';
 import { createConnection } from '../../../core/connection/factory.js';
+import { Hotkey } from '../../components/layout/Hotkey.js';
 import { isMouseReport } from '../../mouse.js';
 
 /**
@@ -54,6 +58,17 @@ type FFStep =
     | 'running' // Executing
     | 'complete' // Success
     | 'error'; // Error occurred
+
+type RetirementFailures = Parameters<NonNullable<BatchChangeOptions['confirmRetirement']>>[0];
+
+function formatFailures(changes: ChangeResult[]): string {
+
+    return changes
+        .filter((change) => change.status === 'failed' && change.error)
+        .map((change) => `${change.name}: ${change.error}`)
+        .join('\n');
+
+}
 
 /**
  * ChangeFFScreen component.
@@ -70,9 +85,66 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
     const [step, setStep] = useState<FFStep>('loading');
     const [pendingChanges, setPendingChanges] = useState<ChangeListItem[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [retirement, setRetirement] = useState<RetirementFailures | null>(null);
+    const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+    const [highlighted, setHighlighted] = useState<string | null>(null);
+    const [confirmingRetirement, setConfirmingRetirement] = useState(false);
+    const resolveRetirement = useRef<((names: readonly string[]) => void) | null>(null);
+    const screenLifetime = useRef<AbortController | null>(null);
 
     useBusy(step === 'running');
 
+
+    const withManager = useCallback(async <T,>(
+        run: (manager: ChangeManager) => Promise<T>,
+    ): Promise<T> => {
+
+        if (!activeConfig) throw new Error('No active configuration');
+
+        const conn = await createConnection(activeConfig.connection, activeConfigName ?? '__ff__');
+
+        try {
+
+            return await run(createChangeManager({
+                db: conn.db as Kysely<NoormDatabase>,
+                configName: activeConfigName ?? '',
+                projectRoot,
+                settings,
+                cryptoIdentity,
+                activeConfig,
+            }));
+
+        }
+        finally {
+
+            await conn.destroy();
+
+        }
+
+    }, [activeConfig, activeConfigName, projectRoot, settings, cryptoIdentity]);
+
+    useEffect(() => {
+
+        const lifetime = new AbortController();
+        screenLifetime.current = lifetime;
+
+        return () => {
+
+            lifetime.abort();
+            resolveRetirement.current?.([]);
+            resolveRetirement.current = null;
+
+        };
+
+    }, []);
+
+    const finishRetirement = (names: readonly string[]) => {
+
+        resolveRetirement.current?.(names);
+        resolveRetirement.current = null;
+        setRetirement(null);
+
+    };
 
     // Load pending changes
     useAsyncEffect(async (isCancelled) => {
@@ -119,7 +191,13 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
             if (pending.length === 0) {
 
-                setError('No pending changes');
+                const preflight = await withManager((manager) => manager.preflightFastForward());
+
+                if (isCancelled()) return;
+
+                setError(formatFailures(preflight.failures) || (
+                    preflight.pending > 0 ? 'Pending changes changed. Reopen Fast-Forward to review.' : 'No pending changes'
+                ));
                 setStep('error');
 
             }
@@ -142,40 +220,45 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         }
 
-    }, [activeConfig, activeConfigName]);
+    }, [activeConfig, activeConfigName, settings, projectRoot, withManager]);
 
     // Handle run
     const handleRun = useCallback(async () => {
 
-        if (!activeConfig || !stateManager || pendingChanges.length === 0) return;
+        const signal = screenLifetime.current?.signal;
+        if (!activeConfig || !stateManager || pendingChanges.length === 0 || !signal || signal.aborted) return;
 
         setStep('running');
         resetProgress(pendingChanges.length);
 
         const [_, err] = await attempt(async () => {
 
-            const conn = await createConnection(
-                activeConfig.connection,
-                activeConfigName ?? '__ff__',
-            );
-            const db = conn.db as Kysely<NoormDatabase>;
+            const options: BatchChangeOptions = { dryRun: globalModes.dryRun, force: globalModes.force };
+            if (!options.dryRun) {
 
-            const manager = createChangeManager({
-                db,
-                configName: activeConfigName ?? '',
-                projectRoot,
-                settings,
-                cryptoIdentity,
-                activeConfig,
-            });
+                options.confirmRetirement = (failures) => {
 
-            const result = await manager.ff({ dryRun: globalModes.dryRun, force: globalModes.force });
+                    if (signal.aborted) return Promise.resolve([]);
 
-            await conn.destroy();
+                    const { promise, resolve } = Promise.withResolvers<readonly string[]>();
+                    resolveRetirement.current = resolve;
+                    setSelected(new Set());
+                    setHighlighted(null);
+                    setConfirmingRetirement(false);
+                    setRetirement(failures);
+
+                    return promise;
+
+                };
+
+            }
+
+            const result = await withManager((manager) => manager.ff(options));
+            if (signal.aborted) return;
 
             if (result.failed > 0) {
 
-                setError(`${result.failed} change(s) failed`);
+                setError(formatFailures(result.changes) || result.error || `${result.failed} change(s) failed`);
                 setStep('error');
 
             }
@@ -187,14 +270,14 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
 
         });
 
-        if (err) {
+        if (err && !signal.aborted) {
 
             setError(getErrorMessage(err));
             setStep('error');
 
         }
 
-    }, [activeConfig, activeConfigName, stateManager, cryptoIdentity, settings, pendingChanges, globalModes]);
+    }, [activeConfig, stateManager, pendingChanges, globalModes, resetProgress, withManager]);
 
     // Handle cancel
     const handleCancel = useCallback(() => {
@@ -293,6 +376,65 @@ export function ChangeFFScreen({ params: _params }: ScreenProps): ReactElement {
                         isFocused={isFocused}
                     />
                 </Box>
+            </Panel>
+        );
+
+    }
+
+    if (retirement) {
+
+        const focusedFailure = retirement.find(({ name }) => name === highlighted) ?? retirement[0];
+
+        return (
+            <Panel title="Fast-Forward: Retire Changes" paddingX={2} paddingY={1} borderColor="yellow">
+                {confirmingRetirement ? (
+                    <Box flexDirection="column" gap={1}>
+                        <Text>Only retire changes if all supported databases have caught up and no longer need their rollback SQL.</Text>
+                        <Text dimColor>Saves to .noorm/retired.yml. The change folders and execution history stay intact.</Text>
+                        <Confirm
+                            message={`Retire ${selected.size} change(s) for this project?`}
+                            variant="warning"
+                            defaultChoice="cancel"
+                            focusLabel="ChangeFFRetirementConfirm"
+                            onConfirm={() => finishRetirement([...selected])}
+                            onCancel={() => finishRetirement([])}
+                        />
+                    </Box>
+                ) : (
+                    <Box flexDirection="column" gap={1}>
+                        <Text>Missing forward SQL. Select changes to retire.</Text>
+                        <SelectList
+                            items={retirement.map(({ name }) => ({
+                                key: name, label: `${selected.has(name) ? '[x]' : '[ ]'} ${name}`, value: name,
+                            }))}
+                            focusLabel="ChangeFFRetirementSelect"
+                            multiSelect
+                            reserveRows={9}
+                            onHighlight={({ value }) => setHighlighted(value)}
+                            onToggle={({ value }) => {
+
+                                setSelected((previous) => {
+
+                                    const next = new Set(previous);
+                                    if (next.has(value)) next.delete(value);
+                                    else next.add(value);
+
+                                    return next;
+
+                                });
+
+                            }}
+                            onSubmit={() => selected.size > 0 ? setConfirmingRetirement(true) : finishRetirement([])}
+                            onCancel={() => finishRetirement([])}
+                        />
+                        <Text dimColor>{focusedFailure?.message}</Text>
+                        <Box flexWrap="wrap" columnGap={2}>
+                            <Hotkey keys="Space">Toggle</Hotkey>
+                            <Hotkey keys="Enter">Continue</Hotkey>
+                            <Hotkey keys="Esc">Cancel</Hotkey>
+                        </Box>
+                    </Box>
+                )}
             </Panel>
         );
 

@@ -9,7 +9,7 @@ noorm ui
 
 ![Adding a config, creating the database, building the schema, fast-forwarding changes, and browsing the result](/image/tui.gif)
 
-`noorm ui` takes no flags and opens on Home. Every other `noorm` command is a non-interactive CLI, and bare `noorm` prints the command list; see the [CLI reference](/headless).
+`noorm ui` takes no flags and opens on Home. Bare `noorm` prints the command list. See the [CLI reference](/headless) for commands you can run outside the TUI.
 
 
 ## How do I get around?
@@ -328,12 +328,14 @@ A certificate file path travels as text. The preview says `A certificate file pa
 | `↩` | Reverted |
 | `!` | Orphaned: recorded in the database, folder gone from disk |
 
+Fast-Forward (`f`) offers to retire pending changes with missing forward SQL. Select the changes, then confirm that all supported databases have caught up and no longer need their rollback SQL. NoORM saves the decision to `.noorm/retired.yml` and checks the batch again. Press Esc to stop without recording retirement. The Changes list shows **Retired** alongside any recorded execution status. Retired changes cannot run or be reverted.
+
 | Key | Action |
 |-----|--------|
 | `Enter` | Run a pending, failed, or reverted change. Revert an applied one |
 | `a` | Add |
-| `e` | Edit. Not for an orphaned change |
-| `d` | Delete |
+| `e` | Edit a change that is neither orphaned nor retired |
+| `d` | Delete a change that is neither orphaned nor retired |
 | `r` | Run. Pending, failed, or reverted only |
 | `v` | Revert. Applied only |
 | `n` | Next: apply the next N pending changes, one by default |

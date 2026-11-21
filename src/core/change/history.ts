@@ -30,6 +30,7 @@ import { attempt } from '@logosdx/utils';
 import { observer } from '../observer.js';
 import { getNoormTables, insertOperationRecord, noormDb } from '../shared/index.js';
 import { getCurrentVersion } from '../update/checker.js';
+import { tablesExist } from '../version/schema/index.js';
 import type {
     NoormDatabase,
     OperationStatus,
@@ -48,6 +49,13 @@ import type {
 } from './types.js';
 import type { ChangeType } from '../shared/index.js';
 
+interface RecordedChangeStatus extends ChangeStatus {
+    unresolvedRevert?: {
+        status: 'pending' | 'failed';
+        errorMessage: string | null;
+    };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Date Hydration
 // ─────────────────────────────────────────────────────────────
@@ -61,6 +69,21 @@ import type { ChangeType } from '../shared/index.js';
  * Status reads filter it out; history reads keep it.
  */
 const RESET_MARKER = '__reset__';
+
+function isMissingChangeTable(error: Error, dialect: Dialect, table: string): boolean {
+
+    const code = 'code' in error ? error.code : undefined;
+
+    switch (dialect) {
+
+    case 'postgres': return code === '42P01';
+    case 'mysql': return code === 'ER_NO_SUCH_TABLE';
+    case 'mssql': return 'number' in error && error.number === 208;
+    case 'sqlite': return error.message === `no such table: ${table}`;
+
+    }
+
+}
 
 /**
  * Dialects whose driver parses an offset-less timestamp column in the host's
@@ -335,24 +358,33 @@ export class ChangeHistory {
      *
      * @returns Map of change name to status
      */
-    async getAllStatuses(): Promise<Map<string, ChangeStatus>> {
+    async getAllStatuses(throwOnReadError = false): Promise<Map<string, RecordedChangeStatus>> {
 
-        const statuses = new Map<string, ChangeStatus>();
+        const statuses = new Map<string, RecordedChangeStatus>();
 
-        // Get all unique change names
+        // SQLite can interpret an unqualified, missing quoted column as a string.
         const [records, err] = await attempt(() =>
             this.#ndb
-                .selectFrom(this.#tables.change)
-                .select(['id', 'name', 'status', 'executed_at', 'executed_by', 'error_message'])
-                .where('change_type', '=', 'change')
-                .where('direction', '=', 'change')
-                .where('config_name', '=', this.#configName)
-                .where('name', '!=', RESET_MARKER)
-                .orderBy('id', 'desc')
+                .selectFrom(`${this.#tables.change} as h`)
+                .select(['h.id', 'h.name', 'h.status', 'h.executed_at', 'h.executed_by', 'h.error_message'])
+                .where('h.change_type', '=', 'change')
+                .where('h.direction', '=', 'change')
+                .where('h.config_name', '=', this.#configName)
+                .where('h.name', '!=', RESET_MARKER)
+                .orderBy('h.id', 'desc')
                 .execute(),
         );
 
         if (err) {
+
+            if (throwOnReadError) {
+
+                if (isMissingChangeTable(err, this.#dialect, this.#tables.change)
+                    && !(await tablesExist(this.#db, this.#dialect))) return statuses;
+
+                throw err;
+
+            }
 
             observer.emit('error', {
                 source: 'change',
@@ -384,30 +416,45 @@ export class ChangeHistory {
         }
 
         // Get revert info for each
-        const [reverts] = await attempt(() =>
+        const [reverts, revertErr] = await attempt(() =>
             this.#ndb
-                .selectFrom(this.#tables.change)
-                .select(['name', 'executed_at'])
-                .where('change_type', '=', 'change')
-                .where('direction', '=', 'revert')
-                .where('status', '=', 'success')
-                .where('config_name', '=', this.#configName)
-                .orderBy('id', 'desc')
+                .selectFrom(`${this.#tables.change} as h`)
+                .select(['h.id', 'h.name', 'h.status', 'h.executed_at', 'h.error_message'])
+                .where('h.change_type', '=', 'change')
+                .where('h.direction', '=', 'revert')
+                .where('h.config_name', '=', this.#configName)
+                .orderBy('h.id', 'desc')
                 .execute(),
         );
 
+        if (throwOnReadError && revertErr) throw revertErr;
+
         if (reverts) {
 
-            // Track which ones we've seen
             const seenReverts = new Set<string>();
+            const seenSuccessfulReverts = new Set<string>();
 
             for (const revert of reverts) {
 
-                if (!seenReverts.has(revert.name) && statuses.has(revert.name)) {
+                const status = statuses.get(revert.name);
+                if (!status) continue;
 
-                    const status = statuses.get(revert.name)!;
-                    status.revertedAt = hydrateDate(revert.executed_at, this.#dialect);
+                if (!seenReverts.has(revert.name)) {
+
                     seenReverts.add(revert.name);
+                    if (Number(revert.id) > Number(status.appliedHistoryId ?? 0)
+                        && (revert.status === 'pending' || revert.status === 'failed')) {
+
+                        status.unresolvedRevert = { status: revert.status, errorMessage: revert.error_message || null };
+
+                    }
+
+                }
+
+                if (revert.status === 'success' && !seenSuccessfulReverts.has(revert.name)) {
+
+                    status.revertedAt = hydrateDate(revert.executed_at, this.#dialect);
+                    seenSuccessfulReverts.add(revert.name);
 
                 }
 
@@ -1253,30 +1300,6 @@ export class ChangeHistory {
             errorMessage: r.error_message || null,
             durationMs: r.duration_ms,
         }));
-
-    }
-
-    /**
-     * Get all orphaned changes (in DB but not on disk).
-     *
-     * @param diskNames - Set of change names on disk
-     */
-    async getOrphaned(diskNames: Set<string>): Promise<string[]> {
-
-        const statuses = await this.getAllStatuses();
-        const orphaned: string[] = [];
-
-        for (const [name] of statuses) {
-
-            if (!diskNames.has(name)) {
-
-                orphaned.push(name);
-
-            }
-
-        }
-
-        return orphaned;
 
     }
 
